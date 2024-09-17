@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-from sensor_simulator import SensorSimulator
+from iot_sensor import IoTSensor
 from data_manager import DataManager
 from vpd_calculator import calculate_vpd, get_vpd_range, is_vpd_in_range
 from telegram_bot import run_bot, send_alert
@@ -14,8 +14,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize sensor simulator and data manager
-sensor_simulator = SensorSimulator()
+# Initialize IoT sensor and data manager
+iot_sensor = IoTSensor()
 data_manager = DataManager()
 
 # Set page config
@@ -50,7 +50,7 @@ logger.info(f"Selected growth stage: {growth_stage}")
 growth_stage_key = growth_stage.lower().replace(" ", "_").replace("/", "_")
 
 # Set target values based on growth stage
-target_air_temp = st.sidebar.slider("Target Air Temperature (°C)", 26.0, 29.0, 27.5, 0.1)
+target_air_temp = st.sidebar.slider("Target Air Temperature (°C)", 20.0, 35.0, 27.5, 0.1)
 target_humidity = st.sidebar.slider("Target Humidity (%)", 40, 70, 60, 1)
 target_ec = st.sidebar.slider("Target EC (mS/cm)", 0.5, 3.0, 1.5, 0.1)
 target_ph = st.sidebar.slider("Target pH", 5.5, 7.5, 6.5, 0.1)
@@ -64,7 +64,7 @@ col1, col2, col3 = st.columns(3)
 col4, col5, col6 = st.columns(3)
 
 # Get current sensor data
-current_data = sensor_simulator.get_sensor_data()
+current_data = iot_sensor.read_sensor_data()
 
 # Calculate VPD
 current_vpd = calculate_vpd(current_data['air_temperature'], current_data['humidity'])
@@ -142,41 +142,33 @@ col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     if current_data['air_temperature'] < target_air_temp - 0.5:
-        sensor_simulator.set_equipment_state('heater', True)
         st.info("🔥 Heater: ON")
         logger.info("Heater turned ON")
     else:
-        sensor_simulator.set_equipment_state('heater', False)
         st.info("🔥 Heater: OFF")
         logger.info("Heater turned OFF")
 
 with col2:
     if current_data['humidity'] < target_humidity - 5:
-        sensor_simulator.set_equipment_state('circulation_vent', True)
         st.info("🌀 Circulation Vent: ON")
         logger.info("Circulation Vent turned ON")
     else:
-        sensor_simulator.set_equipment_state('circulation_vent', False)
         st.info("🌀 Circulation Vent: OFF")
         logger.info("Circulation Vent turned OFF")
 
 with col3:
     if current_data['humidity'] > target_humidity + 5:
-        sensor_simulator.set_equipment_state('exhaust_vent', True)
         st.info("💨 Exhaust Vent: ON")
         logger.info("Exhaust Vent turned ON")
     else:
-        sensor_simulator.set_equipment_state('exhaust_vent', False)
         st.info("💨 Exhaust Vent: OFF")
         logger.info("Exhaust Vent turned OFF")
 
 with col4:
     if current_ec < target_ec - 0.2 or current_data['ph'] < target_ph - 0.5:
-        sensor_simulator.set_equipment_state('pump', True)
         st.info("💧 Nutrient Pump: ON")
         logger.info("Nutrient Pump turned ON")
     else:
-        sensor_simulator.set_equipment_state('pump', False)
         st.info("💧 Nutrient Pump: OFF")
         logger.info("Nutrient Pump turned OFF")
 
