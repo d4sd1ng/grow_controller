@@ -16,8 +16,7 @@ import time
 nest_asyncio.apply()
 
 # Initialize Telegram bot
-loop = asyncio.get_event_loop()
-application = loop.run_until_complete(create_application())
+application = asyncio.run(create_application())
 
 # Initialize GPIO cleanup
 if 'initialized' not in st.session_state:
@@ -172,10 +171,10 @@ def control_grow_room_equipment(current_data):
 # Function to send command to ESP32 controller
 def send_command_to_esp32(current_data):
     command = {
-        'heater': heater.input(heater.pin),
-        'circulation_vent': circulation_vent.input(circulation_vent.pin),
-        'exhaust_vent': exhaust_vent.input(exhaust_vent.pin),
-        'water_pump': water_pump.input(water_pump.pin)
+        'heater': GPIO.input(heater.pin),
+        'circulation_vent': GPIO.input(circulation_vent.pin),
+        'exhaust_vent': GPIO.input(exhaust_vent.pin),
+        'water_pump': GPIO.input(water_pump.pin)
     }
     
     # Update OLED display data

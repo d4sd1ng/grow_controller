@@ -30,15 +30,15 @@ async def send_alert(message: str) -> None:
     async with Application.builder().token(TOKEN).build() as app:
         await app.bot.send_message(chat_id=chat_id, text=message)
 
-def create_application():
+async def create_application():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("status", status))
     return application
 
-def run_bot():
-    application = create_application()
-    application.run_polling()
+async def run_bot():
+    application = await create_application()
+    await application.run_polling()
 
 if __name__ == '__main__':
-    run_bot()
+    asyncio.run(run_bot())
