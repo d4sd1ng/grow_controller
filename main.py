@@ -179,20 +179,23 @@ def send_command_to_esp32(current_data):
     
     # Update OLED display data
     command['oled_data'] = {
-        "line1": f"Temp: {current_data['esp32_temperature']:.1f}C",
-        "line2": f"Humidity: {current_data['esp32_humidity']:.0f}%"
+        "line1": f"Temp: {current_data.get('esp32_temperature', current_data['air_temperature']):.1f}C",
+        "line2": f"Humidity: {current_data.get('esp32_humidity', current_data['humidity']):.0f}%"
     }
     
     return command
 
 # Main loop
 while True:
-    # Simulate WLAN communication with ESP32
-    esp32_data = simulate_wlan_communication(esp32_controller, receive_data_from_esp32)
-    
     # Get current sensor data
     current_data = iot_sensor.read_sensor_data()
-    current_data.update(esp32_data)
+    esp32_data = simulate_wlan_communication(esp32_controller, receive_data_from_esp32)
+    
+    # Merge ESP32 data with current_data
+    if esp32_data and 'sensor_data' in esp32_data:
+        current_data.update(esp32_data['sensor_data'])
+    if esp32_data and 'esp32_relay_states' in esp32_data:
+        current_data['esp32_relay_states'] = esp32_data['esp32_relay_states']
     
     # Calculate VPD
     current_vpd = calculate_vpd(current_data['air_temperature'], current_data['humidity'])
@@ -272,28 +275,29 @@ while True:
     with esp32_col1:
         st.metric(
             label="ESP32 Temperature",
-            value=f"{current_data['esp32_temperature']:.1f} °C",
-            delta=f"{current_data['esp32_temperature'] - target_air_temp:.1f} °C"
+            value=f"{current_data.get('esp32_temperature', current_data['air_temperature']):.1f} °C",
+            delta=f"{current_data.get('esp32_temperature', current_data['air_temperature']) - target_air_temp:.1f} °C"
         )
     
     with esp32_col2:
         st.metric(
             label="ESP32 Humidity",
-            value=f"{current_data['esp32_humidity']:.0f}%",
-            delta=f"{current_data['esp32_humidity'] - target_humidity:.0f}%"
+            value=f"{current_data.get('esp32_humidity', current_data['humidity']):.0f}%",
+            delta=f"{current_data.get('esp32_humidity', current_data['humidity']) - target_humidity:.0f}%"
         )
     
     # Display ESP32 relay states
     st.subheader("ESP32 Relay States")
-    for relay, state in current_data['esp32_relay_states'].items():
+    esp32_relay_states = current_data.get('esp32_relay_states', {})
+    for relay, state in esp32_relay_states.items():
         st.write(f"{relay.capitalize()}: {'ON' if state else 'OFF'}")
     
     # Add manual override controls for ESP32 relays
     st.subheader("Manual Override")
-    for relay in current_data['esp32_relay_states']:
+    for relay in esp32_relay_states:
         if st.button(f"Toggle {relay.capitalize()}"):
             command = {
-                relay: not current_data['esp32_relay_states'][relay]
+                relay: not esp32_relay_states[relay]
             }
             simulate_wlan_communication(esp32_controller, lambda x: x.receive_command_from_main_controller(command))
     
