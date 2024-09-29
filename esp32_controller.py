@@ -25,6 +25,8 @@ class ESP32Controller:
     def control_relay(self, relay_name, state):
         if relay_name in self.relay_states:
             self.relay_states[relay_name] = state
+        else:
+            raise ValueError(f"Invalid relay name: {relay_name}")
 
     def update_oled_display(self, data):
         self.oled_data = data
@@ -35,7 +37,7 @@ class ESP32Controller:
     def send_data_to_main_controller(self):
         sensor_data = self.read_sensor_data()
         return {
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
             'sensor_data': sensor_data,
             'esp32_relay_states': self.relay_states
         }
@@ -47,10 +49,13 @@ class ESP32Controller:
         if 'oled_data' in command:
             self.update_oled_display(command['oled_data'])
 
-def simulate_wlan_communication(esp32, receive_function):
-    # Simulate sending data from ESP32 to main controller
-    data = esp32.send_data_to_main_controller()
-    return receive_function(data)
+
+def simulate_wlan_communication(controller, action, data=None):
+    if action == 'send':
+        return controller.send_data_to_main_controller()
+    elif action == 'receive':
+        controller.receive_command_from_main_controller(data)
+        return None
 
 # Example usage
 if __name__ == "__main__":
@@ -58,5 +63,5 @@ if __name__ == "__main__":
     print("ESP32 initialized")
     print("Sensor data:", esp32.read_sensor_data())
     print("Relay states:", esp32.relay_states)
-    esp32.update_oled_display({"line1": "Temp: 25.0C", "line2": "Humidity: 60%"})
+    esp32.update_oled_display({"line1": "Temp: 25.0°C", "line2": "Humidity: 60%"})
     print("OLED display:", esp32.get_oled_display())
