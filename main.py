@@ -1,6 +1,6 @@
 import streamlit as st
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import time
 import plotly.graph_objects as go
 from iot_sensor import IoTSensor
@@ -15,6 +15,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Growroom Control System", page_icon="🌱", layout="wide")
+
+# Add these variables at the beginning of the script
+if 'grow_start_date' not in st.session_state:
+    st.session_state.grow_start_date = date.today()
+if 'current_growth_stage' not in st.session_state:
+    st.session_state.current_growth_stage = "Vegetation"
+if 'vegetation_days' not in st.session_state:
+    st.session_state.vegetation_days = 0
 
 def set_custom_font_size(small, medium, large):
     st.markdown(f'''
@@ -128,6 +136,15 @@ target_ph = st.sidebar.slider("Target pH", 5.5, 7.5, 6.5, 0.1)
 
 logger.info(f"Target values - Air Temp: {target_air_temp}, Humidity: {target_humidity}, EC: {target_ec}, pH: {target_ph}")
 
+# Add this in the sidebar
+st.sidebar.markdown("<h3 class='medium-font'>Grow Information</h3>", unsafe_allow_html=True)
+st.session_state.grow_start_date = st.sidebar.date_input("Grow Start Date", st.session_state.grow_start_date)
+st.session_state.current_growth_stage = st.sidebar.radio("Current Growth Stage", ["Vegetation", "Flowering"])
+
+# Function to calculate days since start
+def days_since_start():
+    return (date.today() - st.session_state.grow_start_date).days
+
 def update_real_time_data():
     current_data = iot_sensor.read_sensor_data()
     esp32_data = simulate_wlan_communication(esp32_controller, 'send')
@@ -143,6 +160,16 @@ def update_real_time_data():
     
     esp32_command = send_command_to_esp32(current_data)
     simulate_wlan_communication(esp32_controller, 'receive', esp32_command)
+    
+    # Display grow information
+    st.markdown("<h2 class='medium-font'>Grow Information</h2>", unsafe_allow_html=True)
+    st.markdown(f"<p class='small-font'>Days since start: {days_since_start()}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p class='small-font'>Current stage: {st.session_state.current_growth_stage}</p>", unsafe_allow_html=True)
+    if st.session_state.current_growth_stage == "Flowering":
+        if st.session_state.vegetation_days == 0:
+            st.session_state.vegetation_days = days_since_start()
+        flowering_days = days_since_start() - st.session_state.vegetation_days
+        st.markdown(f"<p class='small-font'>Days in flowering: {flowering_days}</p>", unsafe_allow_html=True)
     
     st.markdown("<h2 class='medium-font'>Real-time Data</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
@@ -241,11 +268,11 @@ def display_historical_data():
     vpd_data = [calculate_vpd(temp, hum) for temp, hum in zip(historical_data['air_temperature'], historical_data['humidity'])]
     vpd_fig = go.Figure()
     vpd_fig.add_trace(go.Scatter(x=historical_data.index, y=vpd_data, mode='lines', name='VPD'))
-    vpd_fig.add_hline(y=0.4, line_dash="dash", line_color="red", annotation_text="Min VPD: 0.4 kPa")
-    vpd_fig.add_hline(y=1.6, line_dash="dash", line_color="red", annotation_text="Max VPD: 1.6 kPa")
-    vpd_fig.add_hrect(y0=0.4, y1=0.8, fillcolor="rgba(0,255,0,0.1)", line_width=0, annotation_text="Early Grow")
-    vpd_fig.add_hrect(y0=0.8, y1=1.2, fillcolor="rgba(255,255,0,0.1)", line_width=0, annotation_text="Late Grow/Early Flowering")
-    vpd_fig.add_hrect(y0=1.2, y1=1.6, fillcolor="rgba(255,165,0,0.1)", line_width=0, annotation_text="Late Flowering")
+    vpd_fig.add_hline(y=0.4, line_dash="dash", line_color="#FF5722", annotation_text="Min VPD: 0.4 kPa")
+    vpd_fig.add_hline(y=1.6, line_dash="dash", line_color="#FF5722", annotation_text="Max VPD: 1.6 kPa")
+    vpd_fig.add_hrect(y0=0.4, y1=0.8, fillcolor="rgba(0,150,136,0.1)", line_width=0, annotation_text="Early Grow")
+    vpd_fig.add_hrect(y0=0.8, y1=1.2, fillcolor="rgba(0,150,136,0.2)", line_width=0, annotation_text="Late Grow/Early Flowering")
+    vpd_fig.add_hrect(y0=1.2, y1=1.6, fillcolor="rgba(0,150,136,0.3)", line_width=0, annotation_text="Late Flowering")
     vpd_fig.update_layout(title='VPD (Last 24 Hours)', xaxis_title='Time', yaxis_title='VPD (kPa)')
     
     st.plotly_chart(temp_fig, use_container_width=True)
