@@ -1,0 +1,57 @@
+Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
+
+
+  You can now view your Streamlit app in your browser.
+
+  URL: http://0.0.0.0:5000
+
+INFO:__main__:Selected growth stage: Early Grow
+INFO:__main__:Target values - Air Temp: 27.5, Humidity: 70, EC: 1.5, pH: 6.5
+INFO:__main__:VPD range for Early Grow: 0.4 - 0.8 kPa
+INFO:httpx:HTTP Request: POST https://api.telegram.org/bot7528424546:AAEraIyxdPlliexKVzXS1bU-nH_uAfBNAa8/getMe "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.telegram.org/bot7528424546:AAEraIyxdPlliexKVzXS1bU-nH_uAfBNAa8/sendMessage "HTTP/1.1 200 OK"
+WARNING:__main__:⚠️ Alert: Humidity is out of range. Current value: 61, Target value: 70
+INFO:__main__:Heater turned OFF
+INFO:__main__:Circulation Vent turned ON
+INFO:__main__:Exhaust Vent turned OFF
+INFO:__main__:Water Pump turned OFF
+INFO:__main__:Growroom Control System dashboard updated successfully
+INFO:httpx:HTTP Request: POST https://api.telegram.org/bot7528424546:AAEraIyxdPlliexKVzXS1bU-nH_uAfBNAa8/getMe "HTTP/1.1 200 OK"
+INFO:telegram.ext.Application:Application started
+Exception in thread Thread-7 (run_telegram_bot):
+Traceback (most recent call last):
+  File "/nix/store/f98g7xbckgqbkagdvpzc2r6lv3h1p9ki-python3-3.11.9/lib/python3.11/asyncio/unix_events.py", line 105, in add_signal_handler
+    signal.set_wakeup_fd(self._csock.fileno())
+ValueError: set_wakeup_fd only works in main thread of the main interpreter
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/nix/store/f98g7xbckgqbkagdvpzc2r6lv3h1p9ki-python3-3.11.9/lib/python3.11/threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "/nix/store/f98g7xbckgqbkagdvpzc2r6lv3h1p9ki-python3-3.11.9/lib/python3.11/threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/runner/GrowRoomControl/main.py", line 332, in run_telegram_bot
+    asyncio.run(run_telegram_bot_async())
+  File "/nix/store/f98g7xbckgqbkagdvpzc2r6lv3h1p9ki-python3-3.11.9/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/nix/store/f98g7xbckgqbkagdvpzc2r6lv3h1p9ki-python3-3.11.9/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/f98g7xbckgqbkagdvpzc2r6lv3h1p9ki-python3-3.11.9/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/runner/GrowRoomControl/main.py", line 329, in run_telegram_bot_async
+    await run_bot()
+  File "/home/runner/GrowRoomControl/telegram_bot.py", line 40, in run_bot
+    await application.run_polling()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/GrowRoomControl/.pythonlibs/lib/python3.11/site-packages/telegram/ext/_application.py", line 881, in run_polling
+    return self.__run(
+           ^^^^^^^^^^^
+  File "/home/runner/GrowRoomControl/.pythonlibs/lib/python3.11/site-packages/telegram/ext/_application.py", line 1069, in __run
+    loop.add_signal_handler(sig, self._raise_system_exit)
+  File "/nix/store/f98g7xbckgqbkagdvpzc2r6lv3h1p9ki-python3-3.11.9/lib/python3.11/asyncio/unix_events.py", line 107, in add_signal_handler
+    raise RuntimeError(str(exc))
+RuntimeError: set_wakeup_fd only works in main thread of the main interpreter

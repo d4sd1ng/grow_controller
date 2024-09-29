@@ -7,8 +7,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from sensor_simulator import SensorSimulator
 sensor_simulator = SensorSimulator()
 
-# Replace 'YOUR_BOT_TOKEN' with the actual token you receive from BotFather
-TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', 'YOUR_BOT_TOKEN')
+# Use the provided bot token
+TOKEN = "7528424546:AAEraIyxdPlliexKVzXS1bU-nH_uAfBNAa8"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Welcome to the Growroom Control System Bot! Use /status to get current readings.')
@@ -26,18 +26,19 @@ Current Growroom Status:
     await update.message.reply_text(status_message)
 
 async def send_alert(message: str) -> None:
-    # Replace 'YOUR_CHAT_ID' with the actual chat ID where you want to send alerts
-    chat_id = os.environ.get('TELEGRAM_CHAT_ID', 'YOUR_CHAT_ID')
+    chat_id = "832645763"
     async with Application.builder().token(TOKEN).build() as app:
         await app.bot.send_message(chat_id=chat_id, text=message)
 
-async def run_bot():
+def create_application():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("status", status))
-    await application.initialize()
-    await application.start()
-    await application.run_polling()
+    return application
+
+def run_bot():
+    application = create_application()
+    application.run_polling()
 
 if __name__ == '__main__':
-    asyncio.run(run_bot())
+    run_bot()

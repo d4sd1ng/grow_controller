@@ -58,3 +58,35 @@ class SensorSimulator:
     def set_growth_stage(self, stage):
         if stage in ['early_grow', 'late_grow_early_flowering', 'late_flowering']:
             self.growth_stage = stage
+
+class WLANSimulator:
+    @staticmethod
+    def simulate_communication(sender, receiver, data=None):
+        if data is None:
+            data = sender.send_data_to_main_controller()
+        
+        # Simulate network delay
+        import time
+        time.sleep(0.1)
+        
+        # Simulate packet loss (1% chance)
+        if random.random() < 0.01:
+            return None
+        
+        return receiver.receive_data_from_esp32(data)
+
+# Example usage
+if __name__ == "__main__":
+    sensor_sim = SensorSimulator()
+    print("Sensor Simulator initialized")
+    print("Sensor data:", sensor_sim.get_sensor_data())
+    
+    from esp32_controller import ESP32Controller
+    esp32 = ESP32Controller()
+    main_controller = type('MainController', (), {
+        'receive_data_from_esp32': lambda self, data: print(f"Received data: {data}")
+    })()
+    
+    wlan_sim = WLANSimulator()
+    result = wlan_sim.simulate_communication(esp32, main_controller)
+    print("WLAN communication result:", result)
