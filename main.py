@@ -254,11 +254,25 @@ def update_real_time_data():
     
     with equipment_col1:
         st.markdown(f"<p class='small-font'>Heater: {'ON' if GPIO.input(heater.pin) else 'OFF'}</p>", unsafe_allow_html=True)
+        if st.button("Toggle Heater", key="toggle_heater", use_container_width=True):
+            toggle_heater()
+            st.rerun()
+        
         st.markdown(f"<p class='small-font'>Circulation Vent: {'ON' if GPIO.input(circulation_vent.pin) else 'OFF'}</p>", unsafe_allow_html=True)
+        if st.button("Toggle Circulation Vent", key="toggle_circulation_vent", use_container_width=True):
+            toggle_circulation_vent()
+            st.rerun()
     
     with equipment_col2:
         st.markdown(f"<p class='small-font'>Exhaust Vent: {'ON' if GPIO.input(exhaust_vent.pin) else 'OFF'}</p>", unsafe_allow_html=True)
+        if st.button("Toggle Exhaust Vent", key="toggle_exhaust_vent", use_container_width=True):
+            toggle_exhaust_vent()
+            st.rerun()
+        
         st.markdown(f"<p class='small-font'>Water Pump: {'ON' if GPIO.input(water_pump.pin) else 'OFF'}</p>", unsafe_allow_html=True)
+        if st.button("Toggle Water Pump", key="toggle_water_pump", use_container_width=True):
+            toggle_water_pump()
+            st.rerun()
     
     data_manager.add_data_point(current_data)
     
@@ -274,11 +288,11 @@ def display_historical_data():
     temp_fig = go.Figure()
     temp_fig.add_trace(go.Scatter(x=historical_data.index, y=historical_data['air_temperature'], mode='lines', name='Air Temperature'))
     temp_fig.add_trace(go.Scatter(x=historical_data.index, y=historical_data['water_temperature'], mode='lines', name='Water Temperature'))
-    temp_fig.update_layout(title='Temperature (Last 24 Hours)', xaxis_title='Time', yaxis_title='Temperature (°C)')
+    temp_fig.update_layout(title='Temperature (Last 24 Hours)', xaxis_title='Time', yaxis_title='Temperature (°C)', height=300)
     
     humidity_fig = go.Figure()
     humidity_fig.add_trace(go.Scatter(x=historical_data.index, y=historical_data['humidity'], mode='lines', name='Humidity'))
-    humidity_fig.update_layout(title='Humidity (Last 24 Hours)', xaxis_title='Time', yaxis_title='Humidity (%)')
+    humidity_fig.update_layout(title='Humidity (Last 24 Hours)', xaxis_title='Time', yaxis_title='Humidity (%)', height=300)
     
     ec_ph_fig = go.Figure()
     ec_ph_fig.add_trace(go.Scatter(x=historical_data.index, y=historical_data['ec'], mode='lines', name='EC'))
@@ -287,7 +301,8 @@ def display_historical_data():
         title='EC and pH (Last 24 Hours)',
         xaxis_title='Time',
         yaxis_title='EC (mS/cm)',
-        yaxis2=dict(title='pH', overlaying='y', side='right')
+        yaxis2=dict(title='pH', overlaying='y', side='right'),
+        height=300
     )
     
     vpd_data = [calculate_vpd(temp, hum) for temp, hum in zip(historical_data['air_temperature'], historical_data['humidity'])]
@@ -298,7 +313,7 @@ def display_historical_data():
     vpd_fig.add_hrect(y0=0.4, y1=0.8, fillcolor="rgba(0,150,136,0.1)", line_width=0, annotation_text="Early Grow")
     vpd_fig.add_hrect(y0=0.8, y1=1.2, fillcolor="rgba(0,150,136,0.2)", line_width=0, annotation_text="Late Grow/Early Flowering")
     vpd_fig.add_hrect(y0=1.2, y1=1.6, fillcolor="rgba(0,150,136,0.3)", line_width=0, annotation_text="Late Flowering")
-    vpd_fig.update_layout(title='VPD (Last 24 Hours)', xaxis_title='Time', yaxis_title='VPD (kPa)')
+    vpd_fig.update_layout(title='VPD (Last 24 Hours)', xaxis_title='Time', yaxis_title='VPD (kPa)', height=300)
     
     st.plotly_chart(temp_fig, use_container_width=True)
     st.plotly_chart(humidity_fig, use_container_width=True)
@@ -347,28 +362,6 @@ if st.sidebar.button("Calibrate EC Sensor"):
 if __name__ == "__main__":
     update_real_time_data()
     display_historical_data()
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("Toggle Heater", key="toggle_heater", use_container_width=True):
-            toggle_heater()
-            st.rerun()
-    
-    with col2:
-        if st.button("Toggle Circulation Vent", key="toggle_circulation_vent", use_container_width=True):
-            toggle_circulation_vent()
-            st.rerun()
-    
-    with col3:
-        if st.button("Toggle Exhaust Vent", key="toggle_exhaust_vent", use_container_width=True):
-            toggle_exhaust_vent()
-            st.rerun()
-    
-    with col4:
-        if st.button("Toggle Water Pump", key="toggle_water_pump", use_container_width=True):
-            toggle_water_pump()
-            st.rerun()
 
     st.markdown("---")
     st.markdown("<p class='small-font'>© 2024 Growroom Control System. All rights reserved.</p>", unsafe_allow_html=True)
