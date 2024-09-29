@@ -130,7 +130,7 @@ logger.info(f"Target values - Air Temp: {target_air_temp}, Humidity: {target_hum
 
 def update_real_time_data():
     current_data = iot_sensor.read_sensor_data()
-    esp32_data = simulate_wlan_communication(esp32_controller, lambda data: data)
+    esp32_data = simulate_wlan_communication(esp32_controller, 'send')
     
     if esp32_data and 'sensor_data' in esp32_data:
         current_data.update(esp32_data['sensor_data'])
@@ -142,7 +142,7 @@ def update_real_time_data():
     control_grow_room_equipment(current_data, target_air_temp, target_humidity, target_ec)
     
     esp32_command = send_command_to_esp32(current_data)
-    simulate_wlan_communication(esp32_controller, lambda x: x.receive_command_from_main_controller(esp32_command))
+    simulate_wlan_communication(esp32_controller, 'receive', esp32_command)
     
     st.markdown("<h2 class='medium-font'>Real-time Data</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     
     if st.button("Toggle Heater"):
         toggle_heater()
-        st.experimental_rerun()
+        st.rerun()
     
     st.markdown("---")
     st.markdown("<p class='small-font'>© 2024 Growroom Control System. All rights reserved.</p>", unsafe_allow_html=True)

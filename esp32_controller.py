@@ -50,9 +50,12 @@ class ESP32Controller:
             self.update_oled_display(command['oled_data'])
 
 
-def simulate_wlan_communication(controller, receive_function):
-    data = controller.send_data_to_main_controller()
-    return receive_function(data)
+def simulate_wlan_communication(controller, action, data=None):
+    if action == 'send':
+        return controller.send_data_to_main_controller()
+    elif action == 'receive':
+        controller.receive_command_from_main_controller(data)
+        return None
 
 # Example usage
 if __name__ == "__main__":
