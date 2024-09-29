@@ -45,6 +45,10 @@ def set_custom_font_size(small, medium, large):
     .metric-delta {{
         font-size: 10px;
     }}
+    .stButton > button {{
+        font-size: 0.8rem;
+        padding: 0.3rem 0.5rem;
+    }}
     </style>
     ''', unsafe_allow_html=True)
 
@@ -309,6 +313,30 @@ def toggle_heater():
         heater.on()
     logger.info(f"Heater toggled to {'ON' if not current_state else 'OFF'}")
 
+def toggle_circulation_vent():
+    current_state = GPIO.input(circulation_vent.pin)
+    if current_state:
+        circulation_vent.off()
+    else:
+        circulation_vent.on()
+    logger.info(f"Circulation Vent toggled to {'ON' if not current_state else 'OFF'}")
+
+def toggle_exhaust_vent():
+    current_state = GPIO.input(exhaust_vent.pin)
+    if current_state:
+        exhaust_vent.off()
+    else:
+        exhaust_vent.on()
+    logger.info(f"Exhaust Vent toggled to {'ON' if not current_state else 'OFF'}")
+
+def toggle_water_pump():
+    current_state = GPIO.input(water_pump.pin)
+    if current_state:
+        water_pump.off()
+    else:
+        water_pump.on()
+    logger.info(f"Water Pump toggled to {'ON' if not current_state else 'OFF'}")
+
 st.sidebar.markdown("<h3 class='medium-font'>Sensor Calibration</h3>", unsafe_allow_html=True)
 if st.sidebar.button("Calibrate pH Sensor"):
     st.sidebar.info("pH sensor calibration initiated. Follow the instructions on the device.")
@@ -320,9 +348,27 @@ if __name__ == "__main__":
     update_real_time_data()
     display_historical_data()
     
-    if st.button("Toggle Heater"):
-        toggle_heater()
-        st.rerun()
+    col1, col2, col3, col4 = st.columns(4)
     
+    with col1:
+        if st.button("Toggle Heater", key="toggle_heater", use_container_width=True):
+            toggle_heater()
+            st.rerun()
+    
+    with col2:
+        if st.button("Toggle Circulation Vent", key="toggle_circulation_vent", use_container_width=True):
+            toggle_circulation_vent()
+            st.rerun()
+    
+    with col3:
+        if st.button("Toggle Exhaust Vent", key="toggle_exhaust_vent", use_container_width=True):
+            toggle_exhaust_vent()
+            st.rerun()
+    
+    with col4:
+        if st.button("Toggle Water Pump", key="toggle_water_pump", use_container_width=True):
+            toggle_water_pump()
+            st.rerun()
+
     st.markdown("---")
     st.markdown("<p class='small-font'>© 2024 Growroom Control System. All rights reserved.</p>", unsafe_allow_html=True)
