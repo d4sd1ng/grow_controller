@@ -127,7 +127,7 @@ async def check_and_alert(param_name, current_value, target_value, threshold):
 def custom_metric(label, value, delta=None):
     delta_html = ""
     if delta is not None:
-        delta_value = float(delta.split()[0])
+        delta_value = float(delta.split()[0].rstrip('%'))
         if delta_value > 0:
             delta_html = f"<span class='metric-delta' style='color: #FF5722;'>▲ {delta}</span>"
         elif delta_value < 0:
