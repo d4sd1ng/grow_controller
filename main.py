@@ -46,8 +46,9 @@ def set_custom_font_size(small, medium, large):
         font-size: 10px;
     }}
     .stButton > button {{
-        font-size: 0.7rem;
-        padding: 0.2rem 0.4rem;
+        font-size: 0.6rem;
+        padding: 0.2rem 0.3rem;
+        white-space: nowrap;
     }}
     </style>
     ''', unsafe_allow_html=True)
@@ -249,25 +250,27 @@ def update_real_time_data():
             logger.warning(alert_message)
     
     st.markdown("<h2 class='medium-font'>Equipment Status</h2>", unsafe_allow_html=True)
-    equipment_col1, equipment_col2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns(4)
     
-    with equipment_col1:
+    with col1:
         st.markdown(f"<p class='small-font'>Heater: {'ON' if GPIO.input(heater.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Heater", key="toggle_heater", use_container_width=True):
             toggle_heater()
             st.experimental_rerun()
-        
+    
+    with col2:
         st.markdown(f"<p class='small-font'>Circulation Vent: {'ON' if GPIO.input(circulation_vent.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Circulation Vent", key="toggle_circulation_vent", use_container_width=True):
             toggle_circulation_vent()
             st.experimental_rerun()
     
-    with equipment_col2:
+    with col3:
         st.markdown(f"<p class='small-font'>Exhaust Vent: {'ON' if GPIO.input(exhaust_vent.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Exhaust Vent", key="toggle_exhaust_vent", use_container_width=True):
             toggle_exhaust_vent()
             st.experimental_rerun()
-        
+    
+    with col4:
         st.markdown(f"<p class='small-font'>Water Pump: {'ON' if GPIO.input(water_pump.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Water Pump", key="toggle_water_pump", use_container_width=True):
             toggle_water_pump()
@@ -278,8 +281,6 @@ def update_real_time_data():
     logger.info("Growroom Control System dashboard updated successfully")
 
 def display_historical_data():
-    st.markdown("<h2 class='medium-font'>Charts</h2>", unsafe_allow_html=True)
-    
     end_time = datetime.now()
     start_time = end_time - timedelta(hours=24)
     historical_data = data_manager.get_historical_data(start_time, end_time)
