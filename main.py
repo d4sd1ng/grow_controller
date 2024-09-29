@@ -63,33 +63,45 @@ data_manager = DataManager()
 esp32_controller = ESP32Controller()
 
 def control_grow_room_equipment(current_data, target_air_temp, target_humidity, target_ec):
+    # Heater control
     if current_data['air_temperature'] < target_air_temp - 1:
-        GPIO.output(heater.pin, True)
-        logger.info("Heater turned ON")
+        if not GPIO.input(heater.pin):
+            heater.on()
+            logger.info("Heater turned ON")
     elif current_data['air_temperature'] > target_air_temp + 1:
-        GPIO.output(heater.pin, False)
-        logger.info("Heater turned OFF")
+        if GPIO.input(heater.pin):
+            heater.off()
+            logger.info("Heater turned OFF")
 
+    # Circulation vent control
     if current_data['humidity'] > target_humidity + 5:
-        GPIO.output(circulation_vent.pin, True)
-        logger.info("Circulation Vent turned ON")
+        if not GPIO.input(circulation_vent.pin):
+            circulation_vent.on()
+            logger.info("Circulation Vent turned ON")
     elif current_data['humidity'] < target_humidity - 5:
-        GPIO.output(circulation_vent.pin, False)
-        logger.info("Circulation Vent turned OFF")
+        if GPIO.input(circulation_vent.pin):
+            circulation_vent.off()
+            logger.info("Circulation Vent turned OFF")
 
+    # Exhaust vent control
     if current_data['air_temperature'] > target_air_temp + 2:
-        GPIO.output(exhaust_vent.pin, True)
-        logger.info("Exhaust Vent turned ON")
+        if not GPIO.input(exhaust_vent.pin):
+            exhaust_vent.on()
+            logger.info("Exhaust Vent turned ON")
     elif current_data['air_temperature'] < target_air_temp - 2:
-        GPIO.output(exhaust_vent.pin, False)
-        logger.info("Exhaust Vent turned OFF")
+        if GPIO.input(exhaust_vent.pin):
+            exhaust_vent.off()
+            logger.info("Exhaust Vent turned OFF")
 
+    # Water pump control (for EC management)
     if current_data['ec'] < target_ec - 0.2:
-        GPIO.output(water_pump.pin, True)
-        logger.info("Water Pump turned ON")
+        if not GPIO.input(water_pump.pin):
+            water_pump.on()
+            logger.info("Water Pump turned ON")
     elif current_data['ec'] > target_ec + 0.2:
-        GPIO.output(water_pump.pin, False)
-        logger.info("Water Pump turned OFF")
+        if GPIO.input(water_pump.pin):
+            water_pump.off()
+            logger.info("Water Pump turned OFF")
 
 def send_command_to_esp32(current_data):
     command = {
@@ -113,7 +125,16 @@ async def check_and_alert(param_name, current_value, target_value, threshold):
         logger.warning(alert_message)
 
 def custom_metric(label, value, delta=None):
-    delta_html = f"<span class='metric-delta'>{delta}</span>" if delta else ""
+    delta_html = ""
+    if delta is not None:
+        delta_value = float(delta.split()[0])
+        if delta_value > 0:
+            delta_html = f"<span class='metric-delta' style='color: #FF5722;'>▲ {delta}</span>"
+        elif delta_value < 0:
+            delta_html = f"<span class='metric-delta' style='color: #009688;'>▼ {delta}</span>"
+        else:
+            delta_html = f"<span class='metric-delta' style='color: #9E9E9E;'>● {delta}</span>"
+    
     return st.markdown(f"""
         <div class="metric">
             <span class="metric-label">{label}</span>
@@ -282,7 +303,10 @@ def display_historical_data():
 
 def toggle_heater():
     current_state = GPIO.input(heater.pin)
-    GPIO.output(heater.pin, not current_state)
+    if current_state:
+        heater.off()
+    else:
+        heater.on()
     logger.info(f"Heater toggled to {'ON' if not current_state else 'OFF'}")
 
 st.sidebar.markdown("<h3 class='medium-font'>Sensor Calibration</h3>", unsafe_allow_html=True)
