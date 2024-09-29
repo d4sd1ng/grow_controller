@@ -47,8 +47,10 @@ def set_custom_font_size(small, medium, large):
     }}
     .stButton > button {{
         font-size: 0.6rem;
-        padding: 0.2rem 0.3rem;
-        white-space: nowrap;
+        padding: 0.1rem 0.2rem;
+        height: auto;
+        min-height: 0;
+        width: 100%;
     }}
     </style>
     ''', unsafe_allow_html=True)
@@ -250,31 +252,29 @@ def update_real_time_data():
             logger.warning(alert_message)
     
     st.markdown("<h2 class='medium-font'>Equipment Status</h2>", unsafe_allow_html=True)
-    col1, col2, col3, col4 = st.columns(4)
-    
+    col1, col2 = st.columns(2)
+
     with col1:
         st.markdown(f"<p class='small-font'>Heater: {'ON' if GPIO.input(heater.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Heater", key="toggle_heater", use_container_width=True):
             toggle_heater()
-            st.experimental_rerun()
-    
-    with col2:
+            st.rerun()
+
         st.markdown(f"<p class='small-font'>Circulation Vent: {'ON' if GPIO.input(circulation_vent.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Circulation Vent", key="toggle_circulation_vent", use_container_width=True):
             toggle_circulation_vent()
-            st.experimental_rerun()
-    
-    with col3:
+            st.rerun()
+
+    with col2:
         st.markdown(f"<p class='small-font'>Exhaust Vent: {'ON' if GPIO.input(exhaust_vent.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Exhaust Vent", key="toggle_exhaust_vent", use_container_width=True):
             toggle_exhaust_vent()
-            st.experimental_rerun()
-    
-    with col4:
+            st.rerun()
+
         st.markdown(f"<p class='small-font'>Water Pump: {'ON' if GPIO.input(water_pump.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Water Pump", key="toggle_water_pump", use_container_width=True):
             toggle_water_pump()
-            st.experimental_rerun()
+            st.rerun()
     
     data_manager.add_data_point(current_data)
     
