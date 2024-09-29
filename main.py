@@ -46,8 +46,8 @@ def set_custom_font_size(small, medium, large):
         font-size: 10px;
     }}
     .stButton > button {{
-        font-size: 0.8rem;
-        padding: 0.3rem 0.5rem;
+        font-size: 0.7rem;
+        padding: 0.2rem 0.4rem;
     }}
     </style>
     ''', unsafe_allow_html=True)
@@ -55,7 +55,6 @@ def set_custom_font_size(small, medium, large):
 set_custom_font_size(12, 16, 20)
 
 st.markdown("<h1 class='large-font'>🌱 Growroom Control System</h1>", unsafe_allow_html=True)
-st.markdown("<p class='medium-font'>Monitor and manage key environmental parameters for optimal plant growth.</p>", unsafe_allow_html=True)
 
 heater = OutputDevice(17)
 circulation_vent = OutputDevice(18)
@@ -256,30 +255,30 @@ def update_real_time_data():
         st.markdown(f"<p class='small-font'>Heater: {'ON' if GPIO.input(heater.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Heater", key="toggle_heater", use_container_width=True):
             toggle_heater()
-            st.rerun()
+            st.experimental_rerun()
         
         st.markdown(f"<p class='small-font'>Circulation Vent: {'ON' if GPIO.input(circulation_vent.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Circulation Vent", key="toggle_circulation_vent", use_container_width=True):
             toggle_circulation_vent()
-            st.rerun()
+            st.experimental_rerun()
     
     with equipment_col2:
         st.markdown(f"<p class='small-font'>Exhaust Vent: {'ON' if GPIO.input(exhaust_vent.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Exhaust Vent", key="toggle_exhaust_vent", use_container_width=True):
             toggle_exhaust_vent()
-            st.rerun()
+            st.experimental_rerun()
         
         st.markdown(f"<p class='small-font'>Water Pump: {'ON' if GPIO.input(water_pump.pin) else 'OFF'}</p>", unsafe_allow_html=True)
         if st.button("Toggle Water Pump", key="toggle_water_pump", use_container_width=True):
             toggle_water_pump()
-            st.rerun()
+            st.experimental_rerun()
     
     data_manager.add_data_point(current_data)
     
     logger.info("Growroom Control System dashboard updated successfully")
 
 def display_historical_data():
-    st.markdown("<h2 class='medium-font'>Historical Data</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='medium-font'>Charts</h2>", unsafe_allow_html=True)
     
     end_time = datetime.now()
     start_time = end_time - timedelta(hours=24)
