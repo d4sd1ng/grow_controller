@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "repl-nix-growroomcontrol"
+name = "grow-controller"
 version = "0.1.0"
-description = ""
+description = "Grow room monitoring and control (Streamlit dashboard)"
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 
@@ -11,10 +11,8 @@ streamlit = "^1.38.0"
 pandas = "^2.2.2"
 plotly = "^5.24.1"
 python-telegram-bot = "20.6"
-gpiozero = "^2.0.1"
-nest-asyncio = "^1.6.0"
-telegram = "^0.0.1"
-
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.30.0"}
 
 [build-system]
 requires = ["poetry-core"]

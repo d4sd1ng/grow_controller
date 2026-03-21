@@ -1,0 +1,20 @@
+.env
+.venv
+venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pythonlibs/
+*.egg-info/
+dist/
+build/
+data/
+firmware/**/device_secrets.h
+
+# IDE / tooling / local cruft
+.cache/
+.local/
+.upm/
+growroom_pid.txt
+replit_zip_error_log.txt
+Textdokument (neu) (2).txt

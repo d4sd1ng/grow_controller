@@ -1,0 +1,24 @@
+[Unit]
+Description=Grow telemetry API (uvicorn)
+Documentation=file:README.md
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=__GROW_REPO__
+EnvironmentFile=-__GROW_REPO__/.env
+ExecStart=__GROW_REPO__/.venv/bin/python run_telemetry_api.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=grow-telemetry
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
