@@ -151,3 +151,23 @@ class DataManager:
         )
         mock_data.set_index("timestamp", inplace=True)
         self._store.bulk_load_dataframe(mock_data)
+
+    def export_to_csv(self, start_time: datetime, end_time: datetime, file_path: str) -> None:
+        """Export telemetry data to CSV file or buffer."""
+        df = self.get_historical_data(start_time, end_time)
+        if df.empty:
+            raise ValueError("No data available for the specified time range")
+        import io
+        if hasattr(file_path, 'write'):
+            file_path.write(df.to_csv(index=True))
+        else:
+            df.to_csv(file_path, index=True)
+
+    def export_to_json(self, start_time: datetime, end_time: datetime, file_path: str) -> None:
+        """Export telemetry data to JSON file."""
+        df = self.get_historical_data(start_time, end_time)
+        if df.empty:
+            raise ValueError("No data available for the specified time range")
+        df.reset_index(inplace=True)
+        df['timestamp'] = df['timestamp'].apply(lambda x: x.isoformat() if hasattr(x, 'isoformat') else str(x))
+        df.to_json(file_path, orient='records', indent=2)

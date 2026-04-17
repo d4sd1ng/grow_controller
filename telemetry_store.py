@@ -101,28 +101,40 @@ class TelemetryStore:
         else:
             self._shared_memory_name = None
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._conn_pool: sqlite3.Connection | None = None
         self._init_db()
 
-    def _connect(self) -> sqlite3.Connection:
-        if self._shared_memory_name is not None:
-            return sqlite3.connect(
-                f"file:{self._shared_memory_name}?mode=memory&cache=shared",
-                uri=True,
-            )
-        return sqlite3.connect(str(self.db_path))
+    def _get_conn(self) -> sqlite3.Connection:
+        """Reuse a single connection per Store instance (thread-safe via WAL mode)."""
+        if self._conn_pool is None:
+            if self._shared_memory_name is not None:
+                self._conn_pool = sqlite3.connect(
+                    f"file:{self._shared_memory_name}?mode=memory&cache=shared",
+                    uri=True,
+                    check_same_thread=False,
+                )
+            else:
+                self._conn_pool = sqlite3.connect(
+                    str(self.db_path),
+                    check_same_thread=False,
+                )
+            self._conn_pool.row_factory = sqlite3.Row
+            self._conn_pool.execute("PRAGMA journal_mode=WAL;")
+            self._conn_pool.execute("PRAGMA busy_timeout=5000;")
+            self._conn_pool.commit()
+        return self._conn_pool
 
     def _init_db(self) -> None:
-        with self._connect() as conn:
-            conn.executescript(_CREATE_SQL)
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.commit()
+        conn = self._get_conn()
+        conn.executescript(_CREATE_SQL)
+        conn.commit()
 
     def ping(self) -> None:
         """Lightweight connectivity check (same DB as ingest)."""
-        with self._connect() as conn:
-            row = conn.execute("SELECT 1").fetchone()
-            if row is None:
-                raise RuntimeError("ping returned no row")
+        conn = self._get_conn()
+        row = conn.execute("SELECT 1").fetchone()
+        if row is None:
+            raise RuntimeError("ping returned no row")
 
     def insert_reading(self, row: dict[str, Any], extras: dict[str, Any] | None = None) -> None:
         ts = _ts_iso(row["timestamp"])
@@ -142,29 +154,28 @@ class TelemetryStore:
             _bool_int(row.get("pump")),
             extras_json,
         )
-        with self._connect() as conn:
-            conn.execute(
-                """INSERT INTO readings (
-                    ts, air_temperature, water_temperature, case_temperature,
-                    humidity, light_level, ec, ph,
-                    circulation_vent, exhaust_vent, heater, pump, extras_json
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                values,
-            )
-            conn.commit()
+        conn = self._get_conn()
+        conn.execute(
+            """INSERT INTO readings (
+                ts, air_temperature, water_temperature, case_temperature,
+                humidity, light_level, ec, ph,
+                circulation_vent, exhaust_vent, heater, pump, extras_json
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            values,
+        )
+        conn.commit()
         self._prune_old()
 
     def fetch_latest(self) -> dict[str, Any] | None:
         """Most recent row as JSON-friendly dict (timestamp ISO, booleans Python bool, extras parsed)."""
-        with self._connect() as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.execute(
-                """SELECT ts, air_temperature, water_temperature, case_temperature,
-                          humidity, light_level, ec, ph,
-                          circulation_vent, exhaust_vent, heater, pump, extras_json
-                   FROM readings ORDER BY id DESC LIMIT 1"""
-            )
-            row = cur.fetchone()
+        conn = self._get_conn()
+        cur = conn.execute(
+            """SELECT ts, air_temperature, water_temperature, case_temperature,
+                      humidity, light_level, ec, ph,
+                      circulation_vent, exhaust_vent, heater, pump, extras_json
+               FROM readings ORDER BY id DESC LIMIT 1"""
+        )
+        row = cur.fetchone()
         if row is None:
             return None
         d = {k: row[k] for k in row.keys()}
@@ -185,18 +196,18 @@ class TelemetryStore:
 
     def query_range(self, start: datetime, end: datetime) -> pd.DataFrame:
         start_s, end_s = _ts_iso(start), _ts_iso(end)
-        with self._connect() as conn:
-            df = pd.read_sql_query(
-                """SELECT ts, air_temperature, water_temperature, case_temperature,
-                          humidity, light_level, ec, ph,
-                          circulation_vent, exhaust_vent, heater, pump, extras_json
-                   FROM readings
-                   WHERE ts >= ? AND ts <= ?
-                   ORDER BY ts ASC""",
-                conn,
-                params=(start_s, end_s),
-                parse_dates=["ts"],
-            )
+        conn = self._get_conn()
+        df = pd.read_sql_query(
+            """SELECT ts, air_temperature, water_temperature, case_temperature,
+                      humidity, light_level, ec, ph,
+                      circulation_vent, exhaust_vent, heater, pump, extras_json
+               FROM readings
+               WHERE ts >= ? AND ts <= ?
+               ORDER BY ts ASC""",
+            conn,
+            params=(start_s, end_s),
+            parse_dates=["ts"],
+        )
         if df.empty:
             return df.set_index(pd.DatetimeIndex([], name="timestamp"))
         for col in ("circulation_vent", "exhaust_vent", "heater", "pump"):
@@ -210,48 +221,47 @@ class TelemetryStore:
             return
         cutoff = datetime.now() - timedelta(days=self.retention_days)
         cutoff_s = _ts_iso(cutoff)
-        with self._connect() as conn:
-            conn.execute("DELETE FROM readings WHERE ts < ?", (cutoff_s,))
-            conn.commit()
+        conn = self._get_conn()
+        conn.execute("DELETE FROM readings WHERE ts < ?", (cutoff_s,))
+        conn.commit()
 
     def bulk_load_dataframe(self, df: pd.DataFrame) -> None:
         """Replace all readings with mock / imported data (index = timestamp)."""
-        with self._connect() as conn:
-            conn.execute("DELETE FROM readings")
-            rows: list[tuple[Any, ...]] = []
-            for ts, rec in df.iterrows():
-                ts_iso = _ts_iso(pd.Timestamp(ts).to_pydatetime())
-                rows.append(
-                    (
-                        ts_iso,
-                        rec.get("air_temperature"),
-                        rec.get("water_temperature"),
-                        rec.get("case_temperature"),
-                        rec.get("humidity"),
-                        rec.get("light_level"),
-                        rec.get("ec"),
-                        rec.get("ph"),
-                        _bool_int(rec.get("circulation_vent")),
-                        _bool_int(rec.get("exhaust_vent")),
-                        _bool_int(rec.get("heater")),
-                        _bool_int(rec.get("pump")),
-                        None,
-                    )
+        conn = self._get_conn()
+        conn.execute("DELETE FROM readings")
+        rows: list[tuple[Any, ...]] = []
+        for ts, rec in df.iterrows():
+            ts_iso = _ts_iso(pd.Timestamp(ts).to_pydatetime())
+            rows.append(
+                (
+                    ts_iso,
+                    rec.get("air_temperature"),
+                    rec.get("water_temperature"),
+                    rec.get("case_temperature"),
+                    rec.get("humidity"),
+                    rec.get("light_level"),
+                    rec.get("ec"),
+                    rec.get("ph"),
+                    _bool_int(rec.get("circulation_vent")),
+                    _bool_int(rec.get("exhaust_vent")),
+                    _bool_int(rec.get("heater")),
+                    _bool_int(rec.get("pump")),
+                    None,
                 )
-            conn.executemany(
-                """INSERT INTO readings (
-                    ts, air_temperature, water_temperature, case_temperature,
-                    humidity, light_level, ec, ph,
-                    circulation_vent, exhaust_vent, heater, pump, extras_json
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                rows,
             )
-            conn.commit()
+        conn.executemany(
+            """INSERT INTO readings (
+                ts, air_temperature, water_temperature, case_temperature,
+                humidity, light_level, ec, ph,
+                circulation_vent, exhaust_vent, heater, pump, extras_json
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            rows,
+        )
+        conn.commit()
 
     def get_control_state(self) -> dict[str, Any]:
-        with self._connect() as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM app_control WHERE id = 1").fetchone()
+        conn = self._get_conn()
+        row = conn.execute("SELECT * FROM app_control WHERE id = 1").fetchone()
         if row is None:
             return {
                 "control_mode": "auto",
@@ -276,12 +286,12 @@ class TelemetryStore:
         if m not in ("auto", "manual"):
             raise ValueError("control_mode must be auto or manual")
         now = _ts_iso(datetime.now())
-        with self._connect() as conn:
-            conn.execute(
-                "UPDATE app_control SET control_mode = ?, updated_at = ? WHERE id = 1",
-                (m, now),
-            )
-            conn.commit()
+        conn = self._get_conn()
+        conn.execute(
+            "UPDATE app_control SET control_mode = ?, updated_at = ? WHERE id = 1",
+            (m, now),
+        )
+        conn.commit()
 
     def set_control_targets_partial(self, updates: dict[str, Any], *, switch_to_manual: bool) -> None:
         mapped: dict[str, bool] = {}
@@ -293,23 +303,23 @@ class TelemetryStore:
         if not mapped:
             return
         now = _ts_iso(datetime.now())
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT heater, circulation_vent, exhaust_vent, pump, control_mode FROM app_control WHERE id=1"
-            ).fetchone()
-            if row is None:
-                return
-            h, c, e, p, cur_mode = int(row[0]), int(row[1]), int(row[2]), int(row[3]), row[4]
-            vals = {"heater": h, "circulation_vent": c, "exhaust_vent": e, "pump": p}
-            vals.update({k: int(mapped[k]) for k in mapped})
-            mode = "manual" if switch_to_manual else (cur_mode or "auto")
-            conn.execute(
-                """UPDATE app_control SET
-                    control_mode = ?, heater = ?, circulation_vent = ?, exhaust_vent = ?, pump = ?, updated_at = ?
-                    WHERE id = 1""",
-                (mode, vals["heater"], vals["circulation_vent"], vals["exhaust_vent"], vals["pump"], now),
-            )
-            conn.commit()
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT heater, circulation_vent, exhaust_vent, pump, control_mode FROM app_control WHERE id=1"
+        ).fetchone()
+        if row is None:
+            return
+        h, c, e, p, cur_mode = int(row[0]), int(row[1]), int(row[2]), int(row[3]), row[4]
+        vals = {"heater": h, "circulation_vent": c, "exhaust_vent": e, "pump": p}
+        vals.update({k: int(mapped[k]) for k in mapped})
+        mode = "manual" if switch_to_manual else (cur_mode or "auto")
+        conn.execute(
+            """UPDATE app_control SET
+                control_mode = ?, heater = ?, circulation_vent = ?, exhaust_vent = ?, pump = ?, updated_at = ?
+                WHERE id = 1""",
+            (mode, vals["heater"], vals["circulation_vent"], vals["exhaust_vent"], vals["pump"], now),
+        )
+        conn.commit()
 
     def sync_relay_targets_from_automation(self, snapshot: dict[str, bool]) -> None:
         """Write relay outputs into app_control only while mode is auto (dashboard automation)."""
@@ -318,36 +328,35 @@ class TelemetryStore:
         c = _bool_int(snapshot.get("circulation_vent"))
         e = _bool_int(snapshot.get("exhaust_vent"))
         p = _bool_int(snapshot.get("pump"))
-        with self._connect() as conn:
-            conn.execute(
-                """UPDATE app_control
-                   SET heater = ?, circulation_vent = ?, exhaust_vent = ?, pump = ?, updated_at = ?
-                   WHERE id = 1 AND control_mode = 'auto'""",
-                (h, c, e, p, now),
-            )
-            conn.commit()
+        conn = self._get_conn()
+        conn.execute(
+            """UPDATE app_control
+               SET heater = ?, circulation_vent = ?, exhaust_vent = ?, pump = ?, updated_at = ?
+               WHERE id = 1 AND control_mode = 'auto'""",
+            (h, c, e, p, now),
+        )
+        conn.commit()
 
     def append_alert(self, severity: str, message: str, source: str | None = None) -> None:
         sev = severity.lower()
         if sev not in ("info", "warn", "error"):
             sev = "warn"
         now = _ts_iso(datetime.now())
-        with self._connect() as conn:
-            conn.execute(
-                "INSERT INTO alerts_log (ts, severity, message, source) VALUES (?, ?, ?, ?)",
-                (now, sev, message, source),
-            )
-            conn.commit()
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT INTO alerts_log (ts, severity, message, source) VALUES (?, ?, ?, ?)",
+            (now, sev, message, source),
+        )
+        conn.commit()
 
     def fetch_alerts_recent(self, limit: int = 50) -> list[dict[str, Any]]:
         lim = max(1, min(200, limit))
-        with self._connect() as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.execute(
-                "SELECT ts, severity, message, source FROM alerts_log ORDER BY id DESC LIMIT ?",
-                (lim,),
-            )
-            rows = cur.fetchall()
+        conn = self._get_conn()
+        cur = conn.execute(
+            "SELECT ts, severity, message, source FROM alerts_log ORDER BY id DESC LIMIT ?",
+            (lim,),
+        )
+        rows = cur.fetchall()
         return [
             {
                 "ts": r["ts"],

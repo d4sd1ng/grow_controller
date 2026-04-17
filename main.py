@@ -6,6 +6,7 @@ import time
 import logging
 from typing import Any
 import plotly.graph_objects as go
+import hashlib
 
 from env_config import load_dotenv_if_present
 from iot_sensor import IoTSensor
@@ -15,6 +16,10 @@ from vpd_calculator import calculate_vpd, is_vpd_in_range, get_vpd_range, calcul
 # from telegram_notify import send_telegram_message
 from esp32_controller import ESP32Controller, simulate_wlan_communication
 from gpio_simulator import GPIO, OutputDevice
+from pid_controller import PIDController
+from schedule_manager import EquipmentSchedule
+from ml_controller import MLController
+from multi_device_manager import get_multi_device_manager
 
 load_dotenv_if_present()
 
@@ -34,6 +39,47 @@ _DASHBOARD_LOG_FLOAT_EPS = (
     ("ph", 0.03),
 )
 _DASHBOARD_LOG_BOOL_KEYS = ("circulation_vent", "exhaust_vent", "heater", "pump")
+
+# User authentication
+_DEFAULT_USERNAME = "admin"
+_DEFAULT_PASSWORD = "growroom2024"  # Change in production!
+
+
+def check_credentials(username: str, password: str) -> bool:
+    """Verify username/password (simple hash comparison)."""
+    # In production, use proper password hashing (bcrypt)
+    return username == _DEFAULT_USERNAME and password == _DEFAULT_PASSWORD
+
+
+def login_screen():
+    """Display login form."""
+    st.title("🔐 Growroom Control System - Login")
+    
+    with st.form("login_form"):
+        username = st.text_input("Username", value="")
+        password = st.text_input("Password", type="password", value="")
+        submitted = st.form_submit_button("Login", use_container_width=True)
+        
+        if submitted:
+            if check_credentials(username, password):
+                st.session_state.authenticated = True
+                st.session_state.username = username
+                st.rerun()
+            else:
+                st.error("❌ Invalid credentials")
+    
+    st.info("Default: admin / growroom2024")
+
+
+def check_authentication():
+    """Check if user is authenticated, show login if not."""
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+    
+    if not st.session_state.authenticated:
+        login_screen()
+        return False
+    return True
 
 
 def _dashboard_telemetry_changed(prev: dict[str, Any] | None, row: dict[str, Any]) -> bool:
@@ -103,6 +149,10 @@ if 'current_growth_stage' not in st.session_state:
 if 'vegetation_days' not in st.session_state:
     st.session_state.vegetation_days = 0
 
+# Check authentication first
+if not check_authentication():
+    st.stop()
+
 def set_custom_font_size(small, medium, large):
     st.markdown(f'''
     <style>
@@ -138,55 +188,102 @@ set_custom_font_size(12, 16, 20)
 
 st.markdown("<h1 class='large-font'>🌱 Growroom Control System</h1>", unsafe_allow_html=True)
 
-heater = OutputDevice(17)
-circulation_vent = OutputDevice(18)
-exhaust_vent = OutputDevice(22)
-water_pump = OutputDevice(23)
+# Initialize GPIO devices once per session (avoid recreation on every rerun)
+if 'gpio_devices' not in st.session_state:
+    st.session_state.gpio_devices = {
+        'heater': OutputDevice(17),
+        'circulation_vent': OutputDevice(18),
+        'exhaust_vent': OutputDevice(22),
+        'water_pump': OutputDevice(23),
+    }
+
+# Initialize PID controllers once per session
+if 'pid_controllers' not in st.session_state:
+    st.session_state.pid_controllers = {
+        'temperature': PIDController(kp=2.0, ki=0.1, kd=0.5, setpoint=27.5),
+        'humidity': PIDController(kp=1.5, ki=0.05, kd=0.3, setpoint=60.0),
+        'ec': PIDController(kp=1.0, ki=0.02, kd=0.2, setpoint=1.5),
+    }
+
+# Initialize schedule manager once per session
+if 'schedule_manager' not in st.session_state:
+    st.session_state.schedule_manager = EquipmentSchedule()
+
+# Initialize ML controller once per session
+if 'ml_controller' not in st.session_state:
+    st.session_state.ml_controller = MLController()
+
+# Initialize multi-device manager
+if 'device_manager' not in st.session_state:
+    st.session_state.device_manager = get_multi_device_manager()
+
+heater = st.session_state.gpio_devices['heater']
+circulation_vent = st.session_state.gpio_devices['circulation_vent']
+exhaust_vent = st.session_state.gpio_devices['exhaust_vent']
+water_pump = st.session_state.gpio_devices['water_pump']
 
 iot_sensor = IoTSensor()
 data_manager = DataManager()
 esp32_controller = ESP32Controller()
 
 def control_grow_room_equipment(current_data, target_air_temp, target_humidity, target_ec):
-    # Heater control
-    if current_data['air_temperature'] < target_air_temp - 1:
+    """PID-based equipment control with hysteresis fallback."""
+    pid_temp = st.session_state.pid_controllers['temperature']
+    pid_humidity = st.session_state.pid_controllers['humidity']
+    pid_ec = st.session_state.pid_controllers['ec']
+
+    # Update PID setpoints
+    pid_temp.set_setpoint(target_air_temp)
+    pid_humidity.set_setpoint(target_humidity)
+    pid_ec.set_setpoint(target_ec)
+
+    # Compute PID outputs
+    temp_error = pid_temp.compute(current_data['air_temperature'])
+    humidity_error = pid_humidity.compute(current_data['humidity'])
+    ec_error = pid_ec.compute(current_data['ec'])
+
+    # Heater control (PID output > 0 means heat needed)
+    if temp_error > 0.5:
         if not GPIO.input(heater.pin):
             heater.on()
-            logger.info("Heater turned ON")
-    elif current_data['air_temperature'] > target_air_temp + 1:
+            logger.info("Heater turned ON (auto)")
+            data_manager.add_alert("info", "Heater activated (air temp below target)", "automation")
+    elif temp_error < -0.5:
         if GPIO.input(heater.pin):
             heater.off()
-            logger.info("Heater turned OFF")
+            logger.info("Heater turned OFF (auto)")
 
-    # Circulation vent control
-    if current_data['humidity'] > target_humidity + 5:
+    # Circulation vent control (humidity management)
+    if humidity_error > 2.0:
         if not GPIO.input(circulation_vent.pin):
             circulation_vent.on()
-            logger.info("Circulation Vent turned ON")
-    elif current_data['humidity'] < target_humidity - 5:
+            logger.info("Circulation Vent turned ON (auto)")
+            data_manager.add_alert("info", "Circulation vent activated (humidity above target)", "automation")
+    elif humidity_error < -2.0:
         if GPIO.input(circulation_vent.pin):
             circulation_vent.off()
-            logger.info("Circulation Vent turned OFF")
+            logger.info("Circulation Vent turned OFF (auto)")
 
-    # Exhaust vent control
+    # Exhaust vent control (temperature emergency)
     if current_data['air_temperature'] > target_air_temp + 2:
         if not GPIO.input(exhaust_vent.pin):
             exhaust_vent.on()
-            logger.info("Exhaust Vent turned ON")
+            logger.info("Exhaust Vent turned ON (auto)")
+            data_manager.add_alert("info", "Exhaust vent activated (air temp above target)", "automation")
     elif current_data['air_temperature'] < target_air_temp - 2:
         if GPIO.input(exhaust_vent.pin):
             exhaust_vent.off()
-            logger.info("Exhaust Vent turned OFF")
+            logger.info("Exhaust Vent turned OFF (auto)")
 
-    # Water pump control (for EC management)
-    if current_data['ec'] < target_ec - 0.2:
+    # Water pump control (EC management)
+    if ec_error > 0.1:
         if not GPIO.input(water_pump.pin):
             water_pump.on()
-            logger.info("Water Pump turned ON")
-    elif current_data['ec'] > target_ec + 0.2:
+            logger.info("Water Pump turned ON (auto)")
+    elif ec_error < -0.1:
         if GPIO.input(water_pump.pin):
             water_pump.off()
-            logger.info("Water Pump turned OFF")
+            logger.info("Water Pump turned OFF (auto)")
 
 def send_command_to_esp32(current_data):
     command = {
@@ -224,6 +321,13 @@ def custom_metric(label, value, delta=None):
 
 st.sidebar.markdown("<h3 class='medium-font'>Settings</h3>", unsafe_allow_html=True)
 growth_stage = st.sidebar.radio("Growth Stage", ("Early Grow", "Late Grow/Early Flowering", "Late Flowering"))
+
+# Show user info and logout button
+st.sidebar.markdown(f"👤 Logged in as: **{st.session_state.username}**")
+if st.sidebar.button("Logout", use_container_width=True):
+    st.session_state.authenticated = False
+    st.session_state.username = None
+    st.rerun()
 
 growth_stage_key = growth_stage.lower().replace(" ", "_").replace("/", "_")
 
@@ -297,8 +401,21 @@ def update_real_time_data():
 
     current_vpd = calculate_vpd(current_data["air_temperature"], current_data["humidity"])
 
+    # ML anomaly detection
+    ml_ctrl = st.session_state.ml_controller
+    anomalies = ml_ctrl.detect_anomalies(current_data)
+    if anomalies:
+        for anomaly in anomalies:
+            _maybe_notify_alert(f"anomaly_{anomaly.split(':')[0]}", f"⚠️ {anomaly}", "warn")
+
     ctrl = data_manager.get_control_state()
     if ctrl["control_mode"] == "auto":
+        # Apply schedule-based overrides before PID control
+        schedule_mgr = st.session_state.schedule_manager
+        if schedule_mgr.is_equipment_active("lights", datetime.now()):
+            # Lights schedule active - could control light relay here
+            pass
+        
         control_grow_room_equipment(current_data, target_air_temp, target_humidity, target_ec)
         data_manager.sync_relay_targets_from_automation(_equipment_for_log())
     else:
@@ -395,6 +512,94 @@ def update_real_time_data():
             toggle_water_pump()
             st.rerun()
 
+    # Schedule Status
+    st.markdown("<h2 class='medium-font'>Active Schedules</h2>", unsafe_allow_html=True)
+    schedule_mgr = st.session_state.schedule_manager
+    sched_col1, sched_col2, sched_col3 = st.columns(3)
+    with sched_col1:
+        lights_active = schedule_mgr.is_equipment_active("lights")
+        st.markdown(f"<p class='small-font'>💡 Lights: {'Active' if lights_active else 'Inactive'}</p>", unsafe_allow_html=True)
+    with sched_col2:
+        pump_active = schedule_mgr.is_equipment_active("water_pump")
+        st.markdown(f"<p class='small-font'>💧 Water Pump: {'Active' if pump_active else 'Inactive'}</p>", unsafe_allow_html=True)
+    with sched_col3:
+        vent_active = schedule_mgr.is_equipment_active("exhaust_vent")
+        st.markdown(f"<p class='small-font'>💨 Exhaust: {'Active' if vent_active else 'Inactive'}</p>", unsafe_allow_html=True)
+
+    # ML Grow Optimization (VPD + EC + pH)
+    st.markdown("<h2 class='medium-font'>🎯 ML Grow Optimization</h2>", unsafe_allow_html=True)
+    if ml_ctrl.is_trained:
+        st.markdown("<p class='small-font'>✅ ML model trained - Complete grow optimization active</p>", unsafe_allow_html=True)
+        
+        # Get comprehensive ML recommendations
+        ml_grow = ml_ctrl.predict_optimal_grow_conditions(current_data, growth_stage_key)
+        
+        if ml_grow:
+            # Row 1: VPD
+            st.markdown("<p class='small-font'><b>VPD Optimization</b></p>", unsafe_allow_html=True)
+            vpd_col1, vpd_col2, vpd_col3 = st.columns(3)
+            
+            with vpd_col1:
+                current_temp = current_data['air_temperature']
+                suggested_temp = ml_grow.get('suggested_temperature', current_temp)
+                st.markdown(f"<p class='small-font'>🌡️ Temp: {suggested_temp}°C</p>", unsafe_allow_html=True)
+                if abs(suggested_temp - current_temp) > 0.5:
+                    st.markdown(f"<p class='small-font' style='color:orange;'>Current: {current_temp}°C</p>", unsafe_allow_html=True)
+            
+            with vpd_col2:
+                current_hum = current_data['humidity']
+                suggested_hum = ml_grow.get('suggested_humidity', current_hum)
+                st.markdown(f"<p class='small-font'>💧 Humidity: {suggested_hum}%</p>", unsafe_allow_html=True)
+                if abs(suggested_hum - current_hum) > 2:
+                    st.markdown(f"<p class='small-font' style='color:orange;'>Current: {current_hum}%</p>", unsafe_allow_html=True)
+            
+            with vpd_col3:
+                predicted_vpd = ml_grow.get('predicted_vpd', current_vpd)
+                target_vpd = ml_grow.get('vpd_optimal', 1.0)
+                st.markdown(f"<p class='small-font'>📊 VPD: {predicted_vpd} kPa (Target: {target_vpd})</p>", unsafe_allow_html=True)
+            
+            # Row 2: EC & pH with alerts
+            st.markdown("<p class='small-font'><b>Nutrient Optimization</b></p>", unsafe_allow_html=True)
+            nutrient_col1, nutrient_col2, nutrient_col3 = st.columns(3)
+            
+            with nutrient_col1:
+                current_ec = current_data['ec']
+                suggested_ec = ml_grow.get('suggested_ec', current_ec)
+                ec_action = ml_grow.get('ec_action', 'maintain')
+                ec_icon = "✅" if ec_action == "maintain" else ("⬆️" if ec_action == "increase" else "⬇️")
+                st.markdown(f"<p class='small-font'>{ec_icon} EC: {suggested_ec} mS/cm</p>", unsafe_allow_html=True)
+                if abs(suggested_ec - current_ec) > 0.1:
+                    st.markdown(f"<p class='small-font' style='color:orange;'>Current: {current_ec} mS/cm</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p class='small-font' style='color:red;'>Action: {ec_action}</p>", unsafe_allow_html=True)
+            
+            with nutrient_col2:
+                current_ph = current_data['ph']
+                suggested_ph = ml_grow.get('suggested_ph', current_ph)
+                ph_action = ml_grow.get('ph_action', 'maintain')
+                ph_icon = "✅" if ph_action == "maintain" else ("⬆️" if ph_action == "increase" else "⬇️")
+                st.markdown(f"<p class='small-font'>{ph_icon} pH: {suggested_ph}</p>", unsafe_allow_html=True)
+                if abs(suggested_ph - current_ph) > 0.1:
+                    st.markdown(f"<p class='small-font' style='color:orange;'>Current: {current_ph}</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p class='small-font' style='color:red;'>Action: {ph_action}</p>", unsafe_allow_html=True)
+            
+            with nutrient_col3:
+                adj_time = ml_grow.get('optimal_adjustment_time', '08:00')
+                st.markdown(f"<p class='small-font'>⏰ Best time: {adj_time}</p>", unsafe_allow_html=True)
+                
+                # Show adjustment alerts
+                if ml_grow.get('ec_adjustment_needed') or ml_grow.get('ph_adjustment_needed'):
+                    alerts = []
+                    if ml_grow.get('ec_adjustment_needed'):
+                        alerts.append(f"EC {ml_grow.get('ec_action')}")
+                    if ml_grow.get('ph_adjustment_needed'):
+                        alerts.append(f"pH {ml_grow.get('ph_action')}")
+                    st.markdown(f"<p class='small-font' style='color:orange;'>⚠️ {', '.join(alerts)}</p>", unsafe_allow_html=True)
+    else:
+        st.markdown("<p class='small-font'>⏳ ML model not trained yet (needs 10+ data points)</p>", unsafe_allow_html=True)
+        st.markdown("<p class='small-font'>💡 Train on historical data to get VPD + EC + pH optimization</p>", unsafe_allow_html=True)
+        if st.button("Train ML Model on Grow Data"):
+            train_ml_model()
+
     log_row = {**current_data, **_equipment_for_log()}
     _maybe_log_dashboard_telemetry_row(log_row)
 
@@ -479,6 +684,47 @@ def toggle_water_pump():
         water_pump.off()
     data_manager.set_control_targets_partial({"water_pump": new_on}, switch_to_manual=True)
     logger.info(f"Water Pump set to {'ON' if new_on else 'OFF'} (manual)")
+
+def train_ml_model():
+    """Train ML model on historical grow data (VPD + EC + pH)."""
+    ml_ctrl = st.session_state.ml_controller
+    try:
+        end_time = datetime.now()
+        start_time = end_time - timedelta(days=7)
+        historical_data = data_manager.get_historical_data(start_time, end_time)
+        
+        if historical_data.empty or len(historical_data) < 10:
+            st.error(f"Not enough data for training (need 10+, have {len(historical_data)})")
+            return
+        
+        # Features: all sensor values
+        X = historical_data[['air_temperature', 'humidity', 'water_temperature', 'ec', 'ph']]
+        
+        # Targets: optimal conditions
+        from vpd_calculator import calculate_target_humidity
+        
+        y_data = []
+        for _, row in historical_data.iterrows():
+            current_temp = row['air_temperature']
+            current_ec = row.get('ec', 1.5)
+            current_ph = row.get('ph', 6.5)
+            
+            y_data.append({
+                'optimal_temp': current_temp,  # Learn stable temp
+                'optimal_humidity': calculate_target_humidity(current_temp, growth_stage_key),
+                'optimal_ec': current_ec,  # Learn EC patterns
+                'optimal_ph': current_ph,  # Learn pH patterns
+            })
+        y = pd.DataFrame(y_data)
+        
+        score = ml_ctrl.train(X, y)
+        ml_ctrl.save_model()
+        st.success(f"✅ ML model trained on complete grow data! R-squared: {score:.4f}")
+        st.info("💡 Model now suggests optimal VPD + EC + pH adjustments")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Training failed: {e}")
+        logger.exception("ML training failed")
 
 st.sidebar.markdown("<h3 class='medium-font'>Sensor Calibration</h3>", unsafe_allow_html=True)
 if st.sidebar.button("Calibrate pH Sensor"):

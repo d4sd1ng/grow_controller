@@ -8,11 +8,14 @@ Run: python run_telemetry_api.py
 from __future__ import annotations
 
 import logging
+import time
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import Body, FastAPI, Header, HTTPException, Query
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from data_manager import DataManager
 from env_config import get_telemetry_api_key, get_telemetry_cors_origins, load_dotenv_if_present
@@ -32,6 +35,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Simple in-memory rate limiter: {ip: [(timestamp, count)]}
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_REQUESTS = 60  # max requests per window
+_RATE_LIMIT_WINDOW = 60  # seconds
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Block clients exceeding 60 requests/minute per IP."""
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW
+
+    # Clean old entries
+    _rate_limit_store[client_ip] = [
+        ts for ts in _rate_limit_store[client_ip] if ts > window_start
+    ]
+
+    if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_REQUESTS:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Try again later."},
+        )
+
+    _rate_limit_store[client_ip].append(now)
+    response = await call_next(request)
+    return response
 
 _dm: DataManager | None = None
 
@@ -194,3 +225,188 @@ def get_mobile_summary(
         "reading": dm.get_latest_reading(),
         "alerts": dm.get_alerts_recent(alert_limit),
     }
+
+
+@app.get("/api/v1/export/csv")
+def export_csv(
+    hours: float = Query(default=24, ge=1, le=2160),
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> Any:
+    """Export telemetry data as CSV download."""
+    from fastapi.responses import StreamingResponse
+    import io
+    _require_api_key(x_telemetry_key)
+    dm = get_dm()
+    end = datetime.now()
+    start = end - timedelta(hours=hours)
+    csv_buffer = io.StringIO()
+    try:
+        dm.export_to_csv(start, end, csv_buffer)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return StreamingResponse(
+        iter([csv_buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=grow_data_{int(time.time())}.csv"},
+    )
+
+
+@app.get("/api/v1/export/json")
+def export_json(
+    hours: float = Query(default=24, ge=1, le=2160),
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> Any:
+    """Export telemetry data as JSON download."""
+    from fastapi.responses import StreamingResponse
+    import io
+    _require_api_key(x_telemetry_key)
+    dm = get_dm()
+    end = datetime.now()
+    start = end - timedelta(hours=hours)
+    json_buffer = io.StringIO()
+    try:
+        dm.export_to_json(start, end, json_buffer)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return StreamingResponse(
+        iter([json_buffer.getvalue()]),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=grow_data_{int(time.time())}.json"},
+    )
+
+
+@app.get("/api/v1/schedules")
+def get_schedules(
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> dict[str, Any]:
+    """Get all equipment schedules."""
+    from schedule_manager import EquipmentSchedule
+    _require_api_key(x_telemetry_key)
+    scheduler = EquipmentSchedule()
+    return {"ok": True, "schedules": scheduler.get_all_schedules()}
+
+
+@app.post("/api/v1/schedules/{equipment}/toggle")
+def toggle_schedule(
+    equipment: str,
+    body: dict[str, Any] = Body(...),
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> dict[str, Any]:
+    """Enable or disable a schedule."""
+    from schedule_manager import EquipmentSchedule
+    _require_api_key(x_telemetry_key)
+    scheduler = EquipmentSchedule()
+    schedule_name = body.get("name")
+    if not schedule_name:
+        raise HTTPException(status_code=400, detail="schedule name required")
+    
+    action = body.get("action", "toggle")
+    if action == "enable":
+        scheduler.enable_schedule(equipment, schedule_name)
+    elif action == "disable":
+        scheduler.disable_schedule(equipment, schedule_name)
+    else:
+        raise HTTPException(status_code=400, detail="action must be 'enable' or 'disable'")
+    
+    return {"ok": True, "message": f"Schedule {schedule_name} {action}d"}
+
+
+@app.get("/api/v1/ml/status")
+def get_ml_status(
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> dict[str, Any]:
+    """Get ML model training status."""
+    from ml_controller import MLController
+    _require_api_key(x_telemetry_key)
+    ml = MLController()
+    return {
+        "ok": True,
+        "trained": ml.is_trained,
+        "model_path": str(ml.model_path),
+    }
+
+
+@app.post("/api/v1/ml/train")
+def train_ml_model(
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> dict[str, Any]:
+    """Train ML model on historical data."""
+    from ml_controller import MLController, prepare_data
+    _require_api_key(x_telemetry_key)
+    dm = get_dm()
+    ml = MLController()
+    
+    end = datetime.now()
+    start = end - timedelta(days=7)
+    hist = dm.get_historical_data(start, end)
+    
+    if hist.empty or len(hist) < 10:
+        raise HTTPException(status_code=400, detail=f"Not enough data: {len(hist)} rows")
+    
+    X, y = prepare_data(hist)
+    score = ml.train(X, y)
+    ml.save_model()
+    
+    return {"ok": True, "r_squared": score, "samples": len(hist)}
+
+
+@app.post("/api/v1/ml/predict")
+def ml_predict(
+    body: dict[str, Any] = Body(...),
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> dict[str, Any]:
+    """Get ML VPD optimization suggestions."""
+    from ml_controller import MLController
+    _require_api_key(x_telemetry_key)
+    ml = MLController()
+    
+    if not ml.is_trained:
+        raise HTTPException(status_code=400, detail="Model not trained")
+    
+    growth_stage = body.get("growth_stage", "early_grow")
+    vpd_recommendation = ml.predict_optimal_vpd_conditions(body, growth_stage)
+    anomalies = ml.detect_anomalies(body)
+    
+    return {
+        "ok": True,
+        "vpd_recommendation": vpd_recommendation,
+        "anomalies": anomalies,
+    }
+
+
+@app.get("/api/v1/devices")
+def list_devices(
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> dict[str, Any]:
+    """List all registered ESP32 devices."""
+    from multi_device_manager import get_multi_device_manager
+    _require_api_key(x_telemetry_key)
+    mgr = get_multi_device_manager()
+    return {
+        "ok": True,
+        "count": mgr.get_device_count(),
+        "devices": mgr.get_device_list(),
+    }
+
+
+@app.post("/api/v1/devices/register")
+def register_device(
+    body: dict[str, Any] = Body(...),
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> dict[str, Any]:
+    """Register a new ESP32 device."""
+    from multi_device_manager import get_multi_device_manager
+    _require_api_key(x_telemetry_key)
+    mgr = get_multi_device_manager()
+    
+    device_id = body.get("device_id")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id required")
+    
+    mgr.register_device(
+        device_id=device_id,
+        description=body.get("description", ""),
+        location=body.get("location", "")
+    )
+    
+    return {"ok": True, "device_id": device_id}

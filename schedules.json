@@ -1,0 +1,36 @@
+{
+  "lights": [
+    {
+      "name": "Day Cycle",
+      "start": "06:00",
+      "end": "20:00",
+      "enabled": true,
+      "days": [0, 1, 2, 3, 4, 5, 6]
+    }
+  ],
+  "water_pump": [
+    {
+      "name": "Morning Watering",
+      "start": "07:00",
+      "duration_minutes": 15,
+      "enabled": true,
+      "days": [0, 1, 2, 3, 4, 5, 6]
+    },
+    {
+      "name": "Evening Watering",
+      "start": "19:00",
+      "duration_minutes": 15,
+      "enabled": true,
+      "days": [0, 1, 2, 3, 4, 5, 6]
+    }
+  ],
+  "exhaust_vent": [
+    {
+      "name": "Day Ventilation",
+      "start": "08:00",
+      "end": "18:00",
+      "enabled": false,
+      "days": [0, 1, 2, 3, 4, 5, 6]
+    }
+  ]
+}
