@@ -112,6 +112,81 @@ def create_env_file():
     print(f"   API Key: {api_key[:8]}...")
     return True
 
+def configure_esp_devices():
+    """Configure ESP32 devices interactively."""
+    print_step("5/6", "Configuring ESP32 Devices")
+    
+    print("\n🔧 ESP32 Device Registration")
+    print("-" * 60)
+    print("You can register multiple ESP32 devices (sensors, relays, etc.)")
+    print("Press Enter without name to finish.\n")
+    
+    devices = []
+    device_id_counter = 1
+    
+    while True:
+        print(f"\nDevice #{device_id_counter}:")
+        device_name = input(f"  Device name (e.g., 'grow_tent_1', press Enter to finish): ").strip()
+        
+        if not device_name:
+            break
+        
+        device_type = input(f"  Device type (sensor/relay/both) [both]: ").strip().lower()
+        if not device_type:
+            device_type = "both"
+        
+        # Generate or input API key for this device
+        device_api_key = input(f"  Device API key (press Enter for auto-generate): ").strip()
+        if not device_api_key:
+            import secrets
+            device_api_key = secrets.token_urlsafe(24)
+            print(f"   Generated: {device_api_key}")
+        
+        # Optional: ESP IP address
+        esp_ip = input(f"  ESP IP address (optional, e.g., 192.168.1.100): ").strip()
+        
+        devices.append({
+            'id': device_id_counter,
+            'name': device_name,
+            'type': device_type,
+            'api_key': device_api_key,
+            'ip': esp_ip if esp_ip else None
+        })
+        
+        print(f"  ✅ Device '{device_name}' registered")
+        device_id_counter += 1
+        
+        # Ask if continue
+        if device_id_counter > 3:  # Already registered 3, ask
+            more = input("\nAdd more devices? (y/N): ").strip().lower()
+            if more != 'y':
+                break
+    
+    if not devices:
+        print("\n⚠️  No devices registered. You can add them later in Dashboard.")
+        return True
+    
+    # Save device configuration
+    import json
+    device_config = {
+        'devices': devices,
+        'total_count': len(devices)
+    }
+    
+    device_file = Path("device_config.json")
+    device_file.write_text(json.dumps(device_config, indent=2))
+    
+    print(f"\n✅ Registered {len(devices)} device(s):")
+    for dev in devices:
+        status = f"📍 IP: {dev['ip']}" if dev['ip'] else "🌐 Auto-discover"
+        print(f"   - {dev['name']} ({dev['type']}) {status}")
+    
+    print("\n📋 IMPORTANT: Copy these API keys for your ESP32 firmware:")
+    for dev in devices:
+        print(f"   {dev['name']}: {dev['api_key']}")
+    
+    return True
+
 def create_data_directory():
     """Create data directory for SQLite database."""
     print_step("5/6", "Creating data directory")
@@ -156,20 +231,26 @@ def print_next_steps():
     print("✅ SETUP COMPLETE!")
     print('='*60)
     print("\nNext steps:")
-    print("1. Edit .env file:")
+    print("1. Edit .env file if needed:")
     print("   - Change DASHBOARD_PASSWORD")
-    print("   - Set TELEMETRY_API_KEY (random string)")
-    print("\n2. Start Streamlit Dashboard:")
+    print("   - Set TELEMETRY_API_KEY")
+    print("\n2. Flash ESP32 devices:")
+    print("   - Use the API keys shown above in your ESP32 firmware")
+    print("   - Set TELEMETRY_URL to: http://<your-pc-ip>:8087/api/v1/telemetry")
+    print("\n3. Start Streamlit Dashboard:")
     if sys.platform == "win32":
         print("   .venv\\Scripts\\activate")
     else:
         print("   source .venv/bin/activate")
     print("   streamlit run main.py")
-    print("\n3. Start Telemetry API (optional, separate terminal):")
+    print("\n4. Start Telemetry API (separate terminal):")
     print("   python run_telemetry_api.py")
-    print("\n4. Login to Dashboard:")
+    print("\n5. Login to Dashboard:")
     print("   - Username: admin")
-    print("   - Password: (from .env, default: growroom2024)")
+    print("   - Password: (from .env)")
+    print("\n6. Manage devices in Dashboard:")
+    print("   - Go to 'Devices' tab to view/edit ESP32 devices")
+    print("   - Monitor all devices in real-time")
     print("\n📚 Documentation: README.md")
     print("🐛 Issues: https://github.com/d4sd1ng/grow_controller/issues")
     print()
@@ -192,6 +273,7 @@ def main():
         create_venv,
         install_dependencies,
         create_env_file,
+        configure_esp_devices,
         create_data_directory,
         run_tests,
     ]
