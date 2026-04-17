@@ -68,20 +68,48 @@ def create_env_file():
     env_example = Path(".env.example")
     
     if env_file.exists():
-        print("⚠️  .env file already exists, skipping")
-        return True
+        print("⚠️  .env file already exists")
+        overwrite = input("   Overwrite? (y/N): ").strip().lower()
+        if overwrite != 'y':
+            print("   Keeping existing .env file")
+            return True
     
     if not env_example.exists():
         print("❌ .env.example not found")
         return False
     
-    # Copy example
-    env_file.write_text(env_example.read_text())
-    print("✅ .env file created from template")
-    print("\n⚠️  IMPORTANT: Edit .env and set:")
-    print("   - DASHBOARD_PASSWORD (change from default!)")
-    print("   - TELEMETRY_API_KEY (generate random string)")
-    print("   - TELEGRAM_BOT_TOKEN (optional, for notifications)")
+    print("\n📝 Environment Configuration")
+    print("-" * 60)
+    
+    # Interactive prompts
+    dashboard_password = input("Dashboard Password [growroom2024]: ").strip()
+    if not dashboard_password:
+        dashboard_password = "growroom2024"
+    
+    api_key = input("Telemetry API Key (press Enter for auto-generate): ").strip()
+    if not api_key:
+        import secrets
+        api_key = secrets.token_urlsafe(32)
+        print(f"   Generated: {api_key}")
+    
+    telegram_token = input("Telegram Bot Token (optional, press Enter to skip): ").strip()
+    telegram_chat_id = input("Telegram Chat ID (optional, press Enter to skip): ").strip()
+    
+    # Read template and replace values
+    env_content = env_example.read_text()
+    env_content = env_content.replace("DASHBOARD_PASSWORD=growroom2024", f"DASHBOARD_PASSWORD={dashboard_password}")
+    env_content = env_content.replace("TELEMETRY_API_KEY=", f"TELEMETRY_API_KEY={api_key}")
+    
+    if telegram_token:
+        env_content = env_content.replace("TELEGRAM_BOT_TOKEN=", f"TELEGRAM_BOT_TOKEN={telegram_token}")
+    if telegram_chat_id:
+        env_content = env_content.replace("TELEGRAM_CHAT_ID=", f"TELEGRAM_CHAT_ID={telegram_chat_id}")
+    
+    env_file.write_text(env_content)
+    
+    print("\n✅ .env file created with your settings")
+    print(f"   Dashboard Password: {'*' * len(dashboard_password)}")
+    print(f"   API Key: {api_key[:8]}...")
     return True
 
 def create_data_directory():
@@ -148,8 +176,16 @@ def print_next_steps():
 
 def main():
     print("\n" + "="*60)
-    print("🌱 Grow Controller - Automated Setup")
+    print("🌱 Grow Controller - Interactive Setup")
     print("="*60)
+    print("\nThis will guide you through the setup process.")
+    print("Press Enter to use default values (shown in brackets).\n")
+    
+    # Confirmation
+    proceed = input("Continue with setup? (Y/n): ").strip().lower()
+    if proceed == 'n':
+        print("Setup cancelled.")
+        sys.exit(0)
     
     steps = [
         check_python_version,
