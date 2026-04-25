@@ -1,124 +1,215 @@
 # Verdrahtung — Growroom Control System
 
-Stand: ein **ESP32 im Growroom** übernimmt Sensoren, Relais, lokales OLED und spricht mit dem **PC/Server** (`telemetry_api` + SQLite). Ein **Cheap Yellow Display (CYD)** ist optional als **portable Fernbedienung** (nur Strom/USB, kein Growroom-Peripherie-Anschluss nötig).
+Stand: v2.0.0. Die hier festgelegte Pin-Belegung muss **exakt** zum Firmware-Sketch (`firmware/growroom_telemetry_client/growroom_telemetry_client.ino`) passen.
 
-**Wichtig:** Die GPIO-Zuordnung muss exakt zum **Arduino-Sketch** passen (`#define` / `pinMode`).
-
-**Leitungsführung:** Auf einem kleinen ESP32-Board mit vielen Adern ist es üblich, Pins **nicht** „nach Nummer schön sortiert“, sondern nach **kurzem Weg, wenig Überkreuzen** und wo die Kabel-/Klemmenstränge ohne Chaos am Modul ankommen zu wählen. Das ist völlig in Ordnung — maßgeblich sind elektrische Regeln (z. B. nur Eingang vs. Ausgang) und Übereinstimmung mit dem Code.
-
----
-
-## 1. ESP32 Growroom (alles auf einem Board)
-
-### 1.1 Temperatur / Luftfeuchte (2× AM2302 / DHT22-artig)
-
-| Signal | ESP32 (Vorschlag) |
-|--------|-------------------|
-| Sensor 1 VCC | 3,3 V |
-| Sensor 1 GND | GND |
-| Sensor 1 DATA | GPIO **36** (nur Eingang — geeignet für One-Wire/DHT-Bibliotheken) |
-| Sensor 2 DATA | GPIO **39** |
-| Pull-up | ca. **4,7–10 kΩ** zwischen DATA und 3,3 V (Datenblatt beachten) |
-
-*Hinweis:* VP/VN sind **keine** Ausgangspins — nur für Sensoren nutzen, nicht für Relais.
-
-### 1.2 EC- und pH-Analogfront (LM358)
-
-Wie Abschnitt **LM358** untan: Ausgänge der Stufen auf ADC-Eingänge des ESP32 (nur Eingang):
-
-| Signal | ESP32 (Vorschlag) |
-|--------|-------------------|
-| EC (Op-Amp-Ausgang) | GPIO **34** |
-| pH (Op-Amp-Ausgang) | GPIO **35** |
-
-Spannungsteiler und Verstärkerschaltung so dimensionieren, dass **nie > 3,3 V** an den ADC-Pins anliegen.
-
-### 1.3 Licht (Beispiel Photowiderstand)
-
-| Signal | ESP32 (Vorschlag) |
-|--------|-------------------|
-| Spannungsteiler | Fotowiderstand + z. B. 10 kΩ zu GND, Mittelpunkt an **GPIO 32** (ADC) |
-
-Alternativ **BH1750** per I²C (SDA/SCL siehe OLED — Adresse/Bus nicht doppelt belegen).
-
-### 1.4 OLED (I²C, z. B. SSD1306)
-
-| Signal | ESP32 (Vorschlag) |
-|--------|-------------------|
-| VCC | 3,3 V |
-| GND | GND |
-| SDA | GPIO **21** |
-| SCL | GPIO **22** |
-
-Diese Pins nicht mit **Relais-Treibern** teilen, die z. B. ebenfalls 21/22 belegen könnten — eine Platine, ein I²C-Bus.
-
-### 1.5 Relais / SSR (am selben ESP32)
-
-Die Software kennt u. a. `heater`, `circulation_vent`, `exhaust_vent`, `water_pump` (+ optional `light`). **Logik-Ausgänge** nur über geeignete Treiber (Transistor/Optokoppler/Relaismodul), niemals Last direkt am GPIO.
-
-**Beispiel wie im Projekt-Sketch** `firmware/growroom_telemetry_client` (oft zweckmäßig, wenn die Relais-/Klemmposition so am wenigsten mit Sensoren-/Display-Kabeln kreuzt):
-
-| Funktion | GPIO (Sketch `PIN_RELAY_*`) |
-|----------|-----------------------------|
-| Heizung | **4** |
-| Pumpe | **5** |
-| Umluft / Zirkulation | **16** |
-| Abluft | **17** |
-
-*Optional Licht:* freier **Output**-Pin + im Code ergänzen (`light`), wenn die Hardware das vorsieht.
-
-**Alternative** (rein logisch aufsteigend, z. B. ein Klemmblock in der Reihenfolge): **16 / 17 / 18 / 19** für die vier Kanäle — nur nutzen, wenn das für deine **physische** Verlegung Sinn ergibt.
-
-Je SSR: gleiche **GND**-Ebene wie ESP32; **Kickback-/Schutz** und **Sicherungen** nach Last (siehe Safety).
+```
++-----------+          +-----------------------+          +------------------+
+|   230V    |          |    ESP32 DevKit V1    |          |   Sensoren       |
+|   Netz    |          |                       |          |                  |
+|           |          |  GPIO 36  -----> DHT22 #1 (Luft) |                  |
+|  Heizung  |<--SSR--->|  GPIO 39  -----> DHT22 #2       |                  |
+|  Pumpe    |<--SSR--->|  GPIO 34  -----> EC-Sonde       |                  |
+|  Lüfter   |<--SSR--->|  GPIO 35  -----> pH-Sonde       |                  |
+|  Abluft   |<--SSR--->|  GPIO 21  -----> OLED SDA (I2C) |                  |
+|           |          |  GPIO 22  -----> OLED SCL (I2C) |                  |
++-----------+          |  GPIO  4  -----> Relay Heizung   |                  |
+                       |  GPIO  5  -----> Relay Pumpe     |                  |
+                       |  GPIO 16  -----> Relay Umluft    |                  |
+                       |  GPIO 17  -----> Relay Abluft    |                  |
+                       +-----------------------+          +------------------+
+                                |
+                                v
+                       WiFi ----> Python Server
+                       (Telemetry API + Dashboard)
+```
 
 ---
 
-## 2. LM358 Anschluss (Kurzüberblick)
+## 1. Sensoren — feste GPIO-Zuordnung
 
-1. **EC:** Sonde/Signal an Eingang Stufe 1, Ausgang (Pin 1) → GPIO **34**
-2. **pH:** Sonde/Signal an Eingang Stufe 2, Ausgang (Pin 7) → GPIO **35**
-3. **Versorgung LM358:** V+ (Pin 8) gemäß Schaltung (häufig 5 V), GND (Pin 4) gemeinsam mit System-GND
-4. Referenz/Offset und Verstärkung nach Sensor-Modul/Platinen-Doku trimmen
+### 1.1 Temperatur / Luftfeuchte (DHT22 / AM2302)
 
-Detaillierte OP-Schaltung bleibt vom **EC/pH-Modul** abhängig — hier nur die **ESP32-ADC-Ziele**.
+| Funktion | ESP32 Pin | Hinweis |
+|----------|-----------|---------|
+| Sensor 1 VCC | 3.3V | Max. 3.3V — nie 5V anschließen |
+| Sensor 1 GND | GND | |
+| Sensor 1 DATA | **GPIO 36** | Nur-Input-Pin (VP). Pull-up **10kΩ** zwischen DATA und 3.3V |
+| Sensor 2 DATA | **GPIO 39** | Nur-Input-Pin (VN). Pull-up **10kΩ** zwischen DATA und 3.3V |
+
+> **Wichtig:** GPIO 36 (VP) und 39 (VN) sind **reine Eingangspins**. Sie können keine Relais schalten.
+
+### 1.2 EC- und pH-Sensoren (analog)
+
+EC- und pH-Sonden liefern ein schwaches analoges Signal. Ein **LM358** (oder ein fertiges EC/pH-Modul) puffert und verstärkt das Signal auf ESP32-kompatible Pegel.
+
+| Funktion | ESP32 Pin | Hinweis |
+|----------|-----------|---------|
+| EC-Signal | **GPIO 34** | ADC1_CH6. Nur-Input. Signal muss 0–3.3V liegen |
+| pH-Signal | **GPIO 35** | ADC1_CH7. Nur-Input. Signal muss 0–3.3V liegen |
+
+> **ADC-Spannungsgrenze:** Nie mehr als **3.3V** an einen ADC-Pin anlegen — der ESP32 wird zerstört. Ein Spannungsteiler oder Zener-Diode (3.3V) als Schutz empfohlen.
+
+#### LM358 Grundschaltung (EC-Beispiel — pH identisch auf Stufe 2)
+
+```
+EC-Sonde          LM358 (Stufe 1)              ESP32
+  (+) -----> Pin 2 (Inverting In)    Pin 1 (Output) -----> GPIO 34
+  (-) -----> GND                     Pin 3 (Non-Inv) ---> 2.5V Ref (Spannungsteiler)
+                                     Pin 8 (V+) --------> 5V
+                                     Pin 4 (GND) -------> GND
+
+Feedback-Widerstand (Rf) zwischen Pin 1 und Pin 2 bestimmt Verstärkung.
+Beispiel: Rf = 10kΩ, Ri = 1kΩ → Verstärkung = 10x
+```
+
+### 1.3 OLED Display (I2C, SSD1306 oder SH1106)
+
+| Funktion | ESP32 Pin | Hinweis |
+|----------|-----------|---------|
+| VCC | 3.3V | |
+| GND | GND | |
+| SDA | **GPIO 21** | Feste I2C-Pins des ESP32-DevKit |
+| SCL | **GPIO 22** | Feste I2C-Pins des ESP32-DevKit |
+
+> **I2C-Adresse:** Meist 0x3C. Falls Display nicht reagiert, 0x3D testen.
 
 ---
 
-## 3. Stromversorgung
+## 2. Relais — feste GPIO-Zuordnung
 
-- Ein **geeignetes Netzteil** für ESP32 (3,3 V/reguliert) und ggf. **5 V** für SSR-/Relais-Seite, **gemeinsame Masse**.
-- **Netzseite:** FI/LS, **Feinsicherungen** nach Verbrauchern (Heizung, Pumpen, Lüfter getrennt bewerten).
-- Keine Mischung: **230 V-Verdrahtung** nur von Fachpersonal / unter Einhaltung der Normen.
+Die Firmware definiert vier Relais-Pins. Diese steuern **nur Logik-Level** (HIGH/LOW) — niemals Last direkt am GPIO.
+
+| Funktion | ESP32 Pin | Firmware-Define | Last-Beispiel |
+|----------|-----------|-----------------|---------------|
+| Heizung | **GPIO 4** | `PIN_RELAY_HEATER 4` | 500W Heizstab |
+| Wasserpumpe | **GPIO 5** | `PIN_RELAY_PUMP 5` | 20W Umwälzpumpe |
+| Umluft / Zirkulation | **GPIO 16** | `PIN_RELAY_CIRCULATION 16` | 15W Lüfter |
+| Abluft | **GPIO 17** | `PIN_RELAY_EXHAUST 17` | 25W Abluft |
+
+### Relais-Treiber-Anschluss (SSR = Solid State Relay)
+
+```
+ESP32 GPIO 4 -----> SSR-Steuer-Eingang (+)
+ESP32 GND --------> SSR-Steuer-Eingang (-)
+
+SSR-Ausgang:
+  L (Phase) -----> SSR-L1
+  SSR-L2 --------> Heizung
+  N (Null) ------> Heizung (direkt)
+```
+
+> **SSR-Typ:** DC-Input (3–32V), AC-Output (bis 250V, passend zur Last). Kein mechanisches Relais für Heizung — SSR ist verschleißfrei.
+
+### Schutzbeschaltung pro Relais-Kanal
+
+- **Freilaufdiode** nur bei mechanischen Relais (nicht bei SSR nötig)
+- **Feinsicherung** pro Lastkreis (siehe Tabelle unten)
+- **FI-Schalter** in der Hauptverteilung
+- **Metallgehäuse** schutzgeerdet
+
+| Last | Sicherung | Bemessung |
+|------|-----------|-----------|
+| Heizung 500W | 5A träge | 500W / 230V = 2.2A → 5A |
+| Wasserpumpe 20W | 2A träge | 20W / 230V = 0.09A → 2A |
+| Umluft 15W | 1A träge | |
+| Abluft 25W | 1A träge | |
 
 ---
 
-## 4. Sicherheit und Erdung
+## 3. Stromversorgung — Übersicht
 
-- Alle **GND** der Niederspannungsseite zusammenführen; bei Metallgehäuse **Schutzerdung** nach Vorschrift.
-- **Feuchtigkeit:** Gehäuse, Kabeldurchführungen, Steckerabdichtung (Growroom).
-- **Vor dem Einschalten:** Durchgang, Kurzschluss, Polung, **Max. Last** der SSR prüfen.
+```
+Netzteil 5V/3A (oder 12V mit Step-Down)
+    |
+    +---> Step-Down 3.3V -----> ESP32 3.3V-Pin
+    |                           +---> Sensoren VCC (3.3V)
+    |                           +---> OLED VCC (3.3V)
+    |
+    +---> 5V-Rail -------------> LM358 V+ (Pin 8)
+                                  +---> SSR-Steuer-Eingänge (3–32V kompatibel)
+
+GND (alle Massepunkte verbunden!):
+    ESP32 GND <---> Sensoren GND <---> OLED GND <---> LM358 GND <---> Netzteil GND
+```
+
+> **Ein gemeinsames GND** für alle Komponenten ist Pflicht. Andernfalls treten "Geister-Spannungen" auf.
 
 ---
 
-## 5. Netzwerk / Software-Architektur (kein „zwei ESP32-IPs“ mehr zwingend)
+## 4. Pin-Übersicht — alles auf einen Blick
 
-| Gerät | Rolle |
-|--------|--------|
-| **Growroom-ESP32** | Misst, schaltet Relais, zeigt lokal OLED; **HTTP** zum Server: `GET /api/v1/control/state`, `POST /api/v1/telemetry` (siehe `firmware/`). |
-| **PC/Server** | `run_telemetry_api.py` + optional Streamlit; **SQLite** `data/grow_telemetry.db`. |
-| **CYD (optional)** | Nur WLAN + Display/Touch; gleicher Server (`GET mobile/summary`, `GET telemetry/series`, `POST control/targets`). **Keine** Growroom-Sensorleitungen nötig. |
-
-- Im Heimnetz: **feste IP** oder DHCP-Reservierung für Server-PC erleichtert die Konfiguration in den Sketches (`SERVER_HOST`).
-- API-Schutz: optional `TELEMETRY_API_KEY` / Header `X-Telemetry-Key` (`.env`).
+| Pin | Funktion | Richtung | Spannung | Hinweis |
+|-----|----------|----------|----------|---------|
+| GPIO 36 | DHT22 #1 DATA | In | 3.3V | VP, nur Input |
+| GPIO 39 | DHT22 #2 DATA | In | 3.3V | VN, nur Input |
+| GPIO 34 | EC-Signal | In (ADC) | 0–3.3V | ADC1_CH6 |
+| GPIO 35 | pH-Signal | In (ADC) | 0–3.3V | ADC1_CH7 |
+| GPIO 21 | OLED SDA | I2C | 3.3V | Feste I2C-Pin |
+| GPIO 22 | OLED SCL | I2C | 3.3V | Feste I2C-Pin |
+| GPIO 4 | Relay Heizung | Out | 3.3V | Logik-Level |
+| GPIO 5 | Relay Pumpe | Out | 3.3V | Logik-Level |
+| GPIO 16 | Relay Umluft | Out | 3.3V | Logik-Level |
+| GPIO 17 | Relay Abluft | Out | 3.3V | Logik-Level |
 
 ---
 
-## 6. Checkliste vor Inbetriebnahme
+## 5. Ändern der Pin-Belegung
 
-- [ ] GPIO-Liste Sketch = GPIO-Liste Schaltplan
-- [ ] ADC nie über 3,3 V
-- [ ] Relais-Logik getrennt von Roh-Netz, Sicherungen gesetzt
-- [ ] Server erreichbar (Ping / Test-GET)
-- [ ] Kein Kurzschluss 230 V / polarity / PE
+Wenn du die GPIO-Zuordnung ändern musst:
 
-Bei Abweichung von den GPIO-Vorschlägen hier **dieses Dokument und die `#define` in der Firmware** gemeinsam aktualisieren.
+1. **Firmware anpassen** in `firmware/growroom_telemetry_client/growroom_telemetry_client.ino`:
+   ```cpp
+   #define PIN_RELAY_HEATER 4      // <-- ändern
+   #define PIN_RELAY_PUMP 5        // <-- ändern
+   // usw.
+   ```
+
+2. **Dieses Dokument anpassen** — beide Dateien müssen übereinstimmen.
+
+3. **Wiring-Checkliste durchführen** (siehe unten).
+
+> **Empfehlung:** Ändere nur wenn nötig. Die vorgegebene Belegung ist im Sketch und im Dokument abgestimmt.
+
+---
+
+## 6. Checkliste vor dem ersten Einschalten
+
+### 6.1 Spannungsprüfung (mit Multimeter, ESP32 **nicht** angeschlossen)
+
+- [ ] Netzteil liefert stabil **3.3V** (±0.1V)
+- [ ] Alle ADC-Eingänge (GPIO 34, 35) messen **0V** (keine Überspannung)
+- [ ] Alle Relais-Steuer-Eingänge messen **0V** (kein Dauer-High)
+
+### 6.2 Verbindungsprüfung (ESP32 angeschlossen, 230V **noch nicht**)
+
+- [ ] Durchgang GND: Alle GND-Punkte sind verbunden (< 1Ω)
+- [ ] Kein Kurzschluss 3.3V → GND (Widerstand > 1kΩ)
+- [ ] Durchgang je Signal-Leitung: Pin am ESP32 → korrekter Pin am Modul
+
+### 6.3 Software-Check (nur 3.3V, 230V **noch nicht**)
+
+- [ ] ESP32 flashen mit `growroom_telemetry_client.ino`
+- [ ] Serieller Monitor (115200 Baud): WiFi-Verbindung bestätigt
+- [ ] Serieller Monitor: Relais-Status zeigt alle `LOW` (aus)
+- [ ] Server (Telemetry API) erreichbar: `GET http://<server-ip>:8765/api/v1/health` → `{"ok":true}`
+
+### 6.4 230V-Check (nur nach erfolgreichem 6.3)
+
+- [ ] 230V-Verdrahtung von Fachkraft geprüft
+- [ ] FI-Schalter testen
+- [ ] Jede Sicherung korrekt dimensioniert
+- [ ] Metallgehäuse geerdet
+- [ ] Erst **einen** Relais-Kanal testen, dann die anderen
+
+---
+
+## 7. Fehlersuche
+
+| Symptom | Ursache | Lösung |
+|---------|---------|--------|
+| DHT22 liefert keine Werte | Pull-up fehlt | 10kΩ zwischen DATA und 3.3V |
+| ADC-Werte springen | Kein gemeinsames GND | Alle GND verbunden? |
+| Relais schaltet nicht | SSR braucht mehr Strom | Direkt an 5V statt 3.3V testen |
+| OLED zeigt nichts | Falsche I2C-Adresse | Scanner-Sketch: Adresse prüfen |
+| ESP32 rebootet | Spannungseinbruch | Netzteil zu schwach (min. 1A bei 3.3V) |
+| WiFi nicht verbunden | Falsche Credentials | `device_secrets.h` prüfen |

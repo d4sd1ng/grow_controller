@@ -92,7 +92,7 @@ start "Dashboard" cmd /k "call .venv\\Scripts\\activate && streamlit run main.py
 
 echo.
 echo Both services started!
-echo - Telemetry API: http://localhost:8087
+echo - Telemetry API: http://localhost:8765
 echo - Dashboard: http://localhost:8501
 echo.
 pause
@@ -161,9 +161,9 @@ def test_connection():
     # Test Telemetry API
     try:
         import httpx
-        response = httpx.get("http://localhost:8087/api/v1/health", timeout=2)
+        response = httpx.get("http://localhost:8765/api/v1/health", timeout=2)
         if response.status_code == 200:
-            print("✅ Telemetry API: http://localhost:8087")
+            print("✅ Telemetry API: http://localhost:8765")
         else:
             print("⚠️  Telemetry API running but not healthy")
     except:
@@ -219,12 +219,12 @@ def main():
     
     print("\n🌐 Access:")
     print("   Dashboard: http://localhost:8501")
-    print("   Telemetry API: http://localhost:8087")
-    print("   API Docs: http://localhost:8087/docs")
+    print("   Telemetry API: http://localhost:8765")
+    print("   API Docs: http://localhost:8765/docs")
     
     print("\n📱 ESP32 Configuration:")
     print("   Set TELEMETRY_URL in ESP firmware to:")
-    print("   http://<server-ip>:8087/api/v1/telemetry")
+    print("   http://<server-ip>:8765/api/v1/telemetry")
     
     print("\n🔧 Auto-start on boot (Linux):")
     print("   Install systemd services (see above)")

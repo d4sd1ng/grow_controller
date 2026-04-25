@@ -236,7 +236,7 @@ def print_next_steps():
     print("   - Set TELEMETRY_API_KEY")
     print("\n2. Flash ESP32 devices:")
     print("   - Use the API keys shown above in your ESP32 firmware")
-    print("   - Set TELEMETRY_URL to: http://<your-pc-ip>:8087/api/v1/telemetry")
+    print("   - Set TELEMETRY_URL to: http://<your-pc-ip>:8765/api/v1/telemetry")
     print("\n3. Start Streamlit Dashboard:")
     if sys.platform == "win32":
         print("   .venv\\Scripts\\activate")

@@ -99,7 +99,7 @@ echo "📍 Your Raspberry Pi IP: $PI_IP"
 echo ""
 echo "📱 ESP32 Configuration:"
 echo "   Set TELEMETRY_URL in your ESP32 firmware to:"
-echo "   http://$PI_IP:8087/api/v1/telemetry"
+echo "   http://$PI_IP:8765/api/v1/telemetry"
 echo ""
 
 # Create systemd services
@@ -174,11 +174,11 @@ echo "   ./start_dashboard.sh"
 echo ""
 echo "4. Access from any device on your network:"
 echo "   Dashboard: http://$PI_IP:8501"
-echo "   API: http://$PI_IP:8087"
-echo "   API Docs: http://$PI_IP:8087/docs"
+echo "   API: http://$PI_IP:8765"
+echo "   API Docs: http://$PI_IP:8765/docs"
 echo ""
 echo "5. Configure ESP32 devices:"
-echo "   Set TELEMETRY_URL to: http://$PI_IP:8087/api/v1/telemetry"
+echo "   Set TELEMETRY_URL to: http://$PI_IP:8765/api/v1/telemetry"
 echo ""
 echo "📚 Documentation: README.md"
 echo ""
@@ -188,7 +188,7 @@ cat > start_telemetry_api.sh << 'EOF'
 #!/bin/bash
 cd $(dirname $0)
 source .venv/bin/activate
-echo "Starting Telemetry API on port 8087..."
+echo "Starting Telemetry API on port 8765..."
 python run_telemetry_api.py
 EOF
 chmod +x start_telemetry_api.sh

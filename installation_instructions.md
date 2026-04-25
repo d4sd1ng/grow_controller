@@ -1,229 +1,369 @@
-# Installation — Growroom Control System
+# Installation — Growroom Control System v2.0.0
 
-Anleitung **pro Gerät**: was auf dem **Server**, dem **Growroom-ESP32** und dem **Cheap Yellow Display (CYD)** installiert und konfiguriert werden muss. **Verdrahtung der Relais und Sensoren:** siehe [wiring_instructions.md](wiring_instructions.md). **API-Übersicht & Sketch-Hinweise:** [firmware/README.md](firmware/README.md) · **Deployment (Raspberry Pi als Zentrale, VPS nur VPN o. Ä.):** [deployment_vps.md](deployment_vps.md).
+Diese Anleitung beschreibt **Schritt für Schritt** die Installation aller Komponenten. Keine Optionen, keine Verzweigungen — nur der direkte Weg.
 
-**Sicherheit:** Alle **sensiblen** Einstellungen (Telegram-Token, Chat-ID, **Telemetry-API-Key**, **WLAN-Zugangsdaten** für die Geräte, LAN-Host des Servers für die ESPs) liegen nur in der Datei **`.env`** im Projektroot (nicht ins Repository). Python liest sie über `env_config`; die Firmware kann dieselben Werte mit **`python export_firmware_secrets_from_env.py`** in **`device_secrets.h`** pro Sketch-Ordner schreiben (Datei ist per `.gitignore` ausgeschlossen).
+Die Reihenfolge ist zwingend:
+1. Server aufsetzen
+2. `.env` konfigurieren
+3. ESP32 flashen
+4. System testen
 
----
-
-## Inhalt
-
-1. [Rollen im Setup](#1-rollen-im-setup)
-2. [Server (PC / Mini-PC / Pi)](#2-server-pc--mini-pc--pi)
-3. [Growroom-ESP32 (fest im Raum)](#3-growroom-esp32-fest-im-raum)
-4. [Cheap Yellow Display (portable Fernbedienung)](#4-cheap-yellow-display-portable-fernbedienung)
-5. [Netzwerk, Firewall, API-Key](#5-netzwerk-firewall-api-key)
-6. [Optional: LM358 für EC/pH-Verstärkung](#6-optional-lm358-für-ecph-verstärkung)
-7. [Optional: Absicherung mit Sicherungen](#7-optional-absicherung-mit-sicherungen)
+> **Wichtig:** Alle sensiblen Werte (WLAN, API-Keys, Telegram) kommen ausschließlich in `.env`. `.env` ist in `.gitignore` und wird nie ins Repository gepusht.
 
 ---
 
-## 1. Rollen im Setup
+## Schritt 1: Server vorbereiten
 
-| Komponente | Aufgabe |
-|------------|---------|
-| **Server** | Python: **Telemetry-API** (SQLite, REST für ESP + CYD), optional **Streamlit-Dashboard** (Simulation/Automatik, Charts). Eine gemeinsame DB-Datei (`data/grow_telemetry.db` o. Ä.). |
-| **Growroom-ESP32** | Sensoren lesen, **Relais** schalten; zyklisch **`POST /api/v1/telemetry`** und **`GET /api/v1/control/state`**. Sketch: `firmware/growroom_telemetry_client/`. |
-| **CYD** | Portables Display: Messwerte, Alerts, Relais-Steuerung, optional Kurven. Sketches: `firmware/cyd_remote_control/` (Touch + Charts) oder **`cyd_grow_display`** (kompakter). |
+### 1.1 Systemvoraussetzungen prüfen
 
----
+| Voraussetzung | Minimum | Prüfen |
+|---------------|---------|--------|
+| Python | 3.11 | `python --version` |
+| Git | installiert | `git --version` |
+| Arbeitsspeicher | 1 GB RAM | — |
+| Speicherplatz | 2 GB frei | — |
 
-## 2. Server (PC / Mini-PC / Pi)
+### 1.2 Repository klonen
 
-### 2.1 Voraussetzungen
+```bash
+cd ~
+git clone https://github.com/d4sd1ng/grow_controller.git
+cd grow_controller
+```
 
-- **Python 3.11+**
-- Projektordner `grow_controller` (dieses Repository)
-
-### 2.2 Virtuelle Umgebung & Dependencies
+### 1.3 Virtuelle Umgebung erstellen
 
 ```bash
 python -m venv .venv
 ```
 
-Windows (PowerShell):
+### 1.4 Virtuelle Umgebung aktivieren
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-Linux/macOS:
-
+**Linux/macOS:**
 ```bash
 source .venv/bin/activate
+```
+
+**Windows (PowerShell):**
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+> Ab jetzt arbeitest du **immer** in der venv. Der Prompt zeigt `(.venv)`.
+
+### 1.5 Python-Abhängigkeiten installieren
+
+```bash
 pip install -r requirements.txt
 ```
 
-Installiert u. a.: **Streamlit**, **pandas**, **plotly**, **FastAPI**, **uvicorn**, optional **python-telegram-bot**.
+Dauert ca. 2–3 Minuten. Installiert: Streamlit, FastAPI, Uvicorn, Pandas, Plotly, scikit-learn.
 
-### 2.3 Konfiguration — alles Server-seitige aus **`.env`**
+### 1.6 Test ausführen
 
-Die Python-Prozesse laden die Datei **`.env`** im Projektroot (`env_config.load_dotenv_if_present()`). **Sensible und betriebsrelevante Server-Werte** werden ausschließlich über **`env_config`**-Getter aus der Umgebung gelesen (nach dem Laden von `.env`) — nicht aus hart codierten Secrets im Quelltext.
+```bash
+python -m unittest system_tests test_extended
+```
 
-- `.env.example` nach **`.env`** kopieren und anpassen (`.env` **nie** committen).
-- **Typische Variablen in `.env`:**
-  - **`TELEGRAM_BOT_TOKEN`** / **`TELEGRAM_CHAT_ID`** — nur für den Bot (sensible Tokens)
-  - **`TELEMETRY_API_KEY`** — optional; wenn gesetzt, Header **`X-Telemetry-Key`** an allen geschützten Routen
-  - **`TELEMETRY_API_PORT`**, **`TELEMETRY_API_HOST`**, optional **`TELEMETRY_CORS_ORIGINS`**, **`TELEMETRY_API_RELOAD`**
-  - **`GROW_DATA_DB`**, **`GROW_DATA_RETENTION_DAYS`**
-  - **`IOT_WIFI_SSID`**, **`IOT_WIFI_PASSWORD`**, **`IOT_TELEMETRY_SERVER_HOST`** — für **`device_secrets.h`**
-  - optional **`IOT_USE_HTTPS`**, **`IOT_TELEMETRY_SERVER_PORT`**, **`IOT_TLS_INSECURE`** — TLS zur API (z. B. Hetzner + Caddy); siehe [deployment_vps.md](deployment_vps.md)
+Erwartetes Ergebnis: `OK` (alle 28 Tests bestanden).
 
-**ESP32/CYD und `.env`:** Die MCU kann keine `.env` lesen. **Empfohlen:** Nach dem Befüllen der `.env` im Projektroot:
+Wenn Tests fehlschlagen: Abhängigkeiten nochmals prüfen (`pip list`), dann Issue erstellen.
+
+---
+
+## Schritt 2: Konfiguration (`.env`)
+
+### 2.1 `.env` aus Vorlage erstellen
+
+```bash
+cp .env.example .env
+```
+
+### 2.2 `.env` bearbeiten
+
+```bash
+nano .env    # Linux/macOS
+notepad .env # Windows
+```
+
+**Folgende Variablen müssen gesetzt werden:**
+
+| Variable | Beispielwert | Beschreibung |
+|----------|--------------|--------------|
+| `DASHBOARD_PASSWORD` | `MeinSicheresPW123` | Login-Passwort für das Web-Dashboard |
+| `TELEMETRY_API_KEY` | `aB3cD4eF5gH6iJ7kL8mN9oP0qR` | Gemeinsamer Schlüssel zwischen Server und ESP32 |
+| `IOT_WIFI_SSID` | `MeinHeimWLAN` | WLAN-Name für alle ESP32-Geräte |
+| `IOT_WIFI_PASSWORD` | `wlanPasswort2024` | WLAN-Passwort für alle ESP32-Geräte |
+| `IOT_TELEMETRY_SERVER_HOST` | `192.168.178.50` | **Feste IP** des Servers im Heimnetz |
+
+**Folgende Variablen können auf Standardwerten bleiben:**
+
+| Variable | Standardwert | Bedeutung |
+|----------|--------------|-----------|
+| `TELEMETRY_API_PORT` | `8765` | Port der Telemetry-API |
+| `TELEMETRY_API_HOST` | `0.0.0.0` | API lauscht auf allen Interfaces |
+| `GROW_DATA_DB` | `data/grow_telemetry.db` | SQLite-Datenbank-Pfad |
+| `GROW_DATA_RETENTION_DAYS` | `90` | Daten älter als 90 Tage werden gelöscht |
+
+**Telegram (optional):**
+
+| Variable | Beispielwert |
+|----------|--------------|
+| `TELEGRAM_BOT_TOKEN` | `123456789:ABCdefGHIjklMNOpqrSTUvwxyz` |
+| `TELEGRAM_CHAT_ID` | `987654321` |
+
+> **WLAN-Router:** Stelle sicher, dass der Server eine **feste IP** hat (DHCP-Reservierung im Router). Die ESP32-Geräte können sich nicht an eine sich ändernde IP-Adresse binden.
+
+### 2.3 `device_secrets.h` generieren
+
+Nachdem `.env` gespeichert ist:
 
 ```bash
 python export_firmware_secrets_from_env.py
 ```
 
-Das erzeugt **`device_secrets.h`** (WLAN, Host, Client-Port, API-Key, **`SERVER_USE_HTTPS`**) und die Sketches nutzen **`grow_http_client.h`** für HTTP oder HTTPS. **Ohne** `device_secrets.h`: Fallback **HTTP** + Platzhalter im `#else`-Zweig.
+Erwartete Ausgabe:
+```
+OK: E:\Projects\grow_controller\firmware\growroom_telemetry_client\device_secrets.h
+OK: E:\Projects\grow_controller\firmware\cyd_remote_control\device_secrets.h
+OK: E:\Projects\grow_controller\firmware\cyd_grow_display\device_secrets.h
+```
 
-### 2.4 Prozesse starten
+Diese Datei enthält:
+- WLAN-SSID und Passwort
+- Server-Host und Port
+- Telemetry-API-Key
+- HTTPS-Flag (für VPS-Betrieb)
 
-**Telemetry-API** (für ESP + CYD Pflicht im Regelbetrieb):
+> **Niemals `device_secrets.h` committen!** Sie ist in `.gitignore`.
+
+---
+
+## Schritt 3: Telemetry-API starten
+
+### 3.1 Server starten
 
 ```bash
 python run_telemetry_api.py
 ```
 
-Erreichbar unter `http://<SERVER-LAN-IP>:<Port>` — **Port = `TELEMETRY_API_PORT` aus `.env`** (Standard **8765**). Prüfen: **`GET /api/v1/health`** (SQLite-Ping, **ohne** API-Key).
+Erwartete Ausgabe:
+```
+INFO:     Uvicorn running on http://0.0.0.0:8765 (Press CTRL+C to quit)
+```
 
-**Streamlit-Dashboard** (optional, für lokale Bedienung/Automatik):
+### 3.2 Health-Check
+
+In einem zweiten Terminal (venv aktiv):
 
 ```bash
+curl http://localhost:8765/api/v1/health
+```
+
+Erwartetes Ergebnis:
+```json
+{"ok":true,"db":"connected","version":"2.0.0"}
+```
+
+Wenn das nicht kommt: `.env`-Werte prüfen, Firewall prüfen.
+
+### 3.3 Firewall-Regel (einmalig)
+
+**Windows:**
+```powershell
+# PowerShell als Administrator
+New-NetFirewallRule -DisplayName "Grow Telemetry API" -Direction Inbound -Protocol TCP -LocalPort 8765 -Action Allow
+```
+
+**Linux (ufw):**
+```bash
+sudo ufw allow 8765/tcp
+```
+
+---
+
+## Schritt 4: ESP32 flashen
+
+### 4.1 Entwicklungsumgebung
+
+- **Arduino IDE 2.x** installieren
+- Board-Paket **ESP32 by Espressif Systems** installieren (Version 2.x)
+- Board: **ESP32 Dev Module**
+
+### 4.2 Libraries installieren
+
+Im Arduino IDE Library Manager:
+
+| Library | Version | Suchbegriff |
+|---------|---------|-------------|
+| ArduinoJson | 6.x | `ArduinoJson` |
+
+### 4.3 Sketch öffnen
+
+```
+File → Open → firmware/growroom_telemetry_client/growroom_telemetry_client.ino
+```
+
+> Wichtig: Die `.ino`-Datei muss **denselben Namen** wie der Ordner haben.
+
+### 4.4 Prüfen: `device_secrets.h` vorhanden
+
+Im Sketch-Ordner muss `device_secrets.h` liegen (generiert in Schritt 2.3).
+
+Wenn nicht vorhanden, nochmals ausführen:
+```bash
+python export_firmware_secrets_from_env.py
+```
+
+### 4.5 Seriellen Monitor vorbereiten
+
+```
+Tools → Serial Monitor → Baudrate: 115200
+```
+
+### 4.6 Hochladen
+
+```
+Sketch → Upload (Ctrl+U)
+```
+
+Nach dem Upload sollte der Serielle Monitor anzeigen:
+```
+WiFi......
+Connected: 192.168.178.101
+POST telemetry -> 200
+```
+
+Wenn `POST telemetry -> 200` erscheint, ist die Verbindung zum Server erfolgreich.
+
+### 4.7 Fehlerbehebung
+
+| Problem | Ursache | Lösung |
+|---------|---------|--------|
+| `WiFi.....` endlos | Falsche WLAN-Daten | `.env` korrigieren, `device_secrets.h` neu generieren |
+| `POST telemetry -> 0` | Server nicht erreichbar | Server-IP prüfen, Firewall prüfen, API-Port prüfen |
+| `POST telemetry -> 401` | API-Key falsch | `.env` prüfen, `device_secrets.h` neu generieren |
+| `POST telemetry -> 404` | URL falsch | `IOT_TELEMETRY_SERVER_HOST` prüfen |
+
+---
+
+## Schritt 5: Dashboard starten (optional, empfohlen)
+
+### 5.1 Neues Terminal öffnen
+
+```bash
+# venv aktivieren
+source .venv/bin/activate   # Linux/macOS
+.\.venv\Scripts\activate   # Windows
+
+# Dashboard starten
 streamlit run main.py
 ```
 
-**Telegram-Bot** (optional, separater Prozess):
+### 5.2 Öffnen im Browser
 
-```bash
-python telegram_bot.py
+```
+http://localhost:8501
 ```
 
-> **Hinweis:** Streamlit schreibt Messwerte gedrosselt in SQLite; der **Growroom-ESP** liefert weiterhin über **`POST /api/v1/telemetry`** pro Zyklus eine Zeile — so bleibt die Historie für Charts zuverlässig.
+Login:
+- Username: `admin`
+- Password: `DASHBOARD_PASSWORD` aus `.env`
 
-### 2.5 Firewall / Router
+### 5.3 Dashboard-Funktionen
 
-- Den in **`.env`** gesetzten **`TELEMETRY_API_PORT`** (oder Standard **8765**) im **LAN** für ESPs/CYD freigeben (Windows-Firewall eingehend, Ziel: Python/`uvicorn`).
-
----
-
-## 3. Growroom-ESP32 (fest im Raum)
-
-### 3.1 Entwicklungsumgebung
-
-- **Arduino IDE** 2.x (oder **PlatformIO** mit gleichen Libraries), Board-Paket **ESP32** (Espressif).
-
-### 3.2 Sketch
-
-- Ordner **`firmware/growroom_telemetry_client/`** öffnen; die `.ino`-Datei muss **gleichnamig** zum Ordner sein (`growroom_telemetry_client.ino`).
-
-### 3.3 Arduino-Libraries (Library Manager)
-
-| Library | Version / Hinweis |
-|---------|-------------------|
-| **ArduinoJson** | v6 |
-| (sonst nur Board-Core) | **WiFi**, **HTTPClient** — im ESP32-Core enthalten |
-
-### 3.4 Sensible Werte & Sketch
-
-- **Production:** `IOT_*` und Telemetry-Keys in **`.env`**, dann **`python export_firmware_secrets_from_env.py`** vor dem Flashen.
-- **Relais-Pins:** **`PIN_RELAY_*`** und ggf. **HIGH/LOW** weiterhin im `.ino` (Hardware, keine Secrets) — siehe [wiring_instructions.md](wiring_instructions.md).
-
-### 3.5 Ablauf nach dem Flashen
-
-- Gerät bootet, verbindet WLAN, pollt regelmäßig **`/api/v1/control/state`**, setzt Relais, sendet **`/api/v1/telemetry`** mit Messwerten (im aktuellen Sketch sind Messwerte noch Platzhalter — durch echte Sensor-Lesung ersetzen).
+| Tab | Funktion |
+|-----|----------|
+| **Übersicht** | Live-Sensorwerte, VPD-Anzeige, Relais-Status |
+| **Charts** | Historische Verläufe (24h, 7d, 30d) |
+| **Steuerung** | Relais manuell schalten, Sollwerte setzen |
+| **Devices** | ESP32-Geräte verwalten |
+| **ML** | Modell trainieren, VPD/EC/pH-Optimierung |
+| **Export** | CSV/JSON-Daten exportieren |
 
 ---
 
-## 4. Cheap Yellow Display (portable Fernbedienung)
+## Schritt 6: CYD (Cheap Yellow Display) — optional
 
-### 4.1 Hardware
+### 6.1 Hardware
 
-- **[ESP32-Cheap-Yellow-Display](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)** (ILI9341 + XPT2046-Touch auf vielen Boards).
+- ESP32-CYD-Board mit ILI9341 + XPT2046 Touch
 
-### 4.2 Display & Touch — **`TFT_eSPI`**
+### 6.2 Libraries
 
-- Library **TFT_eSPI** installieren.
-- **User\_Setup** für dein CYD-Board wählen oder aus dem CYD-Repo übernehmen (Pins/Rotation müssen zum Panel passen).
+| Library | Version |
+|---------|---------|
+| ArduinoJson | 6.x |
+| TFT_eSPI | 2.x |
+| XPT2046_Touchscreen | 1.x |
 
-### 4.3 Sketch-Auswahl
+### 6.3 TFT_eSPI konfigurieren
 
-| Sketch | Ordner | Beschreibung |
-|--------|--------|--------------|
-| **Remote mit Touch & Kurven** | `firmware/cyd_remote_control/` | Drei Bereiche: Relais, Werte + Alerts, Mini-Verläufe (`/api/v1/telemetry/series`). |
-| **Kompakt** | `firmware/cyd_grow_display/` | Anzeige + Steuerung über API, ohne Touch-Framework im Kommentar beschrieben — weniger UI-Komplexität. |
+Vor dem ersten Build: `User_Setup.h` für CYD anpassen oder die Setup-Datei aus dem CYD-Repository kopieren.
 
-### 4.4 Zusätzliche Libraries (je nach Sketch)
+### 6.4 Sketch auswählen
 
-| Library | Sketches |
-|---------|----------|
-| **ArduinoJson** v6 | beide |
-| **TFT_eSPI** | beide |
-| **XPT2046_Touchscreen** | **`cyd_remote_control`** |
+| Anwendungsfall | Sketch | Ordner |
+|----------------|--------|--------|
+| Touch + Charts | Remote Control | `firmware/cyd_remote_control/` |
+| Nur Anzeige | Grow Display | `firmware/cyd_grow_display/` |
 
-### 4.5 Touch kalibrieren (`cyd_remote_control`)
+### 6.5 Flashen
 
-- **`CAL_X_MIN`**, **`CAL_X_MAX`**, **`CAL_Y_MIN`**, **`CAL_Y_MAX`** sowie ggf. **XPT2046-Pins** am Board prüfen; bei Bedarf Kalibrier-Beispiel aus dem CYD-Repository nutzen.
+```
+File → Open → firmware/cyd_remote_control/cyd_remote_control.ino
+Sketch → Upload
+```
 
-### 4.6 Sensible Werte
-
-Wie Growroom-ESP: **`.env`** + **`python export_firmware_secrets_from_env.py`** → **`device_secrets.h`**. Touch-Kalibrierung (`CAL_*`) bleibt unkritisch im Sketch.
-
----
-
-## 5. Netzwerk, Firewall, API-Key
-
-- Alle Geräte **im selben LAN** wie der Server (oder Layer-3-Routing bewusst einrichten).
-- Am Server: **Telemetry-API** dauerhaft laufen. **Bind, Port, API-Key, CORS:** nur **`.env`**.
-- **`TELEMETRY_API_KEY`:** gesetzt = Clients müssen Header mitsenden; leer lassen = ohne Key-Schutz (nur im vertrauenswürdigen LAN sinnvoll).
-- Monitoring: **`GET /api/v1/health`**.
+`device_secrets.h` wird automatisch aus demselben `.env` generiert (Schritt 2.3).
 
 ---
 
-## 6. Optional: LM358 für EC/pH-Verstärkung
+## Zusammenfassung — Schnellreferenz
 
-Der **LM358** kann EC- und pH-Sensoren **puffern und verstärken**. Beispiel-Verdrahtung (Komponentenwerte ggf. an deine Sensoren anpassen):
-
-1. **Versorgung**
-   - Pin 8 (V+) → **5 V**
-   - Pin 4 (V−) → **GND**
-
-2. **EC (erster Verstärker)**
-   - EC-Sensorausgang → Pin 2 (inverting input)
-   - **10 kΩ** zwischen Pin 2 und Pin 1 (Output)
-   - Pin 3 (non-inverting) → Spannungsteiler (z. B. zwei **10 kΩ** zwischen 5 V und GND)
-   - Ausgang Pin 1 → **ESP32 ADC** (im Referenzprojekt u. a. **GPIO 34** — nur Eingang, gültige Pins laut deinem Board/Wiring prüfen)
-
-3. **pH (zweiter Verstärker)**
-   - pH-Sensorausgang → Pin 6 (inverting input)
-   - **10 kΩ** zwischen Pin 6 und Pin 7
-   - Pin 5 (non-inverting) → Spannungsteiler wie oben
-   - Ausgang Pin 7 → **ESP32 ADC** (z. B. **GPIO 35**)
-
-**Hinweis:** Konkrete GPIO- und Schaltungsdetails mit [wiring_instructions.md](wiring_instructions.md) und deinem Datenblatt abstimmen.
+| Aufgabe | Befehl |
+|---------|--------|
+| Repo klonen | `git clone https://github.com/d4sd1ng/grow_controller.git` |
+| venv erstellen | `python -m venv .venv` |
+| venv aktivieren (Linux) | `source .venv/bin/activate` |
+| venv aktivieren (Windows) | `.\.venv\Scripts\Activate.ps1` |
+| Abhängigkeiten | `pip install -r requirements.txt` |
+| Tests | `python -m unittest system_tests test_extended` |
+| `.env` erstellen | `cp .env.example .env` |
+| Secrets exportieren | `python export_firmware_secrets_from_env.py` |
+| API starten | `python run_telemetry_api.py` |
+| Health-Check | `curl http://localhost:8765/api/v1/health` |
+| Dashboard starten | `streamlit run main.py` |
+| Firewall (Windows) | `New-NetFirewallRule -DisplayName "Grow Telemetry API" -Direction Inbound -Protocol TCP -LocalPort 8765 -Action Allow` |
+| Firewall (Linux) | `sudo ufw allow 8765/tcp` |
 
 ---
 
-## 7. Optional: Absicherung mit Sicherungen
+## Schnell-Checkliste
 
-Zum Schutz der Lastkreise **passende Sicherungen** vorschalten (Typ/Nennstrom an deine realen Ströme anpassen):
+### Server:
+- [ ] Python 3.11+ installiert
+- [ ] Repository geklont
+- [ ] venv erstellt und aktiviert
+- [ ] `pip install -r requirements.txt` erfolgreich
+- [ ] Alle 28 Tests bestanden
+- [ ] `.env` erstellt und alle Werte gesetzt
+- [ ] `device_secrets.h` generiert
+- [ ] Telemetry-API gestartet, Health-Check `{"ok":true}`
+- [ ] Firewall-Port 8765 geöffnet
+- [ ] Dashboard läuft, Login funktioniert
 
-1. **Hauptversorgung** — z. B. **10 A** träge, vor der Verteilung auf Verbraucher
-2. **Heizung** — z. B. **5 A** schnell, auf der Zuleitung zum Heizungsrelais
-3. **Wasserpumpe** — z. B. **2 A** schnell, auf der Pumpenzuleitung
-4. **Lüfter** — z. B. **1 A** schnell, pro Lüfterkanal nach Leistung
-5. **Beleuchtung** — Nennstrom passend zur Lampe (häufig **5–10 A**, je nach Verbrauch)
+### ESP32:
+- [ ] Arduino IDE + ESP32-Board-Paket installiert
+- [ ] ArduinoJson v6 installiert
+- [ ] Sketch `growroom_telemetry_client.ino` geöffnet
+- [ ] `device_secrets.h` im Sketch-Ordner vorhanden
+- [ ] Board: ESP32 Dev Module, Port korrekt
+- [ ] Upload erfolgreich
+- [ ] Serieller Monitor zeigt `Connected: <IP>`
+- [ ] Serieller Monitor zeigt `POST telemetry -> 200`
 
-Sicherungen **leicht erreichbar** montieren (Sicherungshalter), elektrische Arbeit nur fachgerecht/Norm-konform.
-
----
-
-## Kurz-Checkliste
-
-| Wo | Was |
-|----|-----|
-| **Server** | Python venv, `pip install -r requirements.txt`, **`.env`** (Port/Key/DB/…), `python run_telemetry_api.py`, optional `streamlit run main.py` |
-| **Growroom-ESP** | **ArduinoJson v6**, Sketch `growroom_telemetry_client`; Secrets über **`export_firmware_secrets_from_env.py`** → `device_secrets.h` |
-| **CYD** | **TFT_eSPI**, **ArduinoJson v6**, ggf. **XPT2046_Touchscreen**; derselbe Export nach `device_secrets.h` |
-| **Netzwerk** | Firewall-Port = **`TELEMETRY_API_PORT`** aus `.env`; API-Key nur in `.env` + generierter Header |
+### Netzwerk:
+- [ ] Server hat feste IP (Router: DHCP-Reservierung)
+- [ ] ESP32 und Server im selben WLAN
+- [ ] `IOT_TELEMETRY_SERVER_HOST` = Server-IP
