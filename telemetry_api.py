@@ -389,6 +389,31 @@ def list_devices(
     }
 
 
+@app.get("/api/v1/devices/i2c")
+def list_i2c_devices(
+    x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
+) -> dict[str, Any]:
+    """List I2C devices detected by ESP32 from latest telemetry reading."""
+    _require_api_key(x_telemetry_key)
+    latest = get_dm().get_latest_reading()
+    if not latest:
+        return {"ok": True, "i2c_devices": [], "message": "no readings yet"}
+    
+    extras = latest.get("extras", {})
+    device_info = extras.get("device_info", {})
+    i2c_devices = device_info.get("i2c_devices", [])
+    
+    return {
+        "ok": True,
+        "device_id": device_info.get("device_id", "unknown"),
+        "firmware_version": device_info.get("firmware_version", "unknown"),
+        "i2c_device_count": device_info.get("i2c_device_count", 0),
+        "has_oled": device_info.get("has_oled", False),
+        "has_bh1750": device_info.get("has_bh1750", False),
+        "i2c_devices": i2c_devices,
+    }
+
+
 @app.post("/api/v1/devices/register")
 def register_device(
     body: dict[str, Any] = Body(...),

@@ -1,6 +1,7 @@
 """
 Normalize JSON bodies from the grow-room ESP before they hit DataManager.
-Supports flat keys, nested `relays` / `relay_states`, and water_pump → pump alias.
+Supports flat keys, nested `relays` / `relay_states`, water_pump → pump alias,
+and device_info with I2C scan results.
 """
 
 from __future__ import annotations
@@ -57,5 +58,10 @@ def normalize_ingest_payload(raw: dict[str, Any]) -> dict[str, Any]:
 
     if "water_pump" in raw and "pump" not in raw:
         out["pump"] = bool(raw["water_pump"])
+
+    # Preserve device_info (I2C scan results, firmware version, etc.)
+    device_info = raw.get("device_info")
+    if isinstance(device_info, dict):
+        out["device_info"] = device_info
 
     return out

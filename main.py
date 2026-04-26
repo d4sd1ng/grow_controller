@@ -398,6 +398,8 @@ def update_real_time_data():
         current_data.update(esp32_data["sensor_data"])
     if esp32_data and "esp32_relay_states" in esp32_data:
         current_data["esp32_relay_states"] = esp32_data["esp32_relay_states"]
+    if esp32_data and "device_info" in esp32_data:
+        current_data["device_info"] = esp32_data["device_info"]
 
     current_vpd = calculate_vpd(current_data["air_temperature"], current_data["humidity"])
 
@@ -525,6 +527,49 @@ def update_real_time_data():
     with sched_col3:
         vent_active = schedule_mgr.is_equipment_active("exhaust_vent")
         st.markdown(f"<p class='small-font'>💨 Exhaust: {'Active' if vent_active else 'Inactive'}</p>", unsafe_allow_html=True)
+
+    # I2C Sensor Detection
+    st.markdown("<h2 class='medium-font'>🔌 Erkannte I2C Sensoren</h2>", unsafe_allow_html=True)
+
+    device_info = current_data.get("device_info")
+    if not device_info:
+        latest = data_manager.get_latest_reading()
+        if latest:
+            device_info = latest.get("extras", {}).get("device_info", {})
+
+    if device_info:
+        i2c_devices = device_info.get("i2c_devices", [])
+        has_oled = device_info.get("has_oled", False)
+        has_bh1750 = device_info.get("has_bh1750", False)
+        fw_version = device_info.get("firmware_version", "unknown")
+        dev_id = device_info.get("device_id", "unknown")
+
+        info_col1, info_col2, info_col3 = st.columns(3)
+        with info_col1:
+            st.markdown(f"<p class='small-font'>🆔 Gerät: <b>{dev_id}</b></p>", unsafe_allow_html=True)
+        with info_col2:
+            st.markdown(f"<p class='small-font'>🔢 Firmware: <b>{fw_version}</b></p>", unsafe_allow_html=True)
+        with info_col3:
+            st.markdown(f"<p class='small-font'>📊 I2C-Geräte: <b>{len(i2c_devices)}</b></p>", unsafe_allow_html=True)
+
+        if i2c_devices:
+            st.markdown("<p class='small-font'><b>I2C Bus Scan Ergebnis:</b></p>", unsafe_allow_html=True)
+            i2c_cols = st.columns(min(len(i2c_devices), 4))
+            for idx, dev in enumerate(i2c_devices):
+                with i2c_cols[idx % 4]:
+                    addr = dev.get("address", "0x??")
+                    name = dev.get("name", "Unknown")
+                    st.markdown(
+                        f"<p class='small-font'>🔹 <code>{addr}</code> — {name}</p>",
+                        unsafe_allow_html=True
+                    )
+            if has_bh1750:
+                bh_addr = device_info.get("bh1750_address", "0x23")
+                st.markdown(f"<p class='small-font'>☀️ BH1750 Lux-Sensor aktiv auf <code>{bh_addr}</code></p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<p class='small-font'>⚠️ Keine I2C-Geräte erkannt (Scanner läuft beim ESP32-Boot)</p>", unsafe_allow_html=True)
+    else:
+        st.markdown("<p class='small-font'>⏳ Warte auf erste Telemetrie vom ESP32 (I2C-Scan beim Boot)...</p>", unsafe_allow_html=True)
 
     # ML Grow Optimization (VPD + EC + pH)
     st.markdown("<h2 class='medium-font'>🎯 ML Grow Optimization</h2>", unsafe_allow_html=True)

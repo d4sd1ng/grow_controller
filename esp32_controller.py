@@ -81,6 +81,18 @@ class ESP32Controller:
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "sensor_data": sensor_data,
             "esp32_relay_states": dict(self.relay_states),
+            "device_info": {
+                "device_id": self.device_id,
+                "firmware_version": "2.1.0-sim",
+                "i2c_device_count": 2,
+                "has_oled": True,
+                "has_bh1750": True,
+                "bh1750_address": "0x23",
+                "i2c_devices": [
+                    {"address": "0x3C", "name": "OLED_SSD1306"},
+                    {"address": "0x23", "name": "BH1750_ADDR_LOW"},
+                ],
+            },
         }
 
     def receive_command_from_main_controller(self, command: dict[str, Any] | None) -> None:
