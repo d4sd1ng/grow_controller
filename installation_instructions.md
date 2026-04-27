@@ -431,6 +431,11 @@ Du siehst:
    - Suche nach "ArduinoJson"
    - Installiere "ArduinoJson by Benoit Blanchon" (Version 6.x)
 
+> **Wichtig vor dem Hochladen:**
+> - `device_secrets.h` muss im Sketch-Ordner vorhanden sein (wurde in Schritt 5 generiert). Ohne diese Datei kompiliert der Sketch zwar, verwendet aber Dummy-Werte (`YOUR_SSID`, `192.168.1.50`) und kann sich nicht verbinden.
+> - `grow_http_client.h` muss ebenfalls im selben Ordner wie die `.ino`-Datei liegen.
+> - **Für das CYD-Display (`cyd_grow_display`)**: Die Bibliothek **TFT_eSPI** muss zusätzlich installiert und für das CYD-Board konfiguriert sein (Pin-Mapping in `User_Setup.h` oder `platformio.ini`). Siehe Header-Kommentar in `cyd_grow_display.ino`.
+
 ### Sketch öffnen
 
 1. Arduino IDE öffnen

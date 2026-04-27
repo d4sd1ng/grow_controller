@@ -1,6 +1,6 @@
 # Growroom Control System
 
-Streamlit dashboard for simulated sensors, VPD helpers, optional Telegram alerts, and GPIO simulation (Replit-friendly; runs anywhere with Python 3.11+).
+Streamlit dashboard for simulated sensors, VPD helpers, optional Telegram alerts, and GPIO simulation (runs anywhere with Python 3.11+).
 
 **Geräte-Setup (Server, Growroom-ESP, CYD):** [installation_instructions.md](installation_instructions.md) · **Verdrahtung:** [wiring_instructions.md](wiring_instructions.md) · **Deployment (RPi + optional VPS/VPN):** [deployment_vps.md](deployment_vps.md)
 

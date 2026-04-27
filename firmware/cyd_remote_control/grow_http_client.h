@@ -8,13 +8,6 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 
-#ifndef SERVER_USE_HTTPS
-#error "SERVER_USE_HTTPS must be defined (device_secrets.h or fallback block)"
-#endif
-#ifndef SERVER_TLS_INSECURE
-#error "SERVER_TLS_INSECURE must be defined"
-#endif
-
 inline WiFiClientSecure &growTlsClient() {
   static WiFiClientSecure c;
   return c;

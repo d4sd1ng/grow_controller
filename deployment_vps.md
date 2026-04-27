@@ -1,3 +1,4 @@
+
 # Deployment auf Raspberry Pi v2.0.0 — Anleitung für Anfänger
 
 Diese Anleitung erklärt, wie du das Growroom-System auf einem **Raspberry Pi** betreibst. Der Pi läuft 24/7 und startet die Programme automatisch nach einem Stromausfall neu.

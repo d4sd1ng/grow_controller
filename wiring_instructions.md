@@ -6,12 +6,13 @@ Diese Anleitung erklärt Schritt für Schritt, wie du alle Kabel anschließt. **
 
 ```
 +------------------+          +-----------------------+          +------------------+
-|   230V Steckdose |          |    ESP32 DevKit V1    |          |   Sensoren       |
-|   (Wand)         |          |    (kleiner Computer) |          |   (Messen)       |
+|   230V Steckdose |          | ESP32-WROOM-32D      |          |   Sensoren       |
+|   (Wand)         |          | (mit integriertem OLED)|          |   (Messen)       |
 |                  |          |                       |          |                  |
-|  Heizung 500W    |<--SSR--->|  GPIO 36  -----> DHT22#1       |                  |
+|  Heizung 500W    |<--SSR--->|  GPIO 36  -----> DHT22          |                  |
 |  (warm)          |          |  (liest Temperatur)   |          |                  |
-|                  |          |  GPIO 39  -----> DHT22#2       |                  |
+|                  |          |  GPIO 39  -----> DHT22 #2       |                  |
+|                  |          |  (optional)           |          |                  |
 |  Pumpe 20W       |<--SSR--->|  GPIO 34  -----> EC-Sonde      |                  |
 |  (Wasser)        |          |  (Nährstoffe)         |          |                  |
 |                  |          |  GPIO 35  -----> pH-Sonde       |                  |
@@ -53,7 +54,7 @@ Der ESP32 ist ein kleiner Computer auf einer Platine. Er hat:
 
 | Teil | Anzahl | Was es macht | ca. Preis |
 |------|--------|--------------|-----------|
-| ESP32 DevKit V1 | 1x | Der "Hauptcomputer" | 8–12 € |
+| ESP32-WROOM-32D mit OLED | 1x | Der "Hauptcomputer" mit Display | 8–12 € |
 | DHT22 / AM2302 | 2x | Misst Temperatur + Luftfeuchte | 3–5 €/Stk |
 | OLED 0.96" I2C | 1x | Kleines Display | 3–5 € |
 | SSR-Relais DC-Input | 4x | Schaltet 230V ohne Klicken | 4–8 €/Stk |
@@ -330,8 +331,8 @@ Kopiere diese Tabelle ausgedruckt und häng sie neben deinen Aufbau:
 | Rot | 3.3V | DHT22 #1 VCC | Strom für Sensor 1 |
 | Rot | 3.3V | DHT22 #2 VCC | Strom für Sensor 2 |
 | Rot | 3.3V | OLED VCC | Strom für Display |
-| Gelb | GPIO 36 | DHT22 #1 DATA | Temperatur/Luftfeuchte 1 |
-| Grün | GPIO 39 | DHT22 #2 DATA | Temperatur/Luftfeuchte 2 |
+| Gelb | GPIO 36 | DHT22 DATA | Temperatur/Luftfeuchte |
+| Grün | GPIO 39 | DHT22 #2 DATA (optional) | Temperatur/Luftfeuchte 2 |
 | Orange | GPIO 34 | EC-Modul Out | Nährstoff-Messung |
 | Blau | GPIO 35 | pH-Modul Out | Säure-Messung |
 | Weiß | GPIO 21 | OLED SDA | Display-Daten |
@@ -377,7 +378,7 @@ Wenn "nan" (not a number) angezeigt wird:
 1. SSR anschließen (nur Eingangsseite: GPIO 4 und GND)
 2. **Noch keine 230V an der Ausgangsseite!**
 3. Im Seriellen Monitor sollte stehen: `relayHeater: 0` (aus)
-4. Wenn der Server sagt "Heizung an", sollte stehen: `relayHeater: 1` (an)
+4. Im AUTO-Modus schaltet der ESP32 selbstständig (z.B. Heizung an bei Kaelte). Im MANUAL-Modus uebernimmt der ESP Befehle vom Server/CYD.
 5. Am SSR-Eingang kannst du mit dem Multimeter messen: ca. 3.3V = an, 0V = aus
 
 ### 8.4 Erst dann 230V
