@@ -19,7 +19,7 @@ Sensor-Kasten ESP32 (ESP32 OLED-0.96 V3.0)
               WLAN
 
 Strom-Kasten ESP32
-  └─ 4x Kleinspannungs-Steuersignal über ULN2803A
+  └─ 4x Kleinspannungs-Steuersignal direkt zu den SSR-Eingängen
       ├─ SSR1 Licht
       ├─ SSR2 Umluft links + rechts
       ├─ SSR3 Abluft
@@ -200,23 +200,20 @@ Der Stromkasten-ESP32 schaltet ausschließlich die Kleinspannungs-Eingänge der 
 | GPIO19 | SSR3 Abluft |
 | GPIO23 | SSR4 Heizstrahler |
 
-Da aktuelle FOTEK-SSR-10DA-Daten 4–32 V Eingangsspannung angeben, werden die SSR-Eingänge **nicht direkt aus 3.3-V-GPIOs** gespeist.
+Die vorhandenen FOTEK SSR-10DA sind am Eingang mit **3–32 VDC** beschriftet. Damit liegt der 3.3-V-HIGH-Pegel des ESP32 innerhalb der angegebenen Eingangsspannung und es ist **keine zusätzliche ULN2803A-Treiberstufe erforderlich**.
 
-### ULN2803A-Treiber
+### Direkte SSR-Ansteuerung
 
-| ESP32 | ULN2803A Eingang | ULN2803A Ausgang | SSR |
-|---|---:|---:|---|
-| GPIO17 | Pin 1 / IN1 | Pin 18 / OUT1 | SSR1 Minus |
-| GPIO18 | Pin 2 / IN2 | Pin 17 / OUT2 | SSR2 Minus |
-| GPIO19 | Pin 3 / IN3 | Pin 16 / OUT3 | SSR3 Minus |
-| GPIO23 | Pin 4 / IN4 | Pin 15 / OUT4 | SSR4 Minus |
+| ESP32 | SSR-Eingang |
+|---|---|
+| GPIO17 | SSR1 INPUT + (Licht) |
+| GPIO18 | SSR2 INPUT + (Umluft) |
+| GPIO19 | SSR3 INPUT + (Abluft) |
+| GPIO23 | SSR4 INPUT + (Heizstrahler) |
 
 Weitere Verbindungen:
 
-- ULN2803A Pin 9 -> GND
-- SSR1–SSR4 Plus auf 5 V Kleinspannung
-- ESP32 GND und ULN2803A GND gemeinsam
-- ULN2803A Pin 10 / COM bleibt für diese SSR-Eingänge unbeschaltet
+- jeweiliger SSR INPUT - -> ESP32 GND
 - je GPIO 17/18/19/23 ein 10-kOhm-Pulldown nach GND, damit die SSR beim ESP32-Reset sicher aus bleiben
 
 Logik: GPIO HIGH -> SSR EIN.
@@ -265,7 +262,7 @@ Erforderlich sind insbesondere:
 |---|---|
 | Sensor-ESP Firmware | 3x DHT22, 2x DS18B20, ADS1115, PH4502C, CQRobot, separater BH1750-I2C-Bus |
 | Sensor-ESP Firmware | keine lokalen SSR-GPIOs mehr; berechnet Sollzustände und sendet sie über WLAN |
-| Strom-ESP Firmware | neuer Aktor-Knoten für vier SSR-Kanäle + Kommunikations-Watchdog/Failsafe |
+| Strom-ESP Firmware | neuer Aktor-Knoten für vier direkt angesteuerte SSR-Kanäle + Kommunikations-Watchdog/Failsafe |
 | CYD | PUMP-Kanal entfernen und durch LIGHT ersetzen |
 | Telemetrie | zusätzliche Sensorfelder + Licht-Relaiszustand; Wasserpumpe nicht als schaltbarer Kanal |
 | Server | SQLite durch PostgreSQL ersetzen |
