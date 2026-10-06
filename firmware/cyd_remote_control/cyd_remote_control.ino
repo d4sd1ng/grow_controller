@@ -1,10 +1,10 @@
 /**
  * CYD als 3-Tafel-Fernbedienung (Landscape):
  *  Links: Relais-Touch
- *  Mitte: alle Messwerte + Benachrichtigungen (Alert-Liste vom Server)
- *  Rechts: Kurven aus GET /api/v1/telemetry/series (SQLite-Historie), sonst Fallback Ringpuffer
+ *  Mitte: Live-Messwerte direkt vom Sensor-ESP + Benachrichtigungen vom Server
+ *  Rechts: Kurven aus GET /api/v1/telemetry/series (Server-Historie), sonst Fallback Ringpuffer
  *
- * Telegram ist am Server stumm — Alerts kommen über GET /api/v1/mobile/summary.
+ * Live/Steuerung laufen direkt Sensor-ESP <-> CYD; Historie/Alerts kommen vom Server.
  *
  * Libs: TFT_eSPI, XPT2046_Touchscreen, ArduinoJson v6
  */
@@ -73,15 +73,15 @@ unsigned long lastTouch = 0;
 
 struct RemoteState {
   char mode[12];
-  bool heat, pump, circ, exh;
+  bool light, heat, circ, exh;
   bool haveReading;
-  float tempC, rh, ec, ph, waterC;
+  float tempC, rh, ec, ph, tdsPpm, waterC;
   bool haveWater;
   char alertLines[5][72];
   uint8_t nAlerts;
 } state;
 
-enum RelaySlot { REL_HEAT = 0, REL_PUMP = 1, REL_CIRC = 2, REL_EXH = 3 };
+enum RelaySlot { REL_LIGHT = 0, REL_HEAT = 1, REL_CIRC = 2, REL_EXH = 3 };
 
 struct RelayBtn {
   const char *label;
@@ -117,17 +117,36 @@ static void layoutButtons() {
   }
 }
 
+static bool resolveSensor() {
+  IPAddress ip = MDNS.queryHost("grow-sensor", 1500);
+  if (ip == IPAddress(0, 0, 0, 0))
+    return false;
+  sensorIp = ip;
+  return true;
+}
+
+static bool sensorHttpBegin(HTTPClient &http, const char *path) {
+  if (sensorIp == IPAddress(0, 0, 0, 0) && !resolveSensor())
+    return false;
+  String url = String("http://") + sensorIp.toString() + ":" +
+               String((unsigned)SENSOR_HTTP_PORT) + path;
+  return http.begin(url);
+}
+
 bool httpPostJson(const char *path, const String &json) {
   if (WiFi.status() != WL_CONNECTED)
     return false;
   HTTPClient http;
-  if (!growHttpBegin(http, path))
+  http.setTimeout(2500);
+  if (!sensorHttpBegin(http, path))
     return false;
   http.addHeader("Content-Type", "application/json");
   if (strlen(TELEMETRY_API_KEY) > 0)
     http.addHeader("X-Telemetry-Key", TELEMETRY_API_KEY);
   int code = http.POST(json);
   http.end();
+  if (code < 0)
+    sensorIp = IPAddress(0, 0, 0, 0);
   return code == 200;
 }
 
@@ -151,7 +170,7 @@ bool fetchSummary() {
   if (WiFi.status() != WL_CONNECTED)
     return false;
   HTTPClient http;
-  if (!growHttpBegin(http, SUMMARY_PATH)) {
+  http.setTimeout(2500);\n  if (!sensorHttpBegin(http, SUMMARY_PATH)) {
     return false;
   }
   if (strlen(TELEMETRY_API_KEY) > 0)
@@ -174,8 +193,8 @@ bool fetchSummary() {
     snprintf(state.mode, sizeof(state.mode), "%s", m ? m : "?");
   }
   JsonObject t = c["targets"];
+  state.light = t["light"] | false;
   state.heat = t["heater"] | false;
-  state.pump = (t["pump"] | false) || (t["water_pump"] | false);
   state.circ = t["circulation_vent"] | false;
   state.exh = t["exhaust_vent"] | false;
 
@@ -187,14 +206,39 @@ bool fetchSummary() {
     state.rh = r["humidity"] | 0.0f;
     state.ec = r["ec"] | 0.0f;
     state.ph = r["ph"] | 0.0f;
-    if (r.containsKey("water_temperature")) {
-      state.waterC = r["water_temperature"] | 0.0f;
+    state.tdsPpm = r["tds_ppm"] | 0.0f;
+    JsonVariant water = r["water_temperature"];
+    if (!water.isNull()) {
+      state.waterC = water.as<float>();
       state.haveWater = true;
     }
     float vpd = computeVpd(state.tempC, state.rh);
     /* nur bei echten Messungen Historie füllen */
     pushHistorySample(state.tempC, state.rh, vpd);
   }
+
+  return true;
+}
+
+bool fetchAlertsFromServer() {
+  if (WiFi.status() != WL_CONNECTED)
+    return false;
+  HTTPClient http;
+  if (!growHttpBegin(http, "/api/v1/alerts/recent?limit=5"))
+    return false;
+  if (strlen(TELEMETRY_API_KEY) > 0)
+    http.addHeader("X-Telemetry-Key", TELEMETRY_API_KEY);
+  int code = http.GET();
+  if (code != 200) {
+    http.end();
+    return false;
+  }
+  String payload = http.getString();
+  http.end();
+
+  StaticJsonDocument<2048> doc;
+  if (deserializeJson(doc, payload) || !doc["ok"].as<bool>())
+    return false;
 
   state.nAlerts = 0;
   JsonArray al = doc["alerts"].as<JsonArray>();
@@ -206,7 +250,6 @@ bool fetchSummary() {
              "%s: %s", s ? s : "?", m ? m : "?");
     state.nAlerts++;
   }
-
   return true;
 }
 
@@ -284,8 +327,8 @@ static void drawLeftPanel() {
   tft.fillRect(0, HDR_H, X_LEFT_END, tft.height() - HDR_H, 0x2104);
   for (int i = 0; i < 4; i++)
     drawRelayBtn(buttons[i],
-                 (buttons[i].slot == REL_HEAT)   ? state.heat
-                 : (buttons[i].slot == REL_PUMP) ? state.pump
+                 (buttons[i].slot == REL_LIGHT)  ? state.light
+                 : (buttons[i].slot == REL_HEAT) ? state.heat
                  : (buttons[i].slot == REL_CIRC) ? state.circ
                                                  : state.exh);
 }
@@ -305,7 +348,10 @@ static void drawCenterPanel() {
     snprintf(ln, sizeof(ln), "T %.1f C   rH %.0f%%", state.tempC, state.rh);
     tft.drawString(ln, x0, y);
     y += 12;
-    snprintf(ln, sizeof(ln), "EC %.2f   pH %.2f", state.ec, state.ph);
+    if (state.tdsPpm > 0.0f)
+      snprintf(ln, sizeof(ln), "TDS %.0f  pH %.2f", state.tdsPpm, state.ph);
+    else
+      snprintf(ln, sizeof(ln), "EC %.2f   pH %.2f", state.ec, state.ph);
     tft.drawString(ln, x0, y);
     y += 12;
     snprintf(ln, sizeof(ln), "VPD %.2f kPa", computeVpd(state.tempC, state.rh));
@@ -434,10 +480,10 @@ bool readTouchPixel(int *outX, int *outY) {
 
 bool relayState(RelaySlot s) {
   switch (s) {
+    case REL_LIGHT:
+      return state.light;
     case REL_HEAT:
       return state.heat;
-    case REL_PUMP:
-      return state.pump;
     case REL_CIRC:
       return state.circ;
     case REL_EXH:
@@ -450,13 +496,13 @@ void toggleRelayPost(RelaySlot s) {
   const char *key = nullptr;
   bool newVal = !relayState(s);
   switch (s) {
+    case REL_LIGHT:
+      key = "light";
+      state.light = newVal;
+      break;
     case REL_HEAT:
       key = "heater";
       state.heat = newVal;
-      break;
-    case REL_PUMP:
-      key = "water_pump";
-      state.pump = newVal;
       break;
     case REL_CIRC:
       key = "circulation_vent";
@@ -496,7 +542,10 @@ void setup() {
   tft.drawString("WiFi...", tft.width() / 2, tft.height() / 2);
   while (WiFi.status() != WL_CONNECTED)
     delay(300);
+  MDNS.begin("grow-cyd");
+  resolveSensor();
   fetchSummary();
+  fetchAlertsFromServer();
   fetchSeriesFromServer();
   redrawAll();
 }
@@ -508,6 +557,7 @@ void loop() {
   if (now - lastPoll >= POLL_MS) {
     lastPoll = now;
     needRedraw |= fetchSummary();
+    fetchAlertsFromServer();
   }
   if (now - lastSeriesPoll >= SERIES_POLL_MS) {
     lastSeriesPoll = now;
