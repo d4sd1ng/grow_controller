@@ -1,6 +1,6 @@
 /**
  * Portable Cheap Yellow Display mit LVGL v8:
- * Zentrale Mobilanzeige gegen den Server.
+ * Mobile Anzeige/Steuerung direkt gegen den Sensor-ESP; Server bleibt fuer Historie/Alerts.
  *
  * GET /api/v1/mobile/summary → reading, control.targets, alerts
  * Relais umschalten: POST /api/v1/control/targets
@@ -74,18 +74,34 @@ static lv_obj_t *lbl_alert;
 static lv_obj_t *lbl_wifi;
 
 static lv_obj_t *btn_heater;
-static lv_obj_t *btn_pump;
+static lv_obj_t *btn_light;
 static lv_obj_t *btn_circ;
 static lv_obj_t *btn_exh;
 
 static bool relay_heater = false;
-static bool relay_pump = false;
+static bool relay_light = false;
 static bool relay_circ = false;
 static bool relay_exh = false;
 
 unsigned long lastFetch = 0;
 unsigned long lastWifiReconnect = 0;
 const unsigned long WIFI_RECONNECT_MS = 5000;
+
+static bool resolveSensor() {
+  IPAddress ip = MDNS.queryHost("grow-sensor", 1500);
+  if (ip == IPAddress(0, 0, 0, 0))
+    return false;
+  sensorIp = ip;
+  return true;
+}
+
+static bool sensorHttpBegin(HTTPClient &http, const char *path) {
+  if (sensorIp == IPAddress(0, 0, 0, 0) && !resolveSensor())
+    return false;
+  String url = String("http://") + sensorIp.toString() + ":" +
+               String((unsigned)SENSOR_HTTP_PORT) + path;
+  return http.begin(url);
+}
 
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
   uint32_t w = area->x2 - area->x1 + 1;
@@ -109,8 +125,8 @@ static void btnToggleRelay(lv_event_t *e) {
   lv_obj_t *btn = lv_event_get_target(e);
   const char *key = (const char *)lv_obj_get_user_data(btn);
   bool current = false;
-  if (strcmp(key, "heater") == 0) current = relay_heater;
-  else if (strcmp(key, "pump") == 0) current = relay_pump;
+  if (strcmp(key, "light") == 0) current = relay_light;
+  else if (strcmp(key, "heater") == 0) current = relay_heater;
   else if (strcmp(key, "circulation_vent") == 0) current = relay_circ;
   else if (strcmp(key, "exhaust_vent") == 0) current = relay_exh;
   else return;
@@ -138,7 +154,7 @@ void my_touchpad_read(lv_indev_drv_t *indev, lv_indev_data_t *data) {
 bool httpPostJson(const char *path, const String &jsonBody) {
   HTTPClient http;
   http.setTimeout(5000);
-  if (!growHttpBegin(http, path))
+  if (!sensorHttpBegin(http, path))
     return false;
   http.addHeader("Content-Type", "application/json");
   if (strlen(TELEMETRY_API_KEY) > 0)
@@ -157,10 +173,10 @@ void exampleToggleHeater(bool on) {
 }
 
 void updateLabels(const char *mode, float t, float rh, float ec, float ph,
-                  bool heat, bool pump, bool circ, bool exh,
+                  bool light, bool heat, bool circ, bool exh,
                   const char *alert, const char *alertSev) {
+  relay_light = light;
   relay_heater = heat;
-  relay_pump = pump;
   relay_circ = circ;
   relay_exh = exh;
 
@@ -168,9 +184,9 @@ void updateLabels(const char *mode, float t, float rh, float ec, float ph,
   lv_label_set_text_fmt(lbl_temp, "Temperatur: %.1f C", t);
   lv_label_set_text_fmt(lbl_hum, "Luftfeuchte: %.0f %%", rh);
   lv_label_set_text_fmt(lbl_ecph, "EC %.2f | pH %.1f", ec, ph);
-  lv_label_set_text_fmt(lbl_relay, "H:%s P:%s C:%s E:%s",
+  lv_label_set_text_fmt(lbl_relay, "L:%s H:%s C:%s E:%s",
+                        light ? "ON" : "off",
                         heat ? "ON" : "off",
-                        pump ? "ON" : "off",
                         circ ? "ON" : "off",
                         exh ? "ON" : "off");
   if (alert && strlen(alert) > 0) {
@@ -181,15 +197,16 @@ void updateLabels(const char *mode, float t, float rh, float ec, float ph,
     lv_obj_set_style_text_color(lbl_alert, lv_color_hex(0x8D79), 0);
   }
 
+  setBtnState(btn_light, light);
   setBtnState(btn_heater, heat);
-  setBtnState(btn_pump, pump);
   setBtnState(btn_circ, circ);
   setBtnState(btn_exh, exh);
 }
 
 void fetchSummaryAndUpdate() {
   HTTPClient http;
-  if (!growHttpBegin(http, SUMMARY_PATH)) {
+  http.setTimeout(2500);
+  if (!sensorHttpBegin(http, SUMMARY_PATH)) {
     lv_label_set_text_static(lbl_wifi, "HTTP-Fehler");
     return;
   }
@@ -223,25 +240,19 @@ void fetchSummaryAndUpdate() {
     ph = r["ph"] | 0.0f;
   }
 
-  bool heat = false, pump = false, circ = false, exh = false;
+  bool light = false, heat = false, circ = false, exh = false;
   JsonObject targets = c["targets"];
   if (!targets.isNull()) {
+    light = targets["light"] | false;
     heat = targets["heater"] | false;
-    pump = (targets["pump"] | false) || (targets["water_pump"] | false);
     circ = targets["circulation_vent"] | false;
     exh = targets["exhaust_vent"] | false;
   }
 
   const char *alertMsg = nullptr;
   const char *alertSev = nullptr;
-  JsonArray alerts = doc["alerts"].as<JsonArray>();
-  if (alerts.size() > 0) {
-    JsonObject a0 = alerts[0];
-    alertMsg = a0["message"];
-    alertSev = a0["severity"];
-  }
 
-  updateLabels(mode, t, rh, ec, ph, heat, pump, circ, exh, alertMsg, alertSev);
+  updateLabels(mode, t, rh, ec, ph, light, heat, circ, exh, alertMsg, alertSev);
   lv_label_set_text_fmt(lbl_wifi, "WiFi OK | %s", WiFi.localIP().toString().c_str());
 }
 
@@ -297,21 +308,21 @@ void build_ui() {
   lv_obj_set_style_bg_opa(btn_cont, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btn_cont, 0, 0);
 
+  btn_light = lv_btn_create(btn_cont);
+  lv_obj_set_size(btn_light, 68, 34);
+  lv_obj_t *l = lv_label_create(btn_light);
+  lv_label_set_text_static(l, "LIGHT");
+  lv_obj_center(l);
+  lv_obj_set_user_data(btn_light, (void *)"light");
+  lv_obj_add_event_cb(btn_light, btnToggleRelay, LV_EVENT_CLICKED, NULL);
+
   btn_heater = lv_btn_create(btn_cont);
   lv_obj_set_size(btn_heater, 68, 34);
-  lv_obj_t *l = lv_label_create(btn_heater);
+  l = lv_label_create(btn_heater);
   lv_label_set_text_static(l, "HEAT");
   lv_obj_center(l);
   lv_obj_set_user_data(btn_heater, (void *)"heater");
   lv_obj_add_event_cb(btn_heater, btnToggleRelay, LV_EVENT_CLICKED, NULL);
-
-  btn_pump = lv_btn_create(btn_cont);
-  lv_obj_set_size(btn_pump, 68, 34);
-  l = lv_label_create(btn_pump);
-  lv_label_set_text_static(l, "PUMP");
-  lv_obj_center(l);
-  lv_obj_set_user_data(btn_pump, (void *)"pump");
-  lv_obj_add_event_cb(btn_pump, btnToggleRelay, LV_EVENT_CLICKED, NULL);
 
   btn_circ = lv_btn_create(btn_cont);
   lv_obj_set_size(btn_circ, 68, 34);
@@ -381,6 +392,12 @@ void loop() {
     lv_label_set_text_static(lbl_wifi, "WiFi verbinden...");
     delay(ms > 0 ? ms : 10);
     return;
+  }
+
+  static bool mdnsStarted = false;
+  if (!mdnsStarted) {
+    mdnsStarted = MDNS.begin("grow-cyd-lvgl");
+    if (mdnsStarted) resolveSensor();
   }
 
   unsigned long now = millis();
