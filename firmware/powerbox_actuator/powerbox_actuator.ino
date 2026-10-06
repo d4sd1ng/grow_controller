@@ -73,7 +73,7 @@ static void allOff() {
 
 static bool resolveSensor() {
   IPAddress ip = MDNS.queryHost("grow-sensor", 1500);
-  if (ip == INADDR_NONE || ip == IPAddress(0, 0, 0, 0)) return false;
+  if (ip == IPAddress(0, 0, 0, 0)) return false;
   sensorIp = ip;
   return true;
 }
