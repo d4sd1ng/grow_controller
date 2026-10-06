@@ -105,8 +105,8 @@ static void layoutButtons() {
   int bw = X_LEFT_END - 12;
   int bh = 44;
   int gap = 5;
-  const char *labels[] = {"HEAT", "PUMP", "CIRC", "EXH"};
-  RelaySlot slots[] = {REL_HEAT, REL_PUMP, REL_CIRC, REL_EXH};
+  const char *labels[] = {"LIGHT", "HEAT", "CIRC", "EXH"};
+  RelaySlot slots[] = {REL_LIGHT, REL_HEAT, REL_CIRC, REL_EXH};
   for (int i = 0; i < 4; i++) {
     buttons[i].label = labels[i];
     buttons[i].x = LX;
