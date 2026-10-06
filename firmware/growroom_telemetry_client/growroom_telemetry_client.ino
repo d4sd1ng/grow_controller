@@ -190,6 +190,16 @@ static float cqrobotTdsPpm(float inputV, float temperatureC) {
   return ppm < 0.0f ? 0.0f : ppm;
 }
 
+static void setJsonFloat(JsonObject obj, const char *key, float value) {
+  if (isnan(value)) obj[key] = nullptr;
+  else obj[key] = value;
+}
+
+static void setJsonFloat(JsonObject obj, const String &key, float value) {
+  if (isnan(value)) obj[key] = nullptr;
+  else obj[key] = value;
+}
+
 static bool localAuthorized() {
   if (strlen(TELEMETRY_API_KEY) == 0) return true;
   return localServer.hasHeader("X-Telemetry-Key") &&
@@ -257,7 +267,8 @@ static void readSensors() {
       : NAN;
 
   ds18b20.requestTemperatures();
-  sensors.dsCount = static_cast<uint8_t>(min(ds18b20.getDeviceCount(), 2));
+  const uint8_t foundDs = ds18b20.getDeviceCount();
+  sensors.dsCount = foundDs > 2 ? 2 : foundDs;
   sensors.ds1C = sensors.dsCount >= 1 ? ds18b20.getTempCByIndex(0) : NAN;
   sensors.ds2C = sensors.dsCount >= 2 ? ds18b20.getTempCByIndex(1) : NAN;
   if (sensors.ds1C == DEVICE_DISCONNECTED_C) sensors.ds1C = NAN;
@@ -345,21 +356,21 @@ static void handleSummary() {
     reading["air_temperature"] = nullptr;
     reading["humidity"] = nullptr;
   }
-  reading["vpd"] = isnan(sensors.vpd) ? nullptr : sensors.vpd;
-  reading["ph"] = isnan(sensors.ph) ? nullptr : sensors.ph;
-  reading["ph_voltage"] = isnan(sensors.phInputV) ? nullptr : sensors.phInputV;
+  setJsonFloat(reading, "vpd", sensors.vpd);
+  setJsonFloat(reading, "ph", sensors.ph);
+  setJsonFloat(reading, "ph_voltage", sensors.phInputV);
   reading["ec"] = nullptr;
-  reading["tds_ppm"] = isnan(sensors.tdsPpm) ? nullptr : sensors.tdsPpm;
-  reading["tds_voltage"] = isnan(sensors.tdsInputV) ? nullptr : sensors.tdsInputV;
+  setJsonFloat(reading, "tds_ppm", sensors.tdsPpm);
+  setJsonFloat(reading, "tds_voltage", sensors.tdsInputV);
   reading["light_level"] = sensors.lux;
-  reading["ds18b20_1_temperature"] = isnan(sensors.ds1C) ? nullptr : sensors.ds1C;
-  reading["ds18b20_2_temperature"] = isnan(sensors.ds2C) ? nullptr : sensors.ds2C;
+  setJsonFloat(reading, "ds18b20_1_temperature", sensors.ds1C);
+  setJsonFloat(reading, "ds18b20_2_temperature", sensors.ds2C);
   reading["water_temperature"] = nullptr;
 
   for (int i = 0; i < 3; ++i) {
     String prefix = String("dht") + String(i + 1) + "_";
-    reading[prefix + "temperature"] = sensors.dht[i].ok ? sensors.dht[i].tempC : nullptr;
-    reading[prefix + "humidity"] = sensors.dht[i].ok ? sensors.dht[i].rh : nullptr;
+    setJsonFloat(reading, prefix + "temperature", sensors.dht[i].tempC);
+    setJsonFloat(reading, prefix + "humidity", sensors.dht[i].rh);
   }
 
   JsonObject power = doc.createNestedObject("power_node");
@@ -477,33 +488,34 @@ static bool sendTelemetry() {
   if (WiFi.status() != WL_CONNECTED) return false;
 
   DynamicJsonDocument doc(4096);
+  JsonObject root = doc.to<JsonObject>();
 
-  doc["air_temperature"] = sensors.dht[0].ok ? sensors.dht[0].tempC : nullptr;
-  doc["humidity"] = sensors.dht[0].ok ? sensors.dht[0].rh : nullptr;
-  doc["water_temperature"] = nullptr;
-  doc["case_temperature"] = nullptr;
-  doc["light_level"] = sensors.lux;
-  doc["ec"] = nullptr;
-  doc["ph"] = isnan(sensors.ph) ? nullptr : sensors.ph;
+  setJsonFloat(root, "air_temperature", sensors.dht[0].tempC);
+  setJsonFloat(root, "humidity", sensors.dht[0].rh);
+  root["water_temperature"] = nullptr;
+  root["case_temperature"] = nullptr;
+  root["light_level"] = sensors.lux;
+  root["ec"] = nullptr;
+  setJsonFloat(root, "ph", sensors.ph);
 
-  doc["vpd"] = isnan(sensors.vpd) ? nullptr : sensors.vpd;
-  doc["ph_voltage"] = isnan(sensors.phInputV) ? nullptr : sensors.phInputV;
-  doc["tds_voltage"] = isnan(sensors.tdsInputV) ? nullptr : sensors.tdsInputV;
-  doc["tds_ppm"] = isnan(sensors.tdsPpm) ? nullptr : sensors.tdsPpm;
-  doc["ds18b20_1_temperature"] = isnan(sensors.ds1C) ? nullptr : sensors.ds1C;
-  doc["ds18b20_2_temperature"] = isnan(sensors.ds2C) ? nullptr : sensors.ds2C;
+  setJsonFloat(root, "vpd", sensors.vpd);
+  setJsonFloat(root, "ph_voltage", sensors.phInputV);
+  setJsonFloat(root, "tds_voltage", sensors.tdsInputV);
+  setJsonFloat(root, "tds_ppm", sensors.tdsPpm);
+  setJsonFloat(root, "ds18b20_1_temperature", sensors.ds1C);
+  setJsonFloat(root, "ds18b20_2_temperature", sensors.ds2C);
 
   for (int i = 0; i < 3; ++i) {
     String prefix = String("dht") + String(i + 1) + "_";
-    doc[prefix + "temperature"] = sensors.dht[i].ok ? sensors.dht[i].tempC : nullptr;
-    doc[prefix + "humidity"] = sensors.dht[i].ok ? sensors.dht[i].rh : nullptr;
+    setJsonFloat(root, prefix + "temperature", sensors.dht[i].tempC);
+    setJsonFloat(root, prefix + "humidity", sensors.dht[i].rh);
   }
 
   const ActuatorState &reported = powerOnline() ? powerActual : targets;
-  JsonObject relays = doc.createNestedObject("relays");
+  JsonObject relays = root.createNestedObject("relays");
   writeActuators(relays, reported);
 
-  JsonObject dev = doc.createNestedObject("device_info");
+  JsonObject dev = root.createNestedObject("device_info");
   dev["device_id"] = "grow_sensor_01";
   dev["firmware_version"] = "4.0.0-hw-v2";
   dev["control_mode"] = controlMode;
