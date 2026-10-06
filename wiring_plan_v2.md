@@ -220,7 +220,38 @@ Logik: GPIO HIGH -> SSR EIN.
 
 ---
 
-## 10. Kabelplanung
+## 10. 230-V-Seite — Funktionsblock
+
+Die Netzseite wird im Plan nur als **Funktionsblock** dokumentiert, nicht als Klemmen-für-Klemmen-Anleitung.
+
+Es gibt **eine gemeinsame 230-V-Zuleitung zum Leistungskasten / SSR-Block**. Von dort werden die vier geschalteten Lastkanäle versorgt:
+
+| Kanal | Last |
+|---|---|
+| SSR1 | Beleuchtung |
+| SSR2 | beide Umluftventilatoren gemeinsam |
+| SSR3 | Abluftventilator |
+| SSR4 | Heizstrahler |
+
+Die Wasserpumpe ist **kein SSR-Kanal** und bleibt dauerhaft versorgt.
+
+```text
+230-V-Zuleitung
+      |
+      +---- geschützter Verteilpunkt
+              |
+              +---- SSR1 ---- Beleuchtung
+              +---- SSR2 ---- Umluft links + rechts
+              +---- SSR3 ---- Abluft
+              +---- SSR4 ---- Heizstrahler
+              |
+              +---- Dauerzweig ---- Wasserpumpe
+```
+
+Für die Auslegung der gemeinsamen Zuleitung und der vorgeschalteten Schutzorgane ist die **maximal gleichzeitig auftretende Gesamtlast** maßgeblich. Schutzleiter- und Netzspannungsführung bleiben räumlich von der Kleinspannungs-/Sensorsignalseite getrennt.
+
+
+## 11. Kabelplanung
 
 | Strecke | Planlänge |
 |---|---:|
@@ -237,7 +268,7 @@ Die originalen pH-/TDS-Sondenleitungen nicht verlängern, solange es nicht zwing
 
 ---
 
-## 11. Sensorpositionen
+## 12. Sensorpositionen
 
 | Sensor | Position |
 |---|---|
@@ -252,7 +283,7 @@ Die originalen pH-/TDS-Sondenleitungen nicht verlängern, solange es nicht zwing
 
 ---
 
-## 12. Firmware-Folgen dieses Wiringplans
+## 13. Firmware-Folgen dieses Wiringplans
 
 Der aktuelle Repository-Stand ist noch **nicht** kompatibel mit diesem Plan.
 
