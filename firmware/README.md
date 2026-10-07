@@ -92,10 +92,13 @@ Die Wasserpumpe wird nicht gesteuert.
 
 Serial Monitor: 115200 Baud.
 
-- `7` = pH-7-Punkt mitteln
-- `4` = pH-4-Punkt mitteln
-- `s` = Kalibrierkonstanten ausgeben
-- `r` = Punkte löschen
+- `7` = stabilen pH-7-Punkt mitteln und dauerhaft im ESP32-NVS speichern
+- `4` = stabilen pH-4-Punkt mitteln und dauerhaft im ESP32-NVS speichern
+- `s` = Status und direkt übernehmbare `PH_CAL_VOLT_4`/`PH_CAL_VOLT_7`-Konstanten ausgeben
+- `r` = gespeicherte Punkte aus RAM und NVS löschen
+- `h` = Hilfe
+
+Messungen mit mehr als 10 mV Standardabweichung werden verworfen und nicht gespeichert. Nach einem Neustart lädt das Servicegerät die zuletzt gespeicherten Kalibrierpunkte automatisch wieder.
 
 ## Vor produktivem Flashen
 
