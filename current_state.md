@@ -83,7 +83,7 @@ Mit dem aktuellen 10k/20k-Spannungsteiler sind in der Sensor-Firmware vorläufig
 - pH 7: ca. 1.677193 V am ADS1115
 - pH 4: ca. 2.028070 V am ADS1115
 
-Das Kalibrier-Tool überprüft diese Werte später an der fertig aufgebauten Messkette.
+Das Kalibrier-Servicegerät ist jetzt für den Flash vorbereitet: stabile pH-7-/pH-4-Punkte werden nur unterhalb der definierten Streuungsgrenze übernommen, dauerhaft im ESP32-NVS gespeichert und nach Neustart wieder geladen. Die Serial-Ausgabe liefert direkt die beiden `PH_CAL_VOLT_4`/`PH_CAL_VOLT_7`-Konstanten für die Sensor-Firmware. Offen bleibt nur die physische Kalibrierung mit den realen Pufferlösungen und der anschließende Kompilier-/Flash-Test.
 
 ## Server-Zwischenstand vor PostgreSQL
 
