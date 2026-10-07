@@ -33,7 +33,8 @@ Cheap Yellow Display (CYD)
               WLAN
 
 Homeserver / Raspberry Pi
-  └─ FastAPI + PostgreSQL + Dashboard / Historie
+  └─ FastAPI + Dashboard / Historie
+      └─ aktuell SQLite, danach vorhandener PostgreSQL-Container
 ```
 
 Die Wasserpumpe läuft dauerhaft und erhält **keinen SSR-Kanal und keinen ESP32-GPIO**.
