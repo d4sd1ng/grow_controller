@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 # Relais-Keys wie vom Growroom-Sketch / Hauptrechner erwartet
-_DEFAULT_RELAYS = ("heater", "circulation_vent", "exhaust_vent", "water_pump", "light")
+_DEFAULT_RELAYS = ("light", "heater", "circulation_vent", "exhaust_vent")
 
 
 class ESP32Controller:
