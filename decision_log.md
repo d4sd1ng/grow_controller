@@ -5,6 +5,35 @@ Jeder Eintrag: Datum, Entscheidung, Kontext, Konsequenz.
 
 ---
 
+## 2026-10-07 — Hardware V2
+
+### D10 — Sensor- und Stromkasten-ESP trennen
+- **Entscheidung**: Der Sensor-ESP liest Sensorik und hält die Steuerzustände; ein eigener Stromkasten-ESP schaltet die vier SSR-Eingänge.
+- **Konsequenz**: Sensor-ESP hat keine lokalen SSR-GPIOs mehr. Stromkasten-ESP verwendet GPIO17/18/19/23 für Licht/Umluft/Abluft/Heizung.
+
+### D11 — Wasserpumpe ist kein Aktor
+- **Entscheidung**: Die Wasserpumpe läuft dauerhaft.
+- **Konsequenz**: Keine Pumpensteuerung in Firmware, CYD, Dashboard, Telemetrie-Control oder Zeitplänen. Der vierte Aktorkanal ist `light`.
+
+### D12 — ESP-Echtzeitkommunikation unabhängig vom Server
+- **Entscheidung**: Stromkasten-ESP und CYD sprechen im LAN direkt mit der lokalen API des Sensor-ESP.
+- **Konsequenz**: Der Raspberry Pi ist nicht für die Echtzeit-Regelkette erforderlich. FastAPI/Dashboard können Steuerbefehle an den Sensor-ESP weiterreichen, wenn `IOT_SENSOR_HOST` gesetzt ist.
+
+### D13 — Neue Sensor-Messkette
+- **Entscheidung**: 3x DHT22, 2x DS18B20, ADS1115, PH4502C, CQRobot TDS und BH1750 gemäß `wiring_plan_v2.md`.
+- **Konsequenz**: DHT GPIO25/26/27, 1-Wire GPIO32, ADS/OLED GPIO21/22, BH1750 GPIO13/14.
+
+### D14 — pH-Kalibrierung
+- **Entscheidung**: Historische Messgerade `pH = -5.7 × U_PO + 21.34` bleibt als Startkalibrierung erhalten; die fertige ADS1115-Messkette wird mit einem separaten Service-ESP erneut vermessen.
+- **Konsequenz**: `firmware/ph_calibration_tool` bleibt dauerhaft auf einem Ersatz-ESP.
+
+### D15 — PostgreSQL separat
+- **Entscheidung**: Hardware-V2, Firmware, Control-Modell, Dashboard und Tests werden zuerst konsistent fertiggestellt. PostgreSQL ist ein eigener anschließender Umbau.
+- **Konsequenz**: Der aktuelle Zwischenstand nutzt noch SQLite; die Produktionsmigration auf den vorhandenen PostgreSQL-Container bleibt offen.
+
+> Die älteren Entscheidungen weiter unten dokumentieren den damaligen Projektstand. Soweit sie D10–D15 widersprechen, sind sie durch diese Hardware-V2-Entscheidungen ersetzt.
+
+
 ## 2026-04-25 (diese Session)
 
 ### D01 — Keine Änderungen ohne Freigabe
