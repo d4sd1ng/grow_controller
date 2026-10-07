@@ -288,7 +288,7 @@ def prepare_data(historical_data):
     """Prepare DataFrame for ML training."""
     X = historical_data[['air_temperature', 'humidity', 'water_temperature', 'ec', 'ph']]
     
-    relay_columns = ['heater', 'circulation_vent', 'exhaust_vent', 'water_pump']
+    relay_columns = ['light', 'heater', 'circulation_vent', 'exhaust_vent']
     available_relay_columns = [col for col in relay_columns if col in historical_data.columns]
     
     if available_relay_columns:
