@@ -87,7 +87,7 @@ Das Kalibrier-Tool überprüft diese Werte später an der fertig aufgebauten Mes
 
 ## Server-Zwischenstand vor PostgreSQL
 
-Der Server bleibt bis zum nächsten Umbau SQLite-basiert. Das Daten-/Control-Modell ist bereits auf Hardware V2 umgestellt:
+Der Server bleibt bis zum nächsten Umbau SQLite-basiert. Wenn `IOT_SENSOR_HOST` gesetzt ist, leiten Dashboard und FastAPI MANUAL-/Modus-Befehle über die lokale Sensor-ESP-API weiter; ohne diese Konfiguration bleibt der Python-Simulator/Fallback aktiv. Das Daten-/Control-Modell ist bereits auf Hardware V2 umgestellt:
 
 - Aktoren: `light`, `heater`, `circulation_vent`, `exhaust_vent`
 - keine steuerbare Pumpe mehr;
