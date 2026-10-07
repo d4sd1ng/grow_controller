@@ -292,11 +292,12 @@ python export_firmware_secrets_from_env.py
 Erwartete Ausgabe:
 ```
 OK: E:\Documents\grow_controller\firmware\growroom_telemetry_client\device_secrets.h
+OK: E:\Documents\grow_controller\firmware\powerbox_actuator\device_secrets.h
 OK: E:\Documents\grow_controller\firmware\cyd_remote_control\device_secrets.h
 OK: E:\Documents\grow_controller\firmware\cyd_grow_display\device_secrets.h
 ```
 
-Dieser Befehl erstellt drei Dateien namens `device_secrets.h` — eine für jeden ESP32-Sketch. Diese Datei enthält:
+Dieser Befehl erstellt `device_secrets.h` für Sensor-ESP, Stromkasten-ESP und beide alternativen CYD-Sketchordner. Diese Datei enthält:
 - WLAN-Name und Passwort
 - Die Server-IP-Adresse
 - Den geheimen API-Key
@@ -347,7 +348,7 @@ curl http://localhost:8765/api/v1/health
 
 Erwartetes Ergebnis:
 ```json
-{"ok":true,"db":"connected","version":"2.0.0"}
+{"ok":true,"status":"healthy","database":"ok"}
 ```
 
 Wenn das kommt: Die API läuft!
@@ -426,22 +427,32 @@ Du siehst:
          ```
    - Werkzeuge → Board → Boardverwalter
    - Suche nach "ESP32" und installiere "ESP32 by Espressif Systems"
-3. **Library installieren**:
-   - Sketch → Bibliothek einbinden → Bibliotheken verwalten
-   - Suche nach "ArduinoJson"
-   - Installiere "ArduinoJson by Benoit Blanchon" (Version 6.x)
+3. **Libraries installieren**:
+   - ArduinoJson v6
+   - Adafruit ADS1X15
+   - Adafruit GFX
+   - Adafruit SSD1306
+   - DHT sensor library
+   - OneWire
+   - DallasTemperature
+   - für das CYD zusätzlich TFT_eSPI + XPT2046_Touchscreen; bei der LVGL-Variante außerdem LVGL v8
 
 > **Wichtig vor dem Hochladen:**
 > - `device_secrets.h` muss im Sketch-Ordner vorhanden sein (wurde in Schritt 5 generiert). Ohne diese Datei kompiliert der Sketch zwar, verwendet aber Dummy-Werte (`YOUR_SSID`, `192.168.1.50`) und kann sich nicht verbinden.
 > - `grow_http_client.h` muss ebenfalls im selben Ordner wie die `.ino`-Datei liegen.
 > - **Für das CYD-Display (`cyd_grow_display`)**: Die Bibliothek **TFT_eSPI** muss zusätzlich installiert und für das CYD-Board konfiguriert sein (Pin-Mapping in `User_Setup.h` oder `platformio.ini`). Siehe Header-Kommentar in `cyd_grow_display.ino`.
 
-### Sketch öffnen
+### Sketches
 
-1. Arduino IDE öffnen
-2. Datei → Öffnen
-3. Navigiere zu: `Documents\grow_controller\firmware\growroom_telemetry_client`
-4. Wähle `growroom_telemetry_client.ino`
+Für die reale Hardware werden mindestens diese Sketches verwendet:
+
+- `firmware/growroom_telemetry_client/growroom_telemetry_client.ino` → Sensor-ESP
+- `firmware/powerbox_actuator/powerbox_actuator.ino` → Stromkasten-ESP
+- **eine** CYD-Variante:
+  - `firmware/cyd_remote_control/cyd_remote_control.ino` oder
+  - `firmware/cyd_grow_display/cyd_grow_display.ino`
+
+`firmware/ph_calibration_tool/ph_calibration_tool.ino` bleibt auf einem Ersatz-ESP als Servicegerät.
 
 ### Board einstellen
 
@@ -455,14 +466,7 @@ Du siehst:
 3. Werkzeuge → Serieller Monitor öffnen
 4. Baudrate auf **115200** stellen (unten rechts)
 
-Du solltest sehen:
-```
-WiFi......
-Connected: 192.168.178.101
-POST telemetry -> 200
-```
-
-`POST telemetry -> 200` bedeutet: Der ESP32 hat erfolgreich Daten an deinen Server geschickt!
+Nach dem Flashen die seriellen Ausgaben prüfen. Der Sensor-ESP muss ADS1115/BH1750/DS18B20 erkennen und sich mit dem WLAN verbinden. Der Stromkasten-ESP muss den Sensor-ESP per WLAN auflösen und im Normalbetrieb regelmäßig Sollwerte erhalten.
 
 ---
 
