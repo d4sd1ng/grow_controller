@@ -1,9 +1,9 @@
 /**
  * Portable Cheap Yellow Display mit LVGL v8:
- * Mobile Anzeige/Steuerung direkt gegen den Sensor-ESP; Server bleibt fuer Historie/Alerts.
+ * Kompakte Anzeige/Steuerung direkt gegen den Sensor-ESP.
  *
- * GET /api/v1/mobile/summary → reading, control.targets, alerts
- * Relais umschalten: POST /api/v1/control/targets
+ * GET /api/local/summary -> reading + control.targets
+ * Relais umschalten: POST /api/local/control/targets
  *
  * Libs: lvgl (v8), TFT_eSPI, XPT2046_Touchscreen, ArduinoJson v6
  *
@@ -26,6 +26,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include <SPI.h>
 #include <TFT_eSPI.h>
@@ -46,8 +47,10 @@ const bool SERVER_TLS_INSECURE = false;
 
 #include "grow_http_client.h"
 
-const char *SUMMARY_PATH = "/api/v1/mobile/summary";
-const char *CONTROL_PATH = "/api/v1/control/targets";
+const char *SUMMARY_PATH = "/api/local/summary";
+const char *CONTROL_PATH = "/api/local/control/targets";
+const uint16_t SENSOR_HTTP_PORT = 8081;
+IPAddress sensorIp;
 const unsigned long POLL_MS = 3000;
 
 // Touch
@@ -172,7 +175,7 @@ void exampleToggleHeater(bool on) {
   httpPostJson(CONTROL_PATH, body);
 }
 
-void updateLabels(const char *mode, float t, float rh, float ec, float ph,
+void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
                   bool light, bool heat, bool circ, bool exh,
                   const char *alert, const char *alertSev) {
   relay_light = light;
@@ -183,7 +186,7 @@ void updateLabels(const char *mode, float t, float rh, float ec, float ph,
   lv_label_set_text_fmt(lbl_mode, "Modus: %s", mode ? mode : "?");
   lv_label_set_text_fmt(lbl_temp, "Temperatur: %.1f C", t);
   lv_label_set_text_fmt(lbl_hum, "Luftfeuchte: %.0f %%", rh);
-  lv_label_set_text_fmt(lbl_ecph, "EC %.2f | pH %.1f", ec, ph);
+  lv_label_set_text_fmt(lbl_ecph, "TDS %.0f | pH %.2f", tdsPpm, ph);
   lv_label_set_text_fmt(lbl_relay, "L:%s H:%s C:%s E:%s",
                         light ? "ON" : "off",
                         heat ? "ON" : "off",
@@ -231,12 +234,12 @@ void fetchSummaryAndUpdate() {
   JsonObject c = doc["control"];
   const char *mode = c["control_mode"];
 
-  float t = 0, rh = 0, ec = 0, ph = 0;
+  float t = 0, rh = 0, tdsPpm = 0, ph = 0;
   JsonObject r = doc["reading"];
   if (!r.isNull()) {
     t = r["air_temperature"] | 0.0f;
     rh = r["humidity"] | 0.0f;
-    ec = r["ec"] | 0.0f;
+    tdsPpm = r["tds_ppm"] | 0.0f;
     ph = r["ph"] | 0.0f;
   }
 
@@ -252,7 +255,7 @@ void fetchSummaryAndUpdate() {
   const char *alertMsg = nullptr;
   const char *alertSev = nullptr;
 
-  updateLabels(mode, t, rh, ec, ph, light, heat, circ, exh, alertMsg, alertSev);
+  updateLabels(mode, t, rh, tdsPpm, ph, light, heat, circ, exh, alertMsg, alertSev);
   lv_label_set_text_fmt(lbl_wifi, "WiFi OK | %s", WiFi.localIP().toString().c_str());
 }
 
@@ -287,7 +290,7 @@ void build_ui() {
 
   lbl_ecph = lv_label_create(cont);
   lv_obj_set_style_text_color(lbl_ecph, lv_color_hex(0xFFFFFF), 0);
-  lv_label_set_text_static(lbl_ecph, "EC -- | pH --");
+  lv_label_set_text_static(lbl_ecph, "TDS -- | pH --");
 
   lbl_relay = lv_label_create(cont);
   lv_obj_set_style_text_color(lbl_relay, lv_color_hex(0xB7FF), 0);
