@@ -26,7 +26,7 @@ STORE_COLUMNS = [
     "circulation_vent",
     "exhaust_vent",
     "heater",
-    "pump",
+    "light",
 ]
 
 _CREATE_SQL = """
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS readings (
     circulation_vent INTEGER NOT NULL,
     exhaust_vent INTEGER NOT NULL,
     heater INTEGER NOT NULL,
-    pump INTEGER NOT NULL,
+    light INTEGER NOT NULL,
     extras_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_readings_ts ON readings(ts);
@@ -54,10 +54,10 @@ CREATE TABLE IF NOT EXISTS app_control (
     heater INTEGER NOT NULL DEFAULT 0,
     circulation_vent INTEGER NOT NULL DEFAULT 0,
     exhaust_vent INTEGER NOT NULL DEFAULT 0,
-    pump INTEGER NOT NULL DEFAULT 0,
+    light INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT ''
 );
-INSERT OR IGNORE INTO app_control (id, control_mode, heater, circulation_vent, exhaust_vent, pump, updated_at)
+INSERT OR IGNORE INTO app_control (id, control_mode, heater, circulation_vent, exhaust_vent, light, updated_at)
 VALUES (1, 'auto', 0, 0, 0, 0, '');
 
 CREATE TABLE IF NOT EXISTS alerts_log (
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS alerts_log (
 CREATE INDEX IF NOT EXISTS idx_alerts_ts ON alerts_log(ts);
 """
 
-_RELAY_COLS = ("heater", "circulation_vent", "exhaust_vent", "pump")
+_RELAY_COLS = ("light", "heater", "circulation_vent", "exhaust_vent")
 
 _shared_production_store: TelemetryStore | None = None
 
@@ -127,6 +127,14 @@ class TelemetryStore:
     def _init_db(self) -> None:
         conn = self._get_conn()
         conn.executescript(_CREATE_SQL)
+
+        # Hardware-v2 migration for an existing SQLite DB. The legacy "pump"
+        # column may remain physically present, but is no longer read or written.
+        for table in ("readings", "app_control"):
+            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if "light" not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN light INTEGER NOT NULL DEFAULT 0")
+
         conn.commit()
 
     def ping(self) -> None:
@@ -151,7 +159,7 @@ class TelemetryStore:
             _bool_int(row.get("circulation_vent")),
             _bool_int(row.get("exhaust_vent")),
             _bool_int(row.get("heater")),
-            _bool_int(row.get("pump")),
+            _bool_int(row.get("light")),
             extras_json,
         )
         conn = self._get_conn()
@@ -159,7 +167,7 @@ class TelemetryStore:
             """INSERT INTO readings (
                 ts, air_temperature, water_temperature, case_temperature,
                 humidity, light_level, ec, ph,
-                circulation_vent, exhaust_vent, heater, pump, extras_json
+                circulation_vent, exhaust_vent, heater, light, extras_json
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             values,
         )
@@ -172,7 +180,7 @@ class TelemetryStore:
         cur = conn.execute(
             """SELECT ts, air_temperature, water_temperature, case_temperature,
                       humidity, light_level, ec, ph,
-                      circulation_vent, exhaust_vent, heater, pump, extras_json
+                      circulation_vent, exhaust_vent, heater, light, extras_json
                FROM readings ORDER BY id DESC LIMIT 1"""
         )
         row = cur.fetchone()
@@ -187,7 +195,7 @@ class TelemetryStore:
                 extras = {}
         else:
             extras = {}
-        for col in ("circulation_vent", "exhaust_vent", "heater", "pump"):
+        for col in ("light", "heater", "circulation_vent", "exhaust_vent"):
             d[col] = bool(d[col])
         ts = d.pop("ts")
         d["timestamp"] = ts if isinstance(ts, str) else _ts_iso(ts)
@@ -200,7 +208,7 @@ class TelemetryStore:
         df = pd.read_sql_query(
             """SELECT ts, air_temperature, water_temperature, case_temperature,
                       humidity, light_level, ec, ph,
-                      circulation_vent, exhaust_vent, heater, pump, extras_json
+                      circulation_vent, exhaust_vent, heater, light, extras_json
                FROM readings
                WHERE ts >= ? AND ts <= ?
                ORDER BY ts ASC""",
@@ -210,7 +218,7 @@ class TelemetryStore:
         )
         if df.empty:
             return df.set_index(pd.DatetimeIndex([], name="timestamp"))
-        for col in ("circulation_vent", "exhaust_vent", "heater", "pump"):
+        for col in ("light", "heater", "circulation_vent", "exhaust_vent"):
             df[col] = df[col].astype(bool)
         df = df.rename(columns={"ts": "timestamp"})
         df = df.set_index("timestamp")
@@ -245,7 +253,7 @@ class TelemetryStore:
                     _bool_int(rec.get("circulation_vent")),
                     _bool_int(rec.get("exhaust_vent")),
                     _bool_int(rec.get("heater")),
-                    _bool_int(rec.get("pump")),
+                    _bool_int(rec.get("light")),
                     None,
                 )
             )
@@ -253,7 +261,7 @@ class TelemetryStore:
             """INSERT INTO readings (
                 ts, air_temperature, water_temperature, case_temperature,
                 humidity, light_level, ec, ph,
-                circulation_vent, exhaust_vent, heater, pump, extras_json
+                circulation_vent, exhaust_vent, heater, light, extras_json
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             rows,
         )
@@ -266,7 +274,6 @@ class TelemetryStore:
             return {
                 "control_mode": "auto",
                 "targets": {k: False for k in _RELAY_COLS},
-                "water_pump": False,
                 "updated_at": _ts_iso(datetime.now()),
             }
         d = {k: row[k] for k in row.keys()}
@@ -274,10 +281,9 @@ class TelemetryStore:
         if mode not in ("auto", "manual"):
             mode = "auto"
         targets = {k: bool(d[k]) for k in _RELAY_COLS}
-        targets_out = {**targets, "water_pump": targets["pump"]}
         return {
             "control_mode": mode,
-            "targets": targets_out,
+            "targets": targets,
             "updated_at": d.get("updated_at") or _ts_iso(datetime.now()),
         }
 
@@ -296,44 +302,43 @@ class TelemetryStore:
     def set_control_targets_partial(self, updates: dict[str, Any], *, switch_to_manual: bool) -> None:
         mapped: dict[str, bool] = {}
         for k, v in updates.items():
-            key = "pump" if k == "water_pump" else k
-            if key not in _RELAY_COLS:
+            if k not in _RELAY_COLS:
                 continue
-            mapped[key] = bool(v)
+            mapped[k] = bool(v)
         if not mapped:
             return
         now = _ts_iso(datetime.now())
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT heater, circulation_vent, exhaust_vent, pump, control_mode FROM app_control WHERE id=1"
+            "SELECT light, heater, circulation_vent, exhaust_vent, control_mode FROM app_control WHERE id=1"
         ).fetchone()
         if row is None:
             return
-        h, c, e, p, cur_mode = int(row[0]), int(row[1]), int(row[2]), int(row[3]), row[4]
-        vals = {"heater": h, "circulation_vent": c, "exhaust_vent": e, "pump": p}
+        light, h, c, e, cur_mode = int(row[0]), int(row[1]), int(row[2]), int(row[3]), row[4]
+        vals = {"light": light, "heater": h, "circulation_vent": c, "exhaust_vent": e}
         vals.update({k: int(mapped[k]) for k in mapped})
         mode = "manual" if switch_to_manual else (cur_mode or "auto")
         conn.execute(
             """UPDATE app_control SET
-                control_mode = ?, heater = ?, circulation_vent = ?, exhaust_vent = ?, pump = ?, updated_at = ?
+                control_mode = ?, light = ?, heater = ?, circulation_vent = ?, exhaust_vent = ?, updated_at = ?
                 WHERE id = 1""",
-            (mode, vals["heater"], vals["circulation_vent"], vals["exhaust_vent"], vals["pump"], now),
+            (mode, vals["light"], vals["heater"], vals["circulation_vent"], vals["exhaust_vent"], now),
         )
         conn.commit()
 
     def sync_relay_targets_from_automation(self, snapshot: dict[str, bool]) -> None:
         """Write relay outputs into app_control only while mode is auto (dashboard automation)."""
         now = _ts_iso(datetime.now())
+        light = _bool_int(snapshot.get("light"))
         h = _bool_int(snapshot.get("heater"))
         c = _bool_int(snapshot.get("circulation_vent"))
         e = _bool_int(snapshot.get("exhaust_vent"))
-        p = _bool_int(snapshot.get("pump"))
         conn = self._get_conn()
         conn.execute(
             """UPDATE app_control
-               SET heater = ?, circulation_vent = ?, exhaust_vent = ?, pump = ?, updated_at = ?
+               SET light = ?, heater = ?, circulation_vent = ?, exhaust_vent = ?, updated_at = ?
                WHERE id = 1 AND control_mode = 'auto'""",
-            (h, c, e, p, now),
+            (light, h, c, e, now),
         )
         conn.commit()
 
