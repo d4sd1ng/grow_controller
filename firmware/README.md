@@ -1,49 +1,102 @@
-# ESP32-Firmware (Growroom + portables CYD)
+# ESP32-Firmware — Hardware V2
 
 ## Rollen
 
-| Gerät | Aufgabe |
-|-------|---------|
-| **Growroom-ESP** (fest, mit optionalem lokalem Display) | `GET /api/v1/control/state` → Relais am Hardware-GPIO. Sensoren messen; `POST /api/v1/telemetry` → Server/SQLite (Dashboard-Charts). Lokale Anzeige: z. B. dieselben Messwerte auf OLED/TFT oder wie im Sketch über **Serial**. |
-| **Cheap Yellow Display** (portable) | `cyd_remote_control`: **3 Tafeln** — links Relais, Mitte Werte + Alert-Liste, rechts Mini-Verläufe T/rH/VPD (Ringpuffer aus Polls). Alternativ: `cyd_grow_display` (kompakt). |
+| Sketch | Gerät | Aufgabe |
+|---|---|---|
+| `growroom_telemetry_client` | Sensor-ESP | Sensoren lesen, AUTO/MANUAL-Ziele halten, OLED, lokale API, Telemetrie |
+| `powerbox_actuator` | Stromkasten-ESP | vier SSR-Eingänge schalten, Sollwerte direkt vom Sensor-ESP holen, Failsafe |
+| `cyd_remote_control` | CYD | primäre 3-Panel-Fernbedienung; Live/Control direkt zum Sensor-ESP, Historie/Alerts vom Server |
+| `cyd_grow_display` | CYD | alternative kompakte LVGL-Oberfläche |
+| `ph_calibration_tool` | Ersatz-ESP | pH-7-/pH-4-Kalibrierung der ADS1115-Messkette |
 
-**Server** (`run_telemetry_api.py` + optional Streamlit): eine SQLite-Datei — `app_control` (Modus + Relais-Soll), `readings`, `alerts_log`.
+Es gibt nur **ein CYD**; `cyd_remote_control` und `cyd_grow_display` sind alternative Firmwarevarianten für dieses Gerät.
 
-- **Automatik**: Streamlit regelt Relais (wenn Tab läuft + Modus „auto“) und schreibt Soll in die DB.
-- **Manuell**: Soll kommt vom **CYD** oder Tastern im Dashboard; Growroom-ESP liest nur noch `control/state`.
+## Sensor-ESP lokale API
 
-## Endpoints (Header `X-Telemetry-Key` wenn `TELEMETRY_API_KEY` gesetzt)
+Port: `8081`
 
-- `POST /api/v1/telemetry` — Messwerte (+ optional `relays`)
-- `GET /api/v1/control/state` — `{ control_mode, targets }`
-- `POST /api/v1/control/targets` — Teilupdate Relais → Modus **manual**
-- `POST /api/v1/control/mode` — `{"mode":"auto"|"manual"}`
-- `GET /api/v1/mobile/summary` — Steuerung + letzte Messung + Alert-Liste
-- `GET /api/v1/telemetry/series` — Zeitreihe aus SQLite (`minutes`, `hours`, `max_points`) für CYD-/Web-Charts
-- `GET /api/v1/alerts/recent` — nur Meldungen
-- `POST /api/v1/alerts` — Gerät kann Fehler an den Server melden (`message`, `severity`, `source`)
+| Methode | Pfad | Zweck |
+|---|---|---|
+| GET | `/api/local/summary` | Livewerte, Modus, Ziele, Power-Node-Status |
+| GET | `/api/local/actuators` | Sollzustände für Stromkasten-ESP |
+| POST | `/api/local/control/targets` | Teilupdate LIGHT/HEAT/CIRC/EXH, setzt MANUAL |
+| POST | `/api/local/control/mode` | `auto` / `manual` |
+| POST | `/api/local/actuator-status` | Rückmeldung des Stromkasten-ESP |
 
-## Sensible Konfiguration
+Der Header `X-Telemetry-Key` wird verwendet, wenn `TELEMETRY_API_KEY` gesetzt ist.
 
-- **Nicht** WLAN-Passwort oder API-Key dauerhaft in den `.ino` im Repo pflegen.
-- Im Projektroot **`.env`** mit u. a. **`IOT_WIFI_SSID`**, **`IOT_WIFI_PASSWORD`**, **`IOT_TELEMETRY_SERVER_HOST`**, **`TELEMETRY_API_PORT`**, **`TELEMETRY_API_KEY`** (siehe `.env.example`).
-- **HTTPS** (VPS mit Reverse-Proxy): **`IOT_USE_HTTPS=1`**, optional **`IOT_TELEMETRY_SERVER_PORT=443`**, **`IOT_TLS_INSECURE=1`** für ESP ohne Zertifikatscheck (oder `0` + eigenes Root-CA im Code).
-- Dann: **`python export_firmware_secrets_from_env.py`** — schreibt **`device_secrets.h`** in jeden Sketch-Ordner (gitignored). HTTP(S) läuft über **`grow_http_client.h`**.
+## Bibliotheken
 
-## Arduino IDE
+### Sensor-ESP / pH-Tool
 
-Sketch-Ordner = Dateiname des `.ino`.
+- Adafruit ADS1X15
+- Adafruit GFX
+- Adafruit SSD1306
+- DHT sensor library
+- OneWire
+- DallasTemperature
+- ArduinoJson
+- ESP32 Arduino Core
 
-- **TFT_eSPI** + CYD-`User_Setup` (siehe [ESP32-Cheap-Yellow-Display](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)).
-- **cyd_remote_control**: zusätzlich **XPT2046_Touchscreen** (SPI-Touch). Die Konstanten `CAL_*` und ggf. XPT-Pins musst du einmal an dein Board anpassen (Kalibrier-Sketch aus dem CYD-Repo).
-- **ArduinoJson** v6.
+### CYD Remote
 
-### Noch mehr „Grafik“?
+- TFT_eSPI
+- XPT2046_Touchscreen
+- ArduinoJson
 
-Auf dem CYD geht mit **TFT_eSPI** schon einiges (Rundungen, Farben, „LED“-Punkte, Layout wie oben). Wer **mehr UI** will (Screens, Slider, Animationen): **LVGL** mit Display-Treiber — deutlich mehr Flash/RAM, dafür echte GUI-Bausteine. Für eine Fernbedienung reicht oft TFT_eSPI + Touch wie im Remote-Sketch.
+### CYD LVGL
+
+- LVGL v8
+- TFT_eSPI
+- XPT2046_Touchscreen
+- ArduinoJson
+
+### Stromkasten-ESP
+
+- ArduinoJson
+- ESP32 Arduino Core
+
+## Secrets
+
+Im Projektroot:
 
 ```bash
-python run_telemetry_api.py
+python export_firmware_secrets_from_env.py
 ```
 
-Firewall-Port **8765** (oder `TELEMETRY_API_PORT`) im LAN freigeben.
+Dadurch wird in jedem relevanten Sketchordner eine git-ignorierte `device_secrets.h` erzeugt.
+
+Benötigte Werte:
+
+- `IOT_WIFI_SSID`
+- `IOT_WIFI_PASSWORD`
+- `IOT_TELEMETRY_SERVER_HOST`
+- `TELEMETRY_API_KEY`
+- optional Server-Port/HTTPS-Parameter
+
+## Aktoren
+
+Nur diese vier Keys sind gültig:
+
+- `light`
+- `heater`
+- `circulation_vent`
+- `exhaust_vent`
+
+Die Wasserpumpe wird nicht gesteuert.
+
+## pH-Servicegerät
+
+`ph_calibration_tool.ino` arbeitet mit derselben PH4502C -> 10k/20k -> ADS1115-A0-Messkette wie die Produktionsfirmware.
+
+Serial Monitor: 115200 Baud.
+
+- `7` = pH-7-Punkt mitteln
+- `4` = pH-4-Punkt mitteln
+- `s` = Kalibrierkonstanten ausgeben
+- `r` = Punkte löschen
+
+## Vor produktivem Flashen
+
+Jeden tatsächlich verwendeten Sketch mit der installierten ESP32-/Arduino-Toolchain kompilieren. Danach zuerst Kleinspannungsseite und WLAN-Kommunikation testen.
