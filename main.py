@@ -19,6 +19,9 @@ from gpio_simulator import GPIO, OutputDevice
 from pid_controller import PIDController
 from schedule_manager import EquipmentSchedule
 from ml_controller import MLController
+from sensor_node_client import get_summary as get_sensor_summary
+from sensor_node_client import set_mode as set_sensor_mode
+from sensor_node_client import set_targets as set_sensor_targets
 from multi_device_manager import get_multi_device_manager
 
 load_dotenv_if_present()
@@ -331,7 +334,16 @@ st.sidebar.markdown("<h3 class='medium-font'>Grow Information</h3>", unsafe_allo
 st.session_state.grow_start_date = st.sidebar.date_input("Grow Start Date", st.session_state.grow_start_date)
 st.session_state.current_growth_stage = st.sidebar.radio("Current Growth Stage", ["Vegetation", "Flowering"])
 
-_ctrl_sidebar = data_manager.get_control_state()
+def _effective_control_state() -> dict[str, Any]:
+    summary = get_sensor_summary()
+    if summary:
+        control = summary.get("control")
+        if isinstance(control, dict) and isinstance(control.get("targets"), dict):
+            return control
+    return data_manager.get_control_state()
+
+
+_ctrl_sidebar = _effective_control_state()
 _mode_index = 0 if _ctrl_sidebar["control_mode"] == "auto" else 1
 _relay_mode = st.sidebar.radio(
     "Relay-Steuerung",
@@ -342,6 +354,7 @@ _relay_mode = st.sidebar.radio(
 )
 if _relay_mode != _ctrl_sidebar["control_mode"]:
     data_manager.set_control_mode(_relay_mode)
+    set_sensor_mode(_relay_mode)
 
 # Function to calculate days since start
 def days_since_start():
@@ -395,7 +408,7 @@ def update_real_time_data():
         for anomaly in anomalies:
             _maybe_notify_alert(f"anomaly_{anomaly.split(':')[0]}", f"⚠️ {anomaly}", "warn")
 
-    ctrl = data_manager.get_control_state()
+    ctrl = _effective_control_state()
     if ctrl["control_mode"] == "auto":
         # Apply schedule-based overrides before PID control
         schedule_mgr = st.session_state.schedule_manager
@@ -508,7 +521,7 @@ def update_real_time_data():
         lights_active = schedule_mgr.is_equipment_active("lights")
         st.markdown(f"<p class='small-font'>💡 Lights: {'Active' if lights_active else 'Inactive'}</p>", unsafe_allow_html=True)
     with sched_col2:
-        heater_target = data_manager.get_control_state()["targets"].get("heater", False)
+        heater_target = _effective_control_state()["targets"].get("heater", False)
         st.markdown(f"<p class='small-font'>Heater target: {'ON' if heater_target else 'OFF'}</p>", unsafe_allow_html=True)
     with sched_col3:
         vent_active = schedule_mgr.is_equipment_active("exhaust_vent")
@@ -687,6 +700,7 @@ def toggle_heater():
     else:
         heater.off()
     data_manager.set_control_targets_partial({"heater": new_on}, switch_to_manual=True)
+    set_sensor_targets({"heater": new_on})
     logger.info(f"Heater set to {'ON' if new_on else 'OFF'} (manual)")
 
 def toggle_circulation_vent():
@@ -696,6 +710,7 @@ def toggle_circulation_vent():
     else:
         circulation_vent.off()
     data_manager.set_control_targets_partial({"circulation_vent": new_on}, switch_to_manual=True)
+    set_sensor_targets({"circulation_vent": new_on})
     logger.info(f"Circulation Vent set to {'ON' if new_on else 'OFF'} (manual)")
 
 def toggle_exhaust_vent():
@@ -705,6 +720,7 @@ def toggle_exhaust_vent():
     else:
         exhaust_vent.off()
     data_manager.set_control_targets_partial({"exhaust_vent": new_on}, switch_to_manual=True)
+    set_sensor_targets({"exhaust_vent": new_on})
     logger.info(f"Exhaust Vent set to {'ON' if new_on else 'OFF'} (manual)")
 
 def toggle_light():
@@ -714,6 +730,7 @@ def toggle_light():
     else:
         light.off()
     data_manager.set_control_targets_partial({"light": new_on}, switch_to_manual=True)
+    set_sensor_targets({"light": new_on})
     logger.info(f"Light set to {'ON' if new_on else 'OFF'} (manual)")
 
 def train_ml_model():
