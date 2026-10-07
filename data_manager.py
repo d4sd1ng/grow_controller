@@ -51,7 +51,7 @@ class DataManager:
     def _normalize_row(self, data_point: dict[str, Any]) -> dict[str, Any]:
         row: dict[str, Any] = {col: data_point.get(col) for col in _LOG_COLUMNS if col != "timestamp"}
         row["timestamp"] = data_point.get("timestamp", datetime.now())
-        for key in ("circulation_vent", "exhaust_vent", "heater", "pump"):
+        for key in ("light", "heater", "circulation_vent", "exhaust_vent"):
             if row.get(key) is None:
                 row[key] = False
             else:
@@ -146,7 +146,7 @@ class DataManager:
                 "circulation_vent": [random.choice([True, False]) for _ in range(len(date_range))],
                 "exhaust_vent": [random.choice([True, False]) for _ in range(len(date_range))],
                 "heater": [random.choice([True, False]) for _ in range(len(date_range))],
-                "pump": [random.choice([True, False]) for _ in range(len(date_range))],
+                "light": [random.choice([True, False]) for _ in range(len(date_range))],
             }
         )
         mock_data.set_index("timestamp", inplace=True)
