@@ -1,105 +1,109 @@
 # Current State — Growroom Control System
 
-**Stand**: 2026-04-25 (nach Session-Rücksetzung)
+**Stand:** 2026-10-07  
+**Arbeitsbranch:** `hardware-v2-firmware`
 
----
+## Architektur
 
-## Python-Server (unverändert)
+```text
+Sensor-ESP (ESP32 OLED-0.96 V3.0)
+  -> Sensoren lesen
+  -> AUTO/MANUAL-Zielzustände halten
+  -> lokale HTTP-API :8081
+  -> Telemetrie an Server
+             |
+             | WLAN
+             v
+Stromkasten-ESP
+  -> GPIO17 Licht
+  -> GPIO18 Umluft
+  -> GPIO19 Abluft
+  -> GPIO23 Heizung
+  -> Watchdog: Kommunikationsverlust => alle vier Ausgänge AUS
 
-| Datei | Status | Anmerkung |
-|-------|--------|-----------|
-| `main.py` | ✅ Läuft | Streamlit Dashboard, Steuerlogik (PID + Hysterese), GPIO-Simulation |
-| `telemetry_api.py` | ✅ Läuft | FastAPI REST API, alle Endpunkte aktiv |
-| `telemetry_store.py` | ✅ Läuft | SQLite DB, app_control-Tabelle, Alerts, I2C-Device-Info |
-| `data_manager.py` | ✅ Läuft | High-Level Wrapper für Store |
-| `pid_controller.py` | ✅ Läuft | PID-Referenzimplementierung (Python) |
-| `ml_controller.py` | ✅ Läuft | ML-Anomalie-Erkennung (scikit-learn) |
-| `schedule_manager.py` | ✅ Läuft | Zeitpläne für Licht & Co. |
-| `esp32_controller.py` | ✅ Läuft | Simulator für Tests, enthält `device_info` mit I2C-Geräten |
-| `system_tests.py` | ✅ 14/14 OK | Alle Tests passen |
+CYD
+  -> Livewerte + Steuerung direkt vom Sensor-ESP
+  -> Historie/Alerts über den Server (TFT_eSPI-Remote)
 
-### Steuerlogik aktuell
-- **Primäre Regelung**: `growroom_telemetry_client.ino` (ESP32) — Hysterese-basiert, autonom im AUTO-Modus
-- **MANUAL-Override**: `main.py` (Python-Server) sendet Relais-Zielzustände via API. ESP32 führt sie aus.
-- **Server-Steuerlogik**: `main.py` enthält PID + Hysterese für Simulation/Monitoring. Im echten Betrieb schaltet der ESP32 direkt die Relais.
+Raspberry Pi / Server
+  -> FastAPI
+  -> Streamlit Dashboard
+  -> derzeit noch SQLite
+  -> PostgreSQL-Umbau ist der nächste separate Schritt
+```
 
----
+## Hardware
 
-## Firmware / ESP32
+### Sensor-ESP
 
-### 1. `growroom_telemetry_client.ino` — ESP32-WROOM-32D (Growroom)
+| Funktion | Pin |
+|---|---:|
+| OLED + ADS1115 SDA | GPIO21 |
+| OLED + ADS1115 SCL | GPIO22 |
+| DHT22 #1 | GPIO25 |
+| DHT22 #2 | GPIO26 |
+| DHT22 #3 | GPIO27 |
+| 2x DS18B20 1-Wire | GPIO32 |
+| BH1750 SDA | GPIO13 |
+| BH1750 SCL | GPIO14 |
 
-| Aspekt | Status |
-|--------|--------|
-| **I2C-Scanner** | ✅ Implementiert — erkennt OLED (0x3C/0x3D), BH1750 (0x23/0x5C) |
-| **Sensor-Lesung** | ✅ Echte Libraries: DHT22 (GPIO36), ADC für EC/pH (GPIO34/35) |
-| **Relais-Schaltung** | ✅ GPIO-Ausgänge definiert und geschaltet (GPIO4,5,16,17) |
-| **Steuerlogik** | ✅ Hysterese-Regelung (AUTO) + MANUAL-Modus mit Server-Befehlen |
-| **OLED-Anzeige** | ✅ SSD1306 128x64, 4 Zeilen: Temp/RH, Case-Temp, EC/pH, Modus/Relais |
-| **Telemetry senden** | ✅ POST /api/v1/telemetry alle 10s |
-| **Control-State holen** | ✅ GET /api/v1/control/state alle 5s |
-| **WiFi-Verbindung** | ✅ Standard WiFi-Client |
-| **Gehäuse-Temperatur** | ✅ ESP32 interner Temperatursensor |
+ADS1115: A0 = PH4502C über 10k/20k-Teiler, A1 = CQRobot TDS.
 
-**Aktueller Modus**: ESP32 ist **autonome Steuerzentrale** — regelt im AUTO-Modus selbst, nimmt im MANUAL-Modus Befehle vom Server/Dashboard/CYD entgegen.
+### Stromkasten-ESP
 
-### 2. `cyd_grow_display.ino` — CYD (ESP32-2432S028R)
+| GPIO | SSR |
+|---:|---|
+| 17 | Licht |
+| 18 | beide Umluftventilatoren |
+| 19 | Abluft |
+| 23 | Heizstrahler |
 
-| Aspekt | Status |
-|--------|--------|
-| **Display-Treiber** | ✅ TFT_eSPI → LVGL v8 (umbgebaut in früherer Session) |
-| **Touch** | ✅ LVGL Touch-Callback + 4 Relay-Buttons |
-| **UI** | ✅ Flex-Layout mit Labels (Mode, Temp, RH, EC/pH, Relais, Alerts) + Button-Row |
-| **HTTP-Kommunikation** | ✅ `grow_http_client.h`, Timeout 5s |
-| **WiFi-Reconnect** | ✅ Automatisches Reconnect alle 5s bei Verlust |
-| **Kommunikation mit Server** | ✅ Holt Daten via `/api/v1/mobile/summary`, sendet Relais-Befehle via `/api/v1/control/targets` |
+FOTEK SSR-10DA: vorhandene Geräte sind mit 3–32 VDC Input beschriftet. Deshalb keine zusätzliche ULN2803A-Stufe im aktuellen Plan.
 
-**Dateien im Ordner**:
-- `cyd_grow_display.ino` (LVGL-Version)
-- `lv_conf.h` (LVGL-Konfiguration)
+Die Wasserpumpe läuft dauerhaft und wird nicht geschaltet.
 
-### 3. `cyd_remote_control.ino` — CYD als Fernbedienung
+## Firmware
 
-| Aspekt | Status |
-|--------|--------|
-| **Display-Treiber** | ✅ TFT_eSPI (manuell, ursprünglicher Code) |
-| **Touch** | ✅ XPT2046 mit Kalibrierung |
-| **UI** | ✅ 3 Panels: Relais-Buttons, Werte, Charts |
-| **HTTP-Kommunikation** | ✅ `grow_http_client.h` |
-| **Relais-Steuerung** | ✅ Touch-Buttons senden POST an Server |
-| **Charts** | ✅ Sparklines aus lokalem Ringpuffer oder Server-Serie |
+| Sketch | Rolle |
+|---|---|
+| `firmware/growroom_telemetry_client/growroom_telemetry_client.ino` | Sensor-/Steuerknoten |
+| `firmware/powerbox_actuator/powerbox_actuator.ino` | Stromkasten-Aktorknoten |
+| `firmware/cyd_remote_control/cyd_remote_control.ino` | primäre 3-Panel-CYD-Fernbedienung |
+| `firmware/cyd_grow_display/cyd_grow_display.ino` | alternative kompakte LVGL-CYD-Oberfläche |
+| `firmware/ph_calibration_tool/ph_calibration_tool.ino` | dauerhaftes Service-/Kalibrier-Tool auf Ersatz-ESP |
 
-**Dateien im Ordner**:
-- `cyd_remote_control.ino` (TFT_eSPI-Version, zurückgesetzt auf `745d1b8`)
-- `grow_http_client.h`
+## pH
 
-**Anmerkung**: `cyd_remote_control` und `cyd_grow_display` sind **zwei separate CYD-Geräte** mit unterschiedlicher Firmware. `cyd_remote_control` = TFT_eSPI (Fernbedienung). `cyd_grow_display` = LVGL v8 (Monitor).
+Historische reale Kalibrierung:
 
----
+`pH = -5.7 × U_PO + 21.34`
 
-## Gelöschte / Rückgängig-gemachte Änderungen (diese Session)
+Mit dem aktuellen 10k/20k-Spannungsteiler sind in der Sensor-Firmware vorläufig äquivalente ADS1115-Punkte hinterlegt:
 
-| Datei | Aktion | Grund |
-|-------|--------|-------|
-| `firmware/cyd_remote_control/cyd_remote_control.ino` | Gelöscht → Wiederhergestellt | Falsche Annahme: kein zweites CYD |
-| `firmware/cyd_remote_control/lv_conf.h` | Gelöscht | LVGL-Konfig für nicht-existierendes Gerät |
-| `firmware/cyd_grow_display/cyd_grow_display.ino` | Unverändert in dieser Session | LVGL-Version aus früherer Session |
-| `firmware/growroom_telemetry_client/growroom_telemetry_client.ino` | **Komplett umgeschrieben** | Autonome Steuerzentrale mit OLED, Hysterese, echten Sensoren |
+- pH 7: ca. 1.677193 V am ADS1115
+- pH 4: ca. 2.028070 V am ADS1115
 
----
+Das Kalibrier-Tool überprüft diese Werte später an der fertig aufgebauten Messkette.
 
-## Neue Dokumentation (diese Session)
+## Server-Zwischenstand vor PostgreSQL
 
-| Datei | Zweck |
-|-------|-------|
-| `project_overview.md` | Komplettes Projekt-Überblicksdokument |
-| `task_contract.md` | Aufgaben-Liste mit Status und Priorität |
-| `decision_log.md` | Chronologische Entscheidungsverfolgung |
-| `current_state.md` | Diese Datei — technischer Stand |
+Der Server bleibt bis zum nächsten Umbau SQLite-basiert. Das Daten-/Control-Modell ist bereits auf Hardware V2 umgestellt:
 
----
+- Aktoren: `light`, `heater`, `circulation_vent`, `exhaust_vent`
+- keine steuerbare Pumpe mehr;
+- neue Messwerte wie TDS, zusätzliche DHT22- und DS18B20-Werte werden vom Ingest validiert und können als Zusatzfelder gespeichert werden;
+- bestehende SQLite-Dateien erhalten beim Öffnen automatisch eine `light`-Spalte; eine alte physische `pump`-Spalte kann als ungenutztes Legacy-Feld bestehen bleiben.
 
-## Bekannte Probleme / To-Do
+## Offener Software-Schritt
 
-1. **ADC-Kalibrierung feinjustieren**: Die EC/pH-Werte hängen vom konkreten LM358/Verstärker-Modul ab. Kalibrierwerte in `growroom_telemetry_client.ino` müssen ggf. angepasst werden.
-2. **Setpoints dynamisch**: Aktuell hardcoded (`TARGET_AIR_TEMP`, etc.). Optional: Vom Server konfigurierbar machen.
+**PostgreSQL-Migration.**
+
+Dabei wird der bestehende PostgreSQL-Container auf dem Raspberry Pi verwendet. SQLite wird danach aus dem Produktionspfad entfernt.
+
+## Vor Merge nach main
+
+- Python-Unit-Tests ausführen.
+- Sensor-ESP kompilieren.
+- Stromkasten-ESP kompilieren.
+- verwendete CYD-Variante kompilieren.
+- nach Hardwareaufbau pH-Punkte und DS18B20-ROM-Zuordnung verifizieren.
