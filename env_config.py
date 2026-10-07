@@ -36,19 +36,29 @@ def get_telegram_chat_id() -> str | None:
     return v.strip() if v else None
 
 
-def get_grow_data_db_path() -> str | Path:
+def get_grow_database_url() -> str:
     """
-    SQLite path for telemetry. Default: data/grow_telemetry.db under project root.
-    Set GROW_DATA_DB=:memory: for tests or ephemeral runs.
-    """
-    raw = os.environ.get("GROW_DATA_DB", "data/grow_telemetry.db").strip()
-    if raw == ":memory:":
-        return ":memory:"
-    p = Path(raw)
-    if not p.is_absolute():
-        p = Path(__file__).resolve().parent / p
-    return p
+    PostgreSQL DSN for the production telemetry store.
 
+    Example:
+    postgresql://grow_controller:secret@127.0.0.1:5432/grow_controller
+    """
+    value = os.environ.get("GROW_DATABASE_URL", "").strip()
+    if not value:
+        raise RuntimeError("GROW_DATABASE_URL is required")
+    if not (value.startswith("postgresql://") or value.startswith("postgres://")):
+        raise RuntimeError("GROW_DATABASE_URL must be a PostgreSQL URL")
+    return value
+
+
+def get_grow_database_schema() -> str:
+    """Dedicated PostgreSQL schema used by Grow Controller."""
+    value = os.environ.get("GROW_DATABASE_SCHEMA", "grow_controller").strip()
+    if not value:
+        return "grow_controller"
+    if not value.replace("_", "").isalnum() or value[0].isdigit():
+        raise RuntimeError("GROW_DATABASE_SCHEMA contains invalid characters")
+    return value
 
 def get_grow_data_retention_days() -> int:
     v = os.environ.get("GROW_DATA_RETENTION_DAYS", "90").strip()
