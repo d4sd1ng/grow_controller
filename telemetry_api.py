@@ -1,6 +1,6 @@
 """
-HTTP API: telemetry ingest, latest readings, relay targets (portable CYD), alerts.
-Shared SQLite with Streamlit (`get_shared_telemetry_store`).
+HTTP API: telemetry ingest, latest readings, hardware-v2 actuator targets, alerts.
+Shared SQLite with Streamlit (`get_shared_telemetry_store`) until the PostgreSQL migration.
 
 Run: python run_telemetry_api.py
 """
@@ -25,7 +25,7 @@ load_dotenv_if_present()
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Grow telemetry & control", version="0.2.0")
+app = FastAPI(title="Grow telemetry & control", version="0.3.0")
 
 _origins = get_telemetry_cors_origins()
 app.add_middleware(
