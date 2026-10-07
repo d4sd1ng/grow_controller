@@ -1,31 +1,34 @@
 # Task Contract — Growroom Control System
 
-## Offene Aufgaben
+**Stand:** 2026-10-07
 
-| ID | Aufgabe | Status | Priorität | Beschreibung |
-|----|---------|--------|-----------|--------------|
-| T01 | Steuerlogik auf ESP32 auslagern | **ERLEDIGT** | — | `growroom_telemetry_client.ino`: Regelung (Hysterese) vom Python-Server auf den ESP32 verlagert. ESP32 ist autonome Steuerzentrale. Server dient Logging + Dashboard + MANUAL-Override. |
-| T02 | OLED-Anzeige einbauen | **ERLEDIGT** | — | SSD1306 128x64 in `growroom_telemetry_client.ino` eingebaut. Zeigt Luft-Temp, Luft-RH, Gehäuse-Temp, EC, pH, Relais-Status. Keine Touch/Steuerung über Display. |
-| T03 | Sensor-Libraries einbinden | **ERLEDIGT** | — | Echte DHT22-Library (GPIO36), ADC-Lesung für EC (GPIO34) und pH (GPIO35) mit LM358-Verstärker-Modul eingebunden. |
-| T04 | CYD LVGL v8 stabilisieren | **ERLEDIGT** | — | `cyd_grow_display.ino`: Buffer vergrößert, WiFi-Reconnect, HTTP-Timeout, Touch-Buttons für Relais, `lv_timer_handler()` optimiert. |
-| T05 | cyd_remote_control wiederherstellen | **ERLEDIGT** | — | Original TFT_eSPI-Code vor LVGL-Commit wiederhergestellt (`git checkout 745d1b8`). |
+## Aktueller Umbau
 
-## Abgeschlossene Aufgaben (diese Session)
+| ID | Aufgabe | Status | Anmerkung |
+|---|---|---|---|
+| H01 | Wiringplan V2 | **ERLEDIGT** | Sensor-/Stromkasten getrennt; Pins, Pull-ups, ADS1115, Spannungsteiler und SSR-Steuereingänge dokumentiert. |
+| H02 | Sensor-ESP Firmware | **ERLEDIGT (Code)** | 3x DHT22, 2x DS18B20, ADS1115, PH4502C, CQRobot-TDS, BH1750, OLED, lokale AUTO/MANUAL-API. |
+| H03 | Stromkasten-ESP Firmware | **ERLEDIGT (Code)** | 4 SSR: Licht, Umluft, Abluft, Heizung; WLAN zum Sensor-ESP; Watchdog/Failsafe. |
+| H04 | CYD Hardware-V2 | **ERLEDIGT (Code)** | LIGHT / HEAT / CIRC / EXH; Live-Steuerung direkt zum Sensor-ESP. |
+| H05 | pH-Kalibrier-Tool | **ERLEDIGT (Code)** | Separater Ersatz-ESP; pH 7/4 erfassen, mitteln und Konstanten ausgeben. |
+| H06 | Server-Datenmodell | **ERLEDIGT für SQLite-Zwischenstand** | steuerbare Pumpe entfernt, `light` als Aktorkanal; neue Sensorfelder werden validiert/als Extras erhalten. |
+| H07 | Dashboard / Simulator / ML / Tests | **ERLEDIGT (Code)** | Aktorset auf LIGHT/HEAT/CIRC/EXH umgestellt; Pumpensteuerung entfernt. |
+| H08 | PostgreSQL statt SQLite | **OFFEN** | Bestehenden PostgreSQL-Container verwenden; eigener DB/User/Schema-Kontext. |
 
-| ID | Aufgabe | Ergebnis |
-|----|---------|----------|
-| T01 | Steuerlogik auf ESP32 auslagern | `growroom_telemetry_client.ino` komplett umgebaut: Hysterese, AUTO/MANUAL, echte Sensoren, OLED. |
-| T02 | OLED-Anzeige einbauen | SSD1306 128x64 mit I2C-Autoerkennung eingebaut. 4 Zeilen: Temp/RH, Case-Temp, EC/pH, Modus/Relais. |
-| T03 | Sensor-Libraries einbinden | DHT22-Library für GPIO36, ADC mit Kalibrierung für EC/pH auf GPIO34/35. |
-| T04 | `cyd_grow_display` stabilisieren | Buffer 320×20, WiFi-Reconnect, 5s HTTP-Timeout, 4 Touch-Buttons (HEAT/PUMP/CIRC/EXH), TFT_eSPI Setup kommentiert. |
-| T05 | `cyd_remote_control` zurücksetzen | Ordner auf Original-Stand vor `feat(display)` Commit wiederhergestellt. |
+## Hardware-V2-Aktoren
 
-## Nächster Schritt (vorgeschlagen)
+`light`, `heater`, `circulation_vent`, `exhaust_vent`
 
-Keine offenen Tasks. Projekt ist feature-complete.
+Die Wasserpumpe läuft dauerhaft und ist **kein** Aktor, kein SSR-Kanal und kein GPIO-Ziel.
 
-### Akzeptanzkriterien für T04 (alle erfüllt)
-- [x] CYD (`cyd_grow_display`) kompiliert mit LVGL v8
-- [x] Touch-Input funktioniert (4 Relais-Buttons)
-- [x] HTTP-Kommunikation mit Server läuft (Timeout 5s, Reconnect)
-- [x] Zeigt aktuelle Werte vom Server an
+## Noch physisch zu bestimmen
+
+Diese Punkte sind keine offenen Software-Implementierungen:
+
+- finale pH-4-/pH-7-Messwerte mit der aufgebauten ADS1115-Messkette;
+- ROM-Adressen der beiden DS18B20, damit ihre physische Position eindeutig zugeordnet werden kann;
+- Hardware-Smoke-Test nach dem Aufbau.
+
+## Validierung
+
+Vor Merge nach `main` sind ein Python-Testlauf und echte Arduino-Kompilierchecks der Firmware vorgesehen. Der PostgreSQL-Umbau erfolgt danach als eigener Schritt.
