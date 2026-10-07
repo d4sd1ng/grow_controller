@@ -20,6 +20,10 @@ from fastapi.responses import JSONResponse
 from data_manager import DataManager
 from env_config import get_telemetry_api_key, get_telemetry_cors_origins, load_dotenv_if_present
 from telemetry_payload import normalize_ingest_payload
+from sensor_node_client import get_summary as get_sensor_summary
+from sensor_node_client import is_configured as sensor_node_configured
+from sensor_node_client import set_mode as set_sensor_mode
+from sensor_node_client import set_targets as set_sensor_targets
 
 load_dotenv_if_present()
 
@@ -153,6 +157,11 @@ def get_control_state(
     x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
 ) -> dict[str, Any]:
     _require_api_key(x_telemetry_key)
+    summary = get_sensor_summary()
+    if summary:
+        control = summary.get("control")
+        if isinstance(control, dict):
+            return {"ok": True, **control}
     st = get_dm().get_control_state()
     return {"ok": True, **st}
 
@@ -163,6 +172,8 @@ def post_control_targets(
     x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
 ) -> dict[str, bool]:
     _require_api_key(x_telemetry_key)
+    if sensor_node_configured() and not set_sensor_targets(body):
+        raise HTTPException(status_code=503, detail="sensor_node_unavailable")
     get_dm().set_control_targets_partial(body, switch_to_manual=True)
     return {"ok": True}
 
@@ -177,7 +188,12 @@ def post_control_mode(
     if not isinstance(mode, str):
         raise HTTPException(status_code=400, detail="mode required")
     try:
-        get_dm().set_control_mode(mode)
+        normalized = mode.strip().lower()
+        if normalized not in ("auto", "manual"):
+            raise ValueError("control_mode must be auto or manual")
+        if sensor_node_configured() and not set_sensor_mode(normalized):
+            raise HTTPException(status_code=503, detail="sensor_node_unavailable")
+        get_dm().set_control_mode(normalized)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"ok": True}
@@ -218,11 +234,20 @@ def get_mobile_summary(
     """One round-trip for portable CYD: control + last reading + recent alerts."""
     _require_api_key(x_telemetry_key)
     dm = get_dm()
+    sensor_summary = get_sensor_summary()
     ctrl = dm.get_control_state()
+    reading = dm.get_latest_reading()
+    if sensor_summary:
+        sensor_ctrl = sensor_summary.get("control")
+        sensor_reading = sensor_summary.get("reading")
+        if isinstance(sensor_ctrl, dict):
+            ctrl = sensor_ctrl
+        if isinstance(sensor_reading, dict):
+            reading = sensor_reading
     return {
         "ok": True,
         "control": ctrl,
-        "reading": dm.get_latest_reading(),
+        "reading": reading,
         "alerts": dm.get_alerts_recent(alert_limit),
     }
 
