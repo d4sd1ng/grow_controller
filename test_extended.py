@@ -113,6 +113,7 @@ class TestScheduleManager(unittest.TestCase):
         
         self.assertIn("lights", schedules)
         self.assertIn("exhaust_vent", schedules)
+        self.assertNotIn("water_pump", schedules)
     
     def test_schedule_active_status(self):
         """Test equipment active status based on time."""
