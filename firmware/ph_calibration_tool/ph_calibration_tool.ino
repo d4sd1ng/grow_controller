@@ -1,0 +1,330 @@
+/**
+ * PH4502C + ADS1115 Kalibrier-Tool
+ *
+ * Zweck:
+ * - misst PH4502C PO ueber den 10k/20k-Spannungsteiler am ADS1115 A0
+ * - zeigt Rohwert, ADS-Spannung und rueckgerechnete PH4502C-PO-Spannung
+ * - speichert per Serial-Kommando die Messpunkte fuer pH 7 und pH 4
+ * - berechnet daraus Steigung + Offset fuer die spaetere Sensor-Firmware
+ *
+ * Hardware gemaess wiring_plan_v2.md:
+ *   PH4502C PO -> 10k -> ADS1115 A0 -> 20k -> GND
+ *   ADS1115 VDD -> 3.3V
+ *   ADS1115 GND -> GND
+ *   ADS1115 SDA -> GPIO21
+ *   ADS1115 SCL -> GPIO22
+ *   ADS1115 ADDR -> GND (0x48)
+ *
+ * Optional:
+ *   integriertes SSD1306 OLED auf demselben I2C-Bus (0x3C)
+ *
+ * Serial Monitor: 115200 Baud
+ *   7 = aktuellen stabilen Mittelwert als pH-7-Punkt erfassen
+ *   4 = aktuellen stabilen Mittelwert als pH-4-Punkt erfassen
+ *   s = Status / berechnete Kalibrierung ausgeben
+ *   r = beide Kalibrierpunkte loeschen
+ */
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_ADS1X15.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <math.h>
+
+static constexpr int PIN_I2C_SDA = 21;
+static constexpr int PIN_I2C_SCL = 22;
+static constexpr uint8_t ADS_ADDR = 0x48;
+static constexpr uint8_t OLED_ADDR = 0x3C;
+
+static constexpr float R_TOP_OHM = 10000.0f;
+static constexpr float R_BOTTOM_OHM = 20000.0f;
+static constexpr float DIVIDER_RATIO = R_BOTTOM_OHM / (R_TOP_OHM + R_BOTTOM_OHM); // 2/3
+static constexpr float DIVIDER_RECONSTRUCT = 1.0f / DIVIDER_RATIO;                 // 1.5
+
+static constexpr uint16_t LIVE_SAMPLE_COUNT = 32;
+static constexpr uint16_t CAPTURE_SAMPLE_COUNT = 160;
+static constexpr uint16_t SAMPLE_DELAY_MS = 20;
+static constexpr unsigned long DISPLAY_INTERVAL_MS = 500;
+
+Adafruit_ADS1115 ads;
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
+
+bool adsOk = false;
+bool oledOk = false;
+
+float liveAdsV = NAN;
+float livePoV = NAN;
+float liveStdV = NAN;
+
+bool havePh7 = false;
+bool havePh4 = false;
+float ph7AdsV = NAN;
+float ph4AdsV = NAN;
+
+unsigned long lastDisplayMs = 0;
+
+struct SampleStats {
+  float meanV;
+  float stdV;
+  int16_t minRaw;
+  int16_t maxRaw;
+};
+
+static float rawToVolts(int16_t raw) {
+  // ADS1115 GAIN_ONE: +/-4.096 V -> 125 uV/bit
+  return static_cast<float>(raw) * 0.000125f;
+}
+
+static SampleStats sampleChannel(uint16_t count, uint16_t delayMs) {
+  double sum = 0.0;
+  double sumSq = 0.0;
+  int16_t minRaw = INT16_MAX;
+  int16_t maxRaw = INT16_MIN;
+
+  for (uint16_t i = 0; i < count; ++i) {
+    const int16_t raw = ads.readADC_SingleEnded(0);
+    const float v = rawToVolts(raw);
+
+    sum += v;
+    sumSq += static_cast<double>(v) * static_cast<double>(v);
+
+    if (raw < minRaw) minRaw = raw;
+    if (raw > maxRaw) maxRaw = raw;
+
+    if (delayMs > 0) delay(delayMs);
+  }
+
+  const double mean = sum / count;
+  double variance = (sumSq / count) - (mean * mean);
+  if (variance < 0.0) variance = 0.0;
+
+  SampleStats s;
+  s.meanV = static_cast<float>(mean);
+  s.stdV = static_cast<float>(sqrt(variance));
+  s.minRaw = minRaw;
+  s.maxRaw = maxRaw;
+  return s;
+}
+
+static bool calibrationReady() {
+  return havePh7 && havePh4 && fabsf(ph4AdsV - ph7AdsV) >= 0.001f;
+}
+
+static float calibrationSlope() {
+  if (!calibrationReady()) return NAN;
+  return (4.0f - 7.0f) / (ph4AdsV - ph7AdsV);
+}
+
+static float calibrationOffset() {
+  const float slope = calibrationSlope();
+  if (isnan(slope)) return NAN;
+  return 7.0f - slope * ph7AdsV;
+}
+
+static float phFromAdsVoltage(float adsV) {
+  const float slope = calibrationSlope();
+  const float offset = calibrationOffset();
+  if (isnan(slope) || isnan(offset)) return NAN;
+  return slope * adsV + offset;
+}
+
+static void printHelp() {
+  Serial.println();
+  Serial.println(F("=== PH4502C / ADS1115 Kalibrier-Tool ==="));
+  Serial.println(F("7 = pH-7-Punkt erfassen"));
+  Serial.println(F("4 = pH-4-Punkt erfassen"));
+  Serial.println(F("s = Status / Kalibrierwerte ausgeben"));
+  Serial.println(F("r = Kalibrierpunkte loeschen"));
+  Serial.println(F("----------------------------------------"));
+}
+
+static void printCalibration() {
+  Serial.println();
+  Serial.println(F("--- Kalibrierstatus ---"));
+
+  if (havePh7) {
+    Serial.printf("pH 7: ADS = %.6f V | PH4502C PO ~= %.6f V\n",
+                  ph7AdsV, ph7AdsV * DIVIDER_RECONSTRUCT);
+  } else {
+    Serial.println(F("pH 7: noch nicht erfasst"));
+  }
+
+  if (havePh4) {
+    Serial.printf("pH 4: ADS = %.6f V | PH4502C PO ~= %.6f V\n",
+                  ph4AdsV, ph4AdsV * DIVIDER_RECONSTRUCT);
+  } else {
+    Serial.println(F("pH 4: noch nicht erfasst"));
+  }
+
+  if (calibrationReady()) {
+    const float slope = calibrationSlope();
+    const float offset = calibrationOffset();
+
+    Serial.println();
+    Serial.println(F("Fertige Konstanten fuer die Sensor-Firmware:"));
+    Serial.printf("PH_CAL_VOLT_7 = %.6ff;\n", ph7AdsV);
+    Serial.printf("PH_CAL_VOLT_4 = %.6ff;\n", ph4AdsV);
+    Serial.printf("PH_SLOPE      = %.6ff;\n", slope);
+    Serial.printf("PH_OFFSET     = %.6ff;\n", offset);
+    Serial.println(F("Formel: pH = PH_SLOPE * ads_voltage + PH_OFFSET"));
+  }
+
+  Serial.println(F("-----------------------"));
+}
+
+static void capturePoint(float targetPh) {
+  if (!adsOk) {
+    Serial.println(F("FEHLER: ADS1115 nicht gefunden."));
+    return;
+  }
+
+  Serial.printf("\nErfasse pH %.0f ... Sonde waehrend der Messung ruhig lassen.\n", targetPh);
+  const SampleStats s = sampleChannel(CAPTURE_SAMPLE_COUNT, SAMPLE_DELAY_MS);
+
+  Serial.printf("Mittelwert ADS: %.6f V\n", s.meanV);
+  Serial.printf("Std-Abw.:       %.6f V\n", s.stdV);
+  Serial.printf("PH4502C PO:     %.6f V (rueckgerechnet)\n", s.meanV * DIVIDER_RECONSTRUCT);
+  Serial.printf("Raw min/max:    %d / %d\n", s.minRaw, s.maxRaw);
+
+  if (targetPh == 7.0f) {
+    ph7AdsV = s.meanV;
+    havePh7 = true;
+  } else if (targetPh == 4.0f) {
+    ph4AdsV = s.meanV;
+    havePh4 = true;
+  }
+
+  if (s.stdV > 0.010f) {
+    Serial.println(F("WARNUNG: Messung schwankt >10 mV. Vor dem Uebernehmen besser erneut messen."));
+  }
+
+  printCalibration();
+}
+
+static void updateLive() {
+  if (!adsOk) return;
+  const SampleStats s = sampleChannel(LIVE_SAMPLE_COUNT, 0);
+  liveAdsV = s.meanV;
+  livePoV = liveAdsV * DIVIDER_RECONSTRUCT;
+  liveStdV = s.stdV;
+}
+
+static void drawOled() {
+  if (!oledOk) return;
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(0, 0);
+  display.println(F("pH CAL / ADS1115"));
+
+  display.setCursor(0, 14);
+  display.print(F("ADS "));
+  if (isnan(liveAdsV)) display.print(F("--"));
+  else display.print(liveAdsV, 4);
+  display.print(F(" V"));
+
+  display.setCursor(0, 26);
+  display.print(F("PO  "));
+  if (isnan(livePoV)) display.print(F("--"));
+  else display.print(livePoV, 4);
+  display.print(F(" V"));
+
+  display.setCursor(0, 38);
+  display.print(F("std "));
+  if (isnan(liveStdV)) display.print(F("--"));
+  else display.print(liveStdV * 1000.0f, 2);
+  display.print(F("mV"));
+
+  display.setCursor(0, 52);
+  if (calibrationReady()) {
+    const float ph = phFromAdsVoltage(liveAdsV);
+    display.print(F("pH "));
+    display.print(ph, 2);
+  } else {
+    display.print(F("Serial: 7 / 4"));
+  }
+
+  display.display();
+}
+
+static void handleSerial() {
+  while (Serial.available()) {
+    const char c = Serial.read();
+
+    if (c == '7') {
+      capturePoint(7.0f);
+    } else if (c == '4') {
+      capturePoint(4.0f);
+    } else if (c == 's' || c == 'S') {
+      printCalibration();
+    } else if (c == 'r' || c == 'R') {
+      havePh7 = false;
+      havePh4 = false;
+      ph7AdsV = NAN;
+      ph4AdsV = NAN;
+      Serial.println(F("Kalibrierpunkte geloescht."));
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(400);
+
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
+
+  ads.setGain(GAIN_ONE);
+  adsOk = ads.begin(ADS_ADDR, &Wire);
+
+  oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+  if (oledOk) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 24);
+    display.print(F("pH calibration"));
+    display.display();
+  }
+
+  printHelp();
+
+  if (!adsOk) {
+    Serial.println(F("FEHLER: ADS1115 @ 0x48 nicht gefunden."));
+  } else {
+    Serial.println(F("ADS1115 @ 0x48 gefunden."));
+    Serial.println(F("Warte bis der Wert stabil ist, dann '7' bzw. '4' senden."));
+  }
+}
+
+void loop() {
+  handleSerial();
+
+  if (adsOk) {
+    updateLive();
+
+    static unsigned long lastPrint = 0;
+    const unsigned long now = millis();
+    if (now - lastPrint >= 1000) {
+      lastPrint = now;
+      Serial.printf("LIVE | ADS %.6f V | PO %.6f V | std %.3f mV",
+                    liveAdsV,
+                    livePoV,
+                    liveStdV * 1000.0f);
+
+      if (calibrationReady()) {
+        Serial.printf(" | pH %.3f", phFromAdsVoltage(liveAdsV));
+      }
+      Serial.println();
+    }
+
+    if (now - lastDisplayMs >= DISPLAY_INTERVAL_MS) {
+      lastDisplayMs = now;
+      drawOled();
+    }
+  }
+
+  delay(10);
+}
