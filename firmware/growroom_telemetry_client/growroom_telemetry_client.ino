@@ -71,12 +71,18 @@ static constexpr float TEMP_HYST = 0.5f;
 static constexpr float HUM_HYST = 2.0f;
 
 /* ---------- Analog-Kalibrierung ----------
- * pH bleibt NAN, bis zwei reale Kalibrierpunkte eingetragen sind.
- * PH_CAL_VOLT_4 / PH_CAL_VOLT_7 = Spannung AM ADS1115-EINGANG,
- * also nach dem 10k/20k-Spannungsteiler.
+ * Historische, selbst gemessene pH-Kalibrierung:
+ *   pH = -5.7 * U_PO + 21.34
+ * Mit dem 10k/20k-Teiler gilt U_ADS = U_PO * 2/3.
+ * Daraus folgen die Startwerte am ADS1115:
+ *   pH 7 -> ca. 1.677193 V
+ *   pH 4 -> ca. 2.028070 V
+ *
+ * Diese Werte sind funktionsfaehige Ausgangswerte. Nach Aufbau der finalen
+ * Messkette werden sie mit firmware/ph_calibration_tool erneut vermessen.
  */
-static constexpr float PH_CAL_VOLT_4 = NAN;
-static constexpr float PH_CAL_VOLT_7 = NAN;
+static constexpr float PH_CAL_VOLT_4 = 2.028070f;
+static constexpr float PH_CAL_VOLT_7 = 1.677193f;
 
 /* ---------- OLED / I2C ---------- */
 static constexpr uint8_t OLED_ADDR = 0x3C;
