@@ -13,7 +13,7 @@ load_dotenv_if_present()
 
 
 class EquipmentSchedule:
-    """Time-based schedule for equipment (lights, pumps, ventilation)."""
+    """Time-based schedule for controllable equipment (lights and ventilation)."""
     
     def __init__(self, config_path: str | Path | None = None):
         self.config_path = config_path or Path(__file__).parent / "schedules.json"
@@ -31,6 +31,9 @@ class EquipmentSchedule:
         if Path(self.config_path).exists():
             with open(self.config_path, 'r') as f:
                 self.schedules = json.load(f)
+            if "water_pump" in self.schedules:
+                self.schedules.pop("water_pump", None)
+                self._save_config()
         else:
             self.schedules = self._get_default_schedules()
             self._save_config()
@@ -53,22 +56,6 @@ class EquipmentSchedule:
                     "end": "20:00",
                     "enabled": True,
                     "days": [0, 1, 2, 3, 4, 5, 6]  # All days
-                }
-            ],
-            "water_pump": [
-                {
-                    "name": "Morning Watering",
-                    "start": "07:00",
-                    "duration_minutes": 15,
-                    "enabled": True,
-                    "days": [0, 1, 2, 3, 4, 5, 6]
-                },
-                {
-                    "name": "Evening Watering",
-                    "start": "19:00",
-                    "duration_minutes": 15,
-                    "enabled": True,
-                    "days": [0, 1, 2, 3, 4, 5, 6]
                 }
             ],
             "exhaust_vent": [
@@ -197,6 +184,6 @@ if __name__ == "__main__":
     
     now = datetime.now()
     print(f"\n🔍 Active right now:")
-    for equipment in ["lights", "water_pump", "exhaust_vent"]:
+    for equipment in ["lights", "exhaust_vent"]:
         is_active = scheduler.is_equipment_active(equipment, now)
         print(f"  {equipment}: {'ON' if is_active else 'OFF'}")
