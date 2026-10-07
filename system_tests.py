@@ -181,7 +181,7 @@ class TestGrowroomControlSystem(unittest.TestCase):
                 "circulation_vent": False,
                 "exhaust_vent": False,
                 "heater": True,
-                "pump": False,
+                "light": False,
                 "esp_extra_probe": 12.3,
             }
         )
