@@ -20,7 +20,6 @@ class TestGrowroomControlSystem(unittest.TestCase):
         self.heater = OutputDevice(16)
         self.circulation_vent = OutputDevice(17)
         self.exhaust_vent = OutputDevice(18)
-        self.water_pump = OutputDevice(19)
         self.light = OutputDevice(23)
 
     def test_iot_sensor_data(self):
@@ -50,7 +49,6 @@ class TestGrowroomControlSystem(unittest.TestCase):
                 'heater': True,
                 'circulation_vent': False,
                 'exhaust_vent': True,
-                'water_pump': False,
                 'light': True
             }
         }
@@ -59,7 +57,6 @@ class TestGrowroomControlSystem(unittest.TestCase):
         self.assertTrue(self.esp32_relay.relay_states['heater'])
         self.assertFalse(self.esp32_relay.relay_states['circulation_vent'])
         self.assertTrue(self.esp32_relay.relay_states['exhaust_vent'])
-        self.assertFalse(self.esp32_relay.relay_states['water_pump'])
         self.assertTrue(self.esp32_relay.relay_states['light'])
 
     def test_vpd_calculations(self):
@@ -99,7 +96,7 @@ class TestGrowroomControlSystem(unittest.TestCase):
                     "circulation_vent": False,
                     "exhaust_vent": False,
                     "heater": False,
-                    "pump": False,
+                    "light": False,
                 }
             )
         end = datetime.now()
@@ -120,11 +117,11 @@ class TestGrowroomControlSystem(unittest.TestCase):
         p = normalize_ingest_payload(
             {
                 "air_temperature": 24.0,
-                "relays": {"heater": True, "pump": False},
+                "relays": {"heater": True, "light": False},
             }
         )
         self.assertTrue(p["heater"])
-        self.assertFalse(p["pump"])
+        self.assertFalse(p["light"])
 
     def test_data_manager_ping_db(self):
         dm = DataManager(db_path=":memory:", retention_days=365)
@@ -161,7 +158,7 @@ class TestGrowroomControlSystem(unittest.TestCase):
                 "circulation_vent": False,
                 "exhaust_vent": False,
                 "heater": False,
-                "pump": False,
+                "light": False,
             }
         )
         latest = dm.get_latest_reading()
