@@ -11,6 +11,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include <SPI.h>
 #include <math.h>
@@ -32,8 +33,10 @@ const bool SERVER_TLS_INSECURE = false;
 
 #include "grow_http_client.h"
 
-const char *SUMMARY_PATH = "/api/v1/mobile/summary";
-const char *CONTROL_PATH = "/api/v1/control/targets";
+const char *SUMMARY_PATH = "/api/local/summary";
+const char *CONTROL_PATH = "/api/local/control/targets";
+const uint16_t SENSOR_HTTP_PORT = 8081;
+IPAddress sensorIp;
 
 #define XPT2046_IRQ 36
 #define XPT2046_MOSI 32
@@ -170,7 +173,8 @@ bool fetchSummary() {
   if (WiFi.status() != WL_CONNECTED)
     return false;
   HTTPClient http;
-  http.setTimeout(2500);\n  if (!sensorHttpBegin(http, SUMMARY_PATH)) {
+  http.setTimeout(2500);
+  if (!sensorHttpBegin(http, SUMMARY_PATH)) {
     return false;
   }
   if (strlen(TELEMETRY_API_KEY) > 0)
