@@ -38,7 +38,7 @@ _DASHBOARD_LOG_FLOAT_EPS = (
     ("ec", 0.02),
     ("ph", 0.03),
 )
-_DASHBOARD_LOG_BOOL_KEYS = ("circulation_vent", "exhaust_vent", "heater", "pump")
+_DASHBOARD_LOG_BOOL_KEYS = ("light", "heater", "circulation_vent", "exhaust_vent")
 
 # User authentication
 _DEFAULT_USERNAME = "admin"
@@ -194,7 +194,7 @@ if 'gpio_devices' not in st.session_state:
         'heater': OutputDevice(17),
         'circulation_vent': OutputDevice(18),
         'exhaust_vent': OutputDevice(22),
-        'water_pump': OutputDevice(23),
+        'light': OutputDevice(23),
     }
 
 # Initialize PID controllers once per session
@@ -202,7 +202,6 @@ if 'pid_controllers' not in st.session_state:
     st.session_state.pid_controllers = {
         'temperature': PIDController(kp=2.0, ki=0.1, kd=0.5, setpoint=27.5),
         'humidity': PIDController(kp=1.5, ki=0.05, kd=0.3, setpoint=60.0),
-        'ec': PIDController(kp=1.0, ki=0.02, kd=0.2, setpoint=1.5),
     }
 
 # Initialize schedule manager once per session
@@ -220,27 +219,24 @@ if 'device_manager' not in st.session_state:
 heater = st.session_state.gpio_devices['heater']
 circulation_vent = st.session_state.gpio_devices['circulation_vent']
 exhaust_vent = st.session_state.gpio_devices['exhaust_vent']
-water_pump = st.session_state.gpio_devices['water_pump']
+light = st.session_state.gpio_devices['light']
 
 iot_sensor = IoTSensor()
 data_manager = DataManager()
 esp32_controller = ESP32Controller()
 
-def control_grow_room_equipment(current_data, target_air_temp, target_humidity, target_ec):
-    """PID-based equipment control with hysteresis fallback."""
+def control_grow_room_equipment(current_data, target_air_temp, target_humidity):
+    """Server-side simulation/fallback for heater and ventilation only."""
     pid_temp = st.session_state.pid_controllers['temperature']
     pid_humidity = st.session_state.pid_controllers['humidity']
-    pid_ec = st.session_state.pid_controllers['ec']
 
     # Update PID setpoints
     pid_temp.set_setpoint(target_air_temp)
     pid_humidity.set_setpoint(target_humidity)
-    pid_ec.set_setpoint(target_ec)
 
     # Compute PID outputs
     temp_error = pid_temp.compute(current_data['air_temperature'])
     humidity_error = pid_humidity.compute(current_data['humidity'])
-    ec_error = pid_ec.compute(current_data['ec'])
 
     # Heater control (PID output > 0 means heat needed)
     if temp_error > 0.5:
@@ -275,22 +271,12 @@ def control_grow_room_equipment(current_data, target_air_temp, target_humidity, 
             exhaust_vent.off()
             logger.info("Exhaust Vent turned OFF (auto)")
 
-    # Water pump control (EC management)
-    if ec_error > 0.1:
-        if not GPIO.input(water_pump.pin):
-            water_pump.on()
-            logger.info("Water Pump turned ON (auto)")
-    elif ec_error < -0.1:
-        if GPIO.input(water_pump.pin):
-            water_pump.off()
-            logger.info("Water Pump turned OFF (auto)")
-
 def send_command_to_esp32(current_data):
     command = {
+        'light': GPIO.input(light.pin),
         'heater': GPIO.input(heater.pin),
         'circulation_vent': GPIO.input(circulation_vent.pin),
-        'exhaust_vent': GPIO.input(exhaust_vent.pin),
-        'water_pump': GPIO.input(water_pump.pin)
+        'exhaust_vent': GPIO.input(exhaust_vent.pin)
     }
 
     command['oled_data'] = {
@@ -363,14 +349,18 @@ def days_since_start():
 
 def _equipment_for_log():
     return {
+        "light": bool(GPIO.input(light.pin)),
+        "heater": bool(GPIO.input(heater.pin)),
         "circulation_vent": bool(GPIO.input(circulation_vent.pin)),
         "exhaust_vent": bool(GPIO.input(exhaust_vent.pin)),
-        "heater": bool(GPIO.input(heater.pin)),
-        "pump": bool(GPIO.input(water_pump.pin)),
     }
 
 
 def _apply_control_targets_to_gpio(targets: dict) -> None:
+    if targets.get("light"):
+        light.on()
+    else:
+        light.off()
     if targets.get("heater"):
         heater.on()
     else:
@@ -383,11 +373,6 @@ def _apply_control_targets_to_gpio(targets: dict) -> None:
         exhaust_vent.on()
     else:
         exhaust_vent.off()
-    pump_on = targets.get("pump") or targets.get("water_pump")
-    if pump_on:
-        water_pump.on()
-    else:
-        water_pump.off()
 
 
 def update_real_time_data():
@@ -415,10 +400,11 @@ def update_real_time_data():
         # Apply schedule-based overrides before PID control
         schedule_mgr = st.session_state.schedule_manager
         if schedule_mgr.is_equipment_active("lights", datetime.now()):
-            # Lights schedule active - could control light relay here
-            pass
-        
-        control_grow_room_equipment(current_data, target_air_temp, target_humidity, target_ec)
+            light.on()
+        else:
+            light.off()
+
+        control_grow_room_equipment(current_data, target_air_temp, target_humidity)
         data_manager.sync_relay_targets_from_automation(_equipment_for_log())
     else:
         _apply_control_targets_to_gpio(ctrl["targets"])
@@ -509,9 +495,9 @@ def update_real_time_data():
             toggle_exhaust_vent()
             st.rerun()
 
-        st.markdown(f"<p class='small-font'>Water Pump: {'ON' if GPIO.input(water_pump.pin) else 'OFF'}</p>", unsafe_allow_html=True)
-        if st.button("Toggle Water Pump", key="toggle_water_pump", use_container_width=True):
-            toggle_water_pump()
+        st.markdown(f"<p class='small-font'>Light: {'ON' if GPIO.input(light.pin) else 'OFF'}</p>", unsafe_allow_html=True)
+        if st.button("Toggle Light", key="toggle_light", use_container_width=True):
+            toggle_light()
             st.rerun()
 
     # Schedule Status
@@ -522,8 +508,8 @@ def update_real_time_data():
         lights_active = schedule_mgr.is_equipment_active("lights")
         st.markdown(f"<p class='small-font'>💡 Lights: {'Active' if lights_active else 'Inactive'}</p>", unsafe_allow_html=True)
     with sched_col2:
-        pump_active = schedule_mgr.is_equipment_active("water_pump")
-        st.markdown(f"<p class='small-font'>💧 Water Pump: {'Active' if pump_active else 'Inactive'}</p>", unsafe_allow_html=True)
+        heater_target = data_manager.get_control_state()["targets"].get("heater", False)
+        st.markdown(f"<p class='small-font'>Heater target: {'ON' if heater_target else 'OFF'}</p>", unsafe_allow_html=True)
     with sched_col3:
         vent_active = schedule_mgr.is_equipment_active("exhaust_vent")
         st.markdown(f"<p class='small-font'>💨 Exhaust: {'Active' if vent_active else 'Inactive'}</p>", unsafe_allow_html=True)
@@ -721,14 +707,14 @@ def toggle_exhaust_vent():
     data_manager.set_control_targets_partial({"exhaust_vent": new_on}, switch_to_manual=True)
     logger.info(f"Exhaust Vent set to {'ON' if new_on else 'OFF'} (manual)")
 
-def toggle_water_pump():
-    new_on = not GPIO.input(water_pump.pin)
+def toggle_light():
+    new_on = not GPIO.input(light.pin)
     if new_on:
-        water_pump.on()
+        light.on()
     else:
-        water_pump.off()
-    data_manager.set_control_targets_partial({"water_pump": new_on}, switch_to_manual=True)
-    logger.info(f"Water Pump set to {'ON' if new_on else 'OFF'} (manual)")
+        light.off()
+    data_manager.set_control_targets_partial({"light": new_on}, switch_to_manual=True)
+    logger.info(f"Light set to {'ON' if new_on else 'OFF'} (manual)")
 
 def train_ml_model():
     """Train ML model on historical grow data (VPD + EC + pH)."""
