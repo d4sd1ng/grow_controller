@@ -2,7 +2,7 @@
 
 Stand: 2026-10-06
 
-Dieser Plan beschreibt ausschließlich die **Kleinspannungs-/Steuerseite**. Die 230-V-Lastseite der SSR ist bewusst nicht enthalten.
+Dieser Plan beschreibt die **Kleinspannungs-/Steuerseite vollständig**. Die 230-V-Seite ist als Funktionsblock mit Lastzuordnung dokumentiert; eine Klemmen-für-Klemmen-Netzverdrahtung ist nicht Bestandteil des Plans.
 
 ## 1. Architektur
 
@@ -151,7 +151,9 @@ PH4502C PO
 
 Der Teiler reduziert 0–5 V auf maximal ca. 0–3.33 V.
 
-Die pH-Berechnung wird später per Kalibrierpunkten in der Firmware eingestellt; kein einfaches lineares 0–14-Mapping des alten Codes.
+Für die pH-Messung liegt eine frühere reale Kalibrierung vor: `pH = -5.7 × U_PO + 21.34`. Mit dem 10-kOhm/20-kOhm-Teiler entspricht das am ADS1115 näherungsweise `pH = -8.55 × U_ADS + 21.34`. Daraus ergeben sich als Startwerte ca. **1.677 V bei pH 7** und **2.028 V bei pH 4**.
+
+Zur Kontrolle der fertigen Messkette existiert `firmware/ph_calibration_tool/ph_calibration_tool.ino`. Das Tool bleibt auf einem Ersatz-ESP und mittelt die realen pH-7-/pH-4-Messungen. Die danach ausgegebenen Werte ersetzen bei Bedarf die historischen Startwerte in der Sensor-Firmware.
 
 ---
 
@@ -283,19 +285,20 @@ Die originalen pH-/TDS-Sondenleitungen nicht verlängern, solange es nicht zwing
 
 ---
 
-## 13. Firmware-Folgen dieses Wiringplans
+## 13. Software-Stand zu diesem Wiringplan
 
-Der aktuelle Repository-Stand ist noch **nicht** kompatibel mit diesem Plan.
+Der Branch `hardware-v2-firmware` ist auf diese Hardwarearchitektur umgestellt.
 
-Erforderlich sind insbesondere:
-
-| Bereich | Änderung |
+| Bereich | Stand |
 |---|---|
-| Sensor-ESP Firmware | 3x DHT22, 2x DS18B20, ADS1115, PH4502C, CQRobot, separater BH1750-I2C-Bus |
-| Sensor-ESP Firmware | keine lokalen SSR-GPIOs mehr; berechnet Sollzustände und sendet sie über WLAN |
-| Strom-ESP Firmware | neuer Aktor-Knoten für vier direkt angesteuerte SSR-Kanäle + Kommunikations-Watchdog/Failsafe |
-| CYD | PUMP-Kanal entfernen und durch LIGHT ersetzen |
-| Telemetrie | zusätzliche Sensorfelder + Licht-Relaiszustand; Wasserpumpe nicht als schaltbarer Kanal |
-| Server | SQLite durch PostgreSQL ersetzen |
-| Dashboard/Tests/ML | bisherige pump-Referenzen auf neue Hardwarearchitektur anpassen |
+| Sensor-ESP Firmware | umgesetzt: 3x DHT22, 2x DS18B20, ADS1115, PH4502C, CQRobot, separater BH1750-I2C-Bus |
+| Sensor-ESP Firmware | umgesetzt: keine lokalen SSR-GPIOs; Sensor-ESP ist Steuerlogik-/Kommunikationsknoten |
+| Strom-ESP Firmware | umgesetzt: eigener Aktor-Knoten mit GPIO17/18/19/23 und Kommunikations-Failsafe |
+| CYD | umgesetzt: LIGHT / HEAT / CIRC / EXH; keine Pumpensteuerung |
+| Telemetrie | umgesetzt: zusätzliche Sensorfelder und `light` als vierter Aktorkanal |
+| SQLite-Zwischenstand | auf Hardware V2 angepasst; bleibt nur bis zum PostgreSQL-Umbau bestehen |
+| Dashboard/Tests/ML | auf LIGHT statt steuerbarer Wasserpumpe angepasst |
+| PostgreSQL | **noch offen**; separater nächster Umbau |
+
+Die Wasserpumpe bleibt in Hardware und Software außerhalb der Aktorsteuerung und läuft dauerhaft.
 
