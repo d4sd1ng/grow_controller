@@ -146,8 +146,15 @@ static float phFromAdsVoltage(float adsV) {
   return slope * adsV + offset;
 }
 
-static void loadCalibration() {
-  preferences.begin(NVS_NAMESPACE, true);
+static bool loadCalibration() {
+  if (!preferences.begin(NVS_NAMESPACE, true)) {
+    havePh7 = false;
+    havePh4 = false;
+    ph7AdsV = NAN;
+    ph4AdsV = NAN;
+    return false;
+  }
+
   havePh7 = preferences.getBool(NVS_HAVE_7, false);
   havePh4 = preferences.getBool(NVS_HAVE_4, false);
   ph7AdsV = preferences.getFloat(NVS_VOLT_7, NAN);
@@ -156,28 +163,52 @@ static void loadCalibration() {
 
   if (havePh7 && isnan(ph7AdsV)) havePh7 = false;
   if (havePh4 && isnan(ph4AdsV)) havePh4 = false;
+  return true;
 }
 
-static void saveCalibration() {
-  preferences.begin(NVS_NAMESPACE, false);
-  preferences.putBool(NVS_HAVE_7, havePh7);
-  preferences.putBool(NVS_HAVE_4, havePh4);
-  if (havePh7) preferences.putFloat(NVS_VOLT_7, ph7AdsV);
-  else preferences.remove(NVS_VOLT_7);
-  if (havePh4) preferences.putFloat(NVS_VOLT_4, ph4AdsV);
-  else preferences.remove(NVS_VOLT_4);
+static bool saveCalibration() {
+  if (!preferences.begin(NVS_NAMESPACE, false)) return false;
+
+  bool ok = true;
+
+  if (havePh7) ok = ok && (preferences.putFloat(NVS_VOLT_7, ph7AdsV) == sizeof(float));
+  else if (preferences.isKey(NVS_VOLT_7)) ok = ok && preferences.remove(NVS_VOLT_7);
+
+  if (havePh4) ok = ok && (preferences.putFloat(NVS_VOLT_4, ph4AdsV) == sizeof(float));
+  else if (preferences.isKey(NVS_VOLT_4)) ok = ok && preferences.remove(NVS_VOLT_4);
+
+  // Flags last: a stored point is only marked valid after its voltage write succeeded.
+  ok = ok && (preferences.putBool(NVS_HAVE_7, havePh7) == sizeof(bool));
+  ok = ok && (preferences.putBool(NVS_HAVE_4, havePh4) == sizeof(bool));
   preferences.end();
+
+  if (!ok || !preferences.begin(NVS_NAMESPACE, true)) return false;
+
+  const bool storedHave7 = preferences.getBool(NVS_HAVE_7, false);
+  const bool storedHave4 = preferences.getBool(NVS_HAVE_4, false);
+  const float storedPh7 = preferences.getFloat(NVS_VOLT_7, NAN);
+  const float storedPh4 = preferences.getFloat(NVS_VOLT_4, NAN);
+  preferences.end();
+
+  if (storedHave7 != havePh7 || storedHave4 != havePh4) return false;
+  if (havePh7 && (isnan(storedPh7) || fabsf(storedPh7 - ph7AdsV) > 0.000001f)) return false;
+  if (havePh4 && (isnan(storedPh4) || fabsf(storedPh4 - ph4AdsV) > 0.000001f)) return false;
+
+  return true;
 }
 
-static void clearCalibration() {
+static bool clearCalibration() {
+  if (!preferences.begin(NVS_NAMESPACE, false)) return false;
+  const bool ok = preferences.clear();
+  preferences.end();
+
+  if (!ok) return false;
+
   havePh7 = false;
   havePh4 = false;
   ph7AdsV = NAN;
   ph4AdsV = NAN;
-
-  preferences.begin(NVS_NAMESPACE, false);
-  preferences.clear();
-  preferences.end();
+  return true;
 }
 
 static void printHelp() {
@@ -261,8 +292,14 @@ static bool captureStablePoint(float targetPh) {
     return false;
   }
 
-  saveCalibration();
-  Serial.println(F("OK: stabiler Kalibrierpunkt dauerhaft gespeichert."));
+  if (!saveCalibration()) {
+    Serial.println(F("FEHLER: Kalibrierpunkt konnte nicht dauerhaft im NVS verifiziert werden."));
+    Serial.println(F("Der Messwert ist nur im RAM aktiv; bitte NVS/Flash pruefen und erneut erfassen."));
+    printCalibration();
+    return false;
+  }
+
+  Serial.println(F("OK: stabiler Kalibrierpunkt dauerhaft gespeichert und verifiziert."));
   printCalibration();
   return true;
 }
@@ -327,8 +364,11 @@ static void handleSerial() {
     } else if (c == 's' || c == 'S') {
       printCalibration();
     } else if (c == 'r' || c == 'R') {
-      clearCalibration();
-      Serial.println(F("Kalibrierpunkte aus RAM und NVS geloescht."));
+      if (clearCalibration()) {
+        Serial.println(F("Kalibrierpunkte aus RAM und NVS geloescht."));
+      } else {
+        Serial.println(F("FEHLER: NVS konnte nicht geloescht werden; RAM bleibt unveraendert."));
+      }
       printCalibration();
     } else if (c == 'h' || c == 'H' || c == '?') {
       printHelp();
@@ -357,8 +397,12 @@ void setup() {
     display.display();
   }
 
-  loadCalibration();
+  const bool nvsReadable = loadCalibration();
   printHelp();
+
+  if (!nvsReadable) {
+    Serial.println(F("WARNUNG: NVS konnte nicht geoeffnet werden; Persistenz ist derzeit nicht verfuegbar."));
+  }
 
   if (!adsOk) {
     Serial.println(F("FEHLER: ADS1115 @ 0x48 nicht gefunden."));
