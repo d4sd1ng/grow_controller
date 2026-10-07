@@ -32,7 +32,7 @@ class TestExportFeatures(unittest.TestCase):
                 "circulation_vent": False,
                 "exhaust_vent": False,
                 "heater": False,
-                "pump": False,
+                "light": False,
             })
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
@@ -64,7 +64,7 @@ class TestExportFeatures(unittest.TestCase):
             "circulation_vent": True,
             "exhaust_vent": False,
             "heater": False,
-            "pump": True,
+            "light": True,
         })
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -112,7 +112,6 @@ class TestScheduleManager(unittest.TestCase):
         schedules = scheduler.get_all_schedules()
         
         self.assertIn("lights", schedules)
-        self.assertIn("water_pump", schedules)
         self.assertIn("exhaust_vent", schedules)
     
     def test_schedule_active_status(self):
