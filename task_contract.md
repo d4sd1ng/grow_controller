@@ -10,7 +10,7 @@
 | H02 | Sensor-ESP Firmware | **ERLEDIGT (Code)** | 3x DHT22, 2x DS18B20, ADS1115, PH4502C, CQRobot-TDS, BH1750, OLED, lokale AUTO/MANUAL-API. |
 | H03 | Stromkasten-ESP Firmware | **ERLEDIGT (Code)** | 4 SSR: Licht, Umluft, Abluft, Heizung; WLAN zum Sensor-ESP; Watchdog/Failsafe. |
 | H04 | CYD Hardware-V2 | **ERLEDIGT (Code)** | LIGHT / HEAT / CIRC / EXH; Live-Steuerung direkt zum Sensor-ESP. |
-| H05 | pH-Kalibrier-Tool | **READY FOR FLASH** | Separater Ersatz-ESP; stabile pH-7/4-Punkte, NVS-Persistenz, OLED/Serial-Status und direkt übernehmbare Sensor-Firmware-Konstanten. Physische Kalibrierung bleibt offen. |
+| H05 | pH-Kalibrier-Tool | **READY FOR COMPILE** | Separater Ersatz-ESP ohne ADS1115; PH4502C ueber 10k/20k direkt an GPIO34, stabile pH-7/4-Punkte, NVS-Persistenz und Serial-Ausgabe. Physische Kalibrierung bleibt offen. |
 | H06 | Server-Datenmodell | **ERLEDIGT für SQLite-Zwischenstand** | steuerbare Pumpe entfernt, `light` als Aktorkanal; neue Sensorfelder werden validiert/als Extras erhalten. |
 | H07 | Dashboard / Simulator / ML / Tests | **ERLEDIGT (Code)** | Aktorset auf LIGHT/HEAT/CIRC/EXH umgestellt; Pumpensteuerung entfernt. |
 | H08 | PostgreSQL statt SQLite | **OFFEN** | Bestehenden PostgreSQL-Container verwenden; eigener DB/User/Schema-Kontext. |
