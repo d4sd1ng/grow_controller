@@ -83,7 +83,7 @@ Mit dem aktuellen 10k/20k-Spannungsteiler sind in der Sensor-Firmware vorläufig
 - pH 7: ca. 1.677193 V am ADS1115
 - pH 4: ca. 2.028070 V am ADS1115
 
-Das Kalibrier-Servicegerät ist jetzt für den Flash vorbereitet: stabile pH-7-/pH-4-Punkte werden nur unterhalb der definierten Streuungsgrenze übernommen, dauerhaft im ESP32-NVS gespeichert und nach Neustart wieder geladen. Die Serial-Ausgabe liefert direkt die beiden `PH_CAL_VOLT_4`/`PH_CAL_VOLT_7`-Konstanten für die Sensor-Firmware. Offen bleibt nur die physische Kalibrierung mit den realen Pufferlösungen und der anschließende Kompilier-/Flash-Test.
+Das Kalibrier-Servicegerät verwendet keinen ADS1115. Der PH4502C-PO-Ausgang wird über 10k/20k direkt auf GPIO34 des Ersatz-ESP geführt und mit dessen internem ADC gemessen. Stabile pH-7-/pH-4-Punkte werden im ESP32-NVS gespeichert; die Serial-Ausgabe liefert die beiden Spannungswerte hinter dem Teiler für die spätere Produktions-Messkette. Offen sind Kompilier-/Flash-Test und die physische Kalibrierung mit den realen Pufferlösungen.
 
 ## Server-Zwischenstand vor PostgreSQL
 
