@@ -8,7 +8,7 @@
 | `powerbox_actuator` | Stromkasten-ESP | vier SSR-Eingänge schalten, Sollwerte direkt vom Sensor-ESP holen, Failsafe |
 | `cyd_remote_control` | CYD | primäre 3-Panel-Fernbedienung; Live/Control direkt zum Sensor-ESP, Historie/Alerts vom Server |
 | `cyd_grow_display` | CYD | alternative kompakte LVGL-Oberfläche |
-| `ph_calibration_tool` | Ersatz-ESP | pH-7-/pH-4-Kalibrierung der ADS1115-Messkette |
+| `ph_calibration_tool` | Ersatz-ESP | pH-7-/pH-4-Kalibrierung direkt ueber den internen ESP32-ADC; kein ADS1115 am Servicegeraet |
 
 Es gibt nur **ein CYD**; `cyd_remote_control` und `cyd_grow_display` sind alternative Firmwarevarianten für dieses Gerät.
 
@@ -88,7 +88,7 @@ Die Wasserpumpe wird nicht gesteuert.
 
 ## pH-Servicegerät
 
-`ph_calibration_tool.ino` arbeitet mit derselben PH4502C -> 10k/20k -> ADS1115-A0-Messkette wie die Produktionsfirmware.
+`ph_calibration_tool.ino` benoetigt keinen ADS1115. Der PH4502C-PO-Ausgang geht ueber denselben 10k/20k-Spannungsteiler direkt auf GPIO34 des Ersatz-ESP. Die gemessene Spannung hinter dem Teiler wird als Kalibrierpunkt gespeichert.
 
 Serial Monitor: 115200 Baud.
 
