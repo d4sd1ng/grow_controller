@@ -88,7 +88,7 @@ Die Wasserpumpe wird nicht gesteuert.
 
 ## pH-Servicegerät
 
-`ph_calibration_tool.ino` benoetigt keinen ADS1115. Der PH4502C-PO-Ausgang geht ueber denselben 10k/20k-Spannungsteiler direkt auf GPIO34 des Ersatz-ESP. Ein DS18B20 auf GPIO32 misst die Temperatur; jeder pH-7-/pH-4-Punkt wird nur mit gueltiger Temperatur angenommen und zusammen mit dieser im NVS gespeichert. Das integrierte SSD1306-OLED auf GPIO21/22 zeigt Temperatur, ADC-/PO-Spannung, Streuung, Kalibrierstatus und nach zwei Punkten den berechneten pH-Wert.
+`ph_calibration_tool.ino` benoetigt keinen ADS1115. Der PH4502C-PO-Ausgang geht ueber denselben 10k/(2x10k)-Spannungsteiler direkt auf D4 des Ersatz-ESP. Ein DS18B20 auf D18 misst die Temperatur; jeder pH-7-/pH-4-Punkt wird nur mit gueltiger Temperatur angenommen und zusammen mit dieser im NVS gespeichert. Das integrierte SSD1306-OLED auf GPIO21/22 zeigt Temperatur, ADC-/PO-Spannung, Streuung, Kalibrierstatus und nach zwei Punkten den berechneten pH-Wert.
 
 Serial Monitor: 115200 Baud.
 
