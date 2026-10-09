@@ -43,7 +43,7 @@ Raspberry Pi / Server
 | DHT22 #1 | GPIO25 |
 | DHT22 #2 | GPIO26 |
 | DHT22 #3 | GPIO27 |
-| 2x DS18B20 1-Wire | GPIO32 |
+| 2x DS18B20 1-Wire | D18 |
 | BH1750 SDA | GPIO13 |
 | BH1750 SCL | GPIO14 |
 
@@ -83,7 +83,7 @@ Mit dem aktuellen 10k/20k-Spannungsteiler sind in der Sensor-Firmware vorläufig
 - pH 7: ca. 1.677193 V am ADS1115
 - pH 4: ca. 2.028070 V am ADS1115
 
-Das Kalibrier-Servicegeraet verwendet keinen ADS1115. Der PH4502C-PO-Ausgang wird ueber 10k/20k direkt auf GPIO34 des Ersatz-ESP gefuehrt und mit dessen internem ADC gemessen. Ein DS18B20 auf GPIO32 misst die Kalibriertemperatur; pH-7-/pH-4-Punkte werden nur mit gueltiger Temperatur angenommen und zusammen mit dieser im ESP32-NVS gespeichert. Das integrierte SSD1306-OLED auf GPIO21/22 zeigt Temperatur, ADC-/PO-Spannung, Streuung, Kalibrierstatus und nach zwei Punkten den berechneten pH-Wert. Eine automatische Puffer-Temperaturkorrektur bleibt bewusst aus, bis die Temperaturtabelle des konkret verwendeten Pufferprodukts feststeht. Offen sind Kompilier-/Flash-Test und die physische Kalibrierung mit den realen Pufferloesungen.
+Das Kalibrier-Servicegeraet verwendet keinen ADS1115. Der PH4502C-PO-Ausgang wird ueber 10k/(2x10k) direkt auf D4 des Ersatz-ESP gefuehrt und mit dessen internem ADC gemessen. Ein DS18B20 auf D18 misst die Kalibriertemperatur; pH-7-/pH-4-Punkte werden nur mit gueltiger Temperatur angenommen und zusammen mit dieser im ESP32-NVS gespeichert. Das integrierte SSD1306-OLED auf D21/D22 zeigt Temperatur, ADC-/PO-Spannung, Streuung, Kalibrierstatus und nach zwei Punkten den berechneten pH-Wert. Eine automatische Puffer-Temperaturkorrektur bleibt bewusst aus, bis die Temperaturtabelle des konkret verwendeten Pufferprodukts feststeht. Offen sind Kompilier-/Flash-Test und die physische Kalibrierung mit den realen Pufferloesungen.
 
 ## Server-Zwischenstand vor PostgreSQL
 
