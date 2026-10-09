@@ -43,7 +43,7 @@ Raspberry Pi / Server
 | DHT22 #1 | GPIO25 |
 | DHT22 #2 | GPIO26 |
 | DHT22 #3 | GPIO27 |
-| 2x DS18B20 1-Wire | D18 |
+| 2x DS18B20 1-Wire | GPIO32 |
 | BH1750 SDA | GPIO13 |
 | BH1750 SCL | GPIO14 |
 
