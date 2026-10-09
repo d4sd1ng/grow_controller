@@ -28,7 +28,7 @@ Der Header `X-Telemetry-Key` wird verwendet, wenn `TELEMETRY_API_KEY` gesetzt is
 
 ## Bibliotheken
 
-### Sensor-ESP / pH-Tool
+### Sensor-ESP
 
 - Adafruit ADS1X15
 - Adafruit GFX
@@ -38,6 +38,15 @@ Der Header `X-Telemetry-Key` wird verwendet, wenn `TELEMETRY_API_KEY` gesetzt is
 - DallasTemperature
 - ArduinoJson
 - ESP32 Arduino Core
+
+### pH-Servicegeraet
+
+- Adafruit GFX
+- Adafruit SSD1306
+- OneWire
+- DallasTemperature
+- ESP32 Arduino Core
+- kein ADS1115
 
 ### CYD Remote
 
