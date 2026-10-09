@@ -4,16 +4,18 @@
  * Hardware:
  *   PH4502C VCC -> 5V
  *   PH4502C GND -> GND
- *   PH4502C PO  -> 10k -> GPIO34
+ *   PH4502C PO  -> 10k -> D4
  *                         |
- *                        20k
+ *                        10k
+ *                         |
+ *                        10k
  *                         |
  *                        GND
  *
- *   DS18B20 DATA -> GPIO32, 4.7k Pull-up nach 3.3V
+ *   DS18B20 DATA -> D18, 4.7k Pull-up nach 3.3V
  *   integriertes SSD1306 OLED -> SDA GPIO21 / SCL GPIO22, Adresse 0x3C
  *
- * Der 10k/20k-Teiler reduziert das PH4502C-Signal auf 2/3.
+ * Der Teiler aus 10k oben und 2x10k in Reihe nach GND reduziert das PH4502C-Signal auf 2/3.
  * Das Kalibrier-ESP misst diesen Knoten direkt mit seinem internen ADC.
  *
  * Temperatur:
@@ -43,8 +45,8 @@
 #include <Adafruit_SSD1306.h>
 #include <math.h>
 
-static constexpr uint8_t PIN_PH_ADC = 34;
-static constexpr uint8_t PIN_DS18B20 = 32;
+static constexpr uint8_t PIN_PH_ADC = 4;
+static constexpr uint8_t PIN_DS18B20 = 18;
 static constexpr uint8_t PIN_OLED_SDA = 21;
 static constexpr uint8_t PIN_OLED_SCL = 22;
 static constexpr uint8_t OLED_ADDR = 0x3C;
@@ -273,8 +275,8 @@ static bool clearCalibration() {
 static void printHelp() {
   Serial.println();
   Serial.println(F("=== PH4502C Kalibrier-Servicegeraet ==="));
-  Serial.println(F("ADC: ESP32 intern auf GPIO34, KEIN ADS1115"));
-  Serial.println(F("Temperatur: DS18B20 auf GPIO32"));
+  Serial.println(F("ADC: ESP32 intern an Board-Pin D4, KEIN ADS1115"));
+  Serial.println(F("Temperatur: DS18B20 DATA an Board-Pin D18"));
   Serial.println(F("OLED: SSD1306 128x64 auf GPIO21/22"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
@@ -290,14 +292,14 @@ static void printCalibration() {
   Serial.println(F("--- Kalibrierstatus ---"));
 
   if (havePh7) {
-    Serial.printf("pH 7: GPIO34 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
+    Serial.printf("pH 7: D4 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
                   ph7InputV, ph7InputV * DIVIDER_RECONSTRUCT, ph7TempC);
   } else {
     Serial.println(F("pH 7: noch nicht erfasst"));
   }
 
   if (havePh4) {
-    Serial.printf("pH 4: GPIO34 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
+    Serial.printf("pH 4: D4 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
                   ph4InputV, ph4InputV * DIVIDER_RECONSTRUCT, ph4TempC);
   } else {
     Serial.println(F("pH 4: noch nicht erfasst"));
@@ -343,7 +345,7 @@ static bool captureStablePoint(float targetPh) {
     return false;
   }
 
-  Serial.printf("Mittelwert GPIO34: %.6f V\n", s.meanV);
+  Serial.printf("Mittelwert D4: %.6f V\n", s.meanV);
   Serial.printf("Std-Abw.:          %.6f V\n", s.stdV);
   Serial.printf("PH4502C PO:        %.6f V (rueckgerechnet)\n",
                 s.meanV * DIVIDER_RECONSTRUCT);
@@ -508,7 +510,7 @@ void setup() {
   }
 
   if (!tempSensorPresent) {
-    Serial.println(F("WARNUNG: DS18B20 auf GPIO32 nicht erkannt."));
+    Serial.println(F("WARNUNG: DS18B20 auf D18 nicht erkannt."));
   }
 
   if (!oledOk) {
@@ -536,7 +538,7 @@ void loop() {
   if (now - lastPrint >= 1000) {
     lastPrint = now;
 
-    Serial.printf("LIVE | GPIO34 %.6f V | PO %.6f V | std %.3f mV",
+    Serial.printf("LIVE | D4 %.6f V | PO %.6f V | std %.3f mV",
                   liveInputV,
                   livePoV,
                   liveStdV * 1000.0f);
