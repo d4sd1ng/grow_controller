@@ -487,6 +487,21 @@ void setup() {
   analogSetPinAttenuation(PIN_PH_ADC, ADC_11db);
 
   temperatureSensors.begin();
+  const uint8_t oneWireCount = temperatureSensors.getDeviceCount();
+  Serial.printf("1-Wire: %u Geraet(e) gefunden.\n", static_cast<unsigned>(oneWireCount));
+  for (uint8_t i = 0; i < oneWireCount; ++i) {
+    DeviceAddress address;
+    if (temperatureSensors.getAddress(address, i)) {
+      Serial.printf("1-Wire Sensor %u Adresse: ", static_cast<unsigned>(i));
+      for (uint8_t j = 0; j < 8; ++j) {
+        Serial.printf("%02X", address[j]);
+        if (j < 7) Serial.print(":");
+      }
+      Serial.println();
+    } else {
+      Serial.printf("1-Wire Sensor %u: Adresse nicht lesbar.\n", static_cast<unsigned>(i));
+    }
+  }
   temperatureSensors.setResolution(10);
   updateTemperature(true);
 
