@@ -12,7 +12,7 @@
  *                         |
  *                        GND
  *
- *   DS18B20 DATA -> D18, 4.7k Pull-up nach 3.3V
+ *   DS18B20 DATA -> D23, 4.7k Pull-up nach 3.3V
  *   integriertes SSD1306 OLED -> SDA GPIO21 / SCL GPIO22, Adresse 0x3C
  *
  * Der Teiler aus 10k oben und 2x10k in Reihe nach GND reduziert das PH4502C-Signal auf 2/3.
@@ -47,7 +47,7 @@
 #include <math.h>
 
 static constexpr uint8_t PIN_PH_ADC = 36;
-static constexpr uint8_t PIN_DS18B20 = 18;
+static constexpr uint8_t PIN_DS18B20 = 23;
 static constexpr uint8_t PIN_OLED_SDA = 21;
 static constexpr uint8_t PIN_OLED_SCL = 22;
 static constexpr uint8_t OLED_ADDR = 0x3C;
@@ -277,7 +277,7 @@ static void printHelp() {
   Serial.println();
   Serial.println(F("=== PH4502C Kalibrier-Servicegeraet ==="));
   Serial.println(F("ADC: ESP32 intern an Board-Pin VP, KEIN ADS1115"));
-  Serial.println(F("Temperatur: DS18B20 DATA an Board-Pin D18"));
+  Serial.println(F("Temperatur: DS18B20 DATA an Board-Pin D23"));
   Serial.println(F("OLED: SSD1306 128x64 auf GPIO21/22"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
@@ -526,7 +526,7 @@ void setup() {
   }
 
   if (!tempSensorPresent) {
-    Serial.println(F("WARNUNG: DS18B20 auf D18 nicht erkannt."));
+    Serial.println(F("WARNUNG: DS18B20 auf D23 nicht erkannt."));
   }
 
   if (!oledOk) {
