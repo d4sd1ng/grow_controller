@@ -1,41 +1,23 @@
 /**
- * PH4502C Kalibrier-Servicegeraet ohne ADS1115
+ * Hardware-Diagnose und pH-Kalibrierung auf dem EINZELNEN ESP32.
+ * Aufgebaut: OLED GPIO21/22, ADS1115 A0 pH / A1 TDS, DS18B20 GPIO23.
+ * Noch nicht angeschlossene Sensoren (3x DHT22 GPIO25/26/27,
+ * BH1750 GPIO13/14) werden als FEHLEND angezeigt, ohne die anderen
+ * Tests und die pH-Kalibrierung zu blockieren.
  *
- * Hardware:
- *   PH4502C VCC -> 5V
- *   PH4502C GND -> GND
- *   PH4502C PO  -> 10k -> VP
- *                         |
- *                        10k
- *                         |
- *                        10k
- *                         |
- *                        GND
+ * SSR-Steuerpins 17/18/19/33 werden nur auf AUS initialisiert.
+ * Es gibt KEINEN Schalt-/Lasttest und KEINEN 230-V-Test.
  *
- *   DS18B20 DATA -> D23, 4.7k Pull-up nach 3.3V
- *   integriertes SSD1306 OLED -> SDA GPIO21 / SCL GPIO22, Adresse 0x3C
+ * pH-Messung ausschliesslich ueber ADS1115 A0, kein VP/GPIO36.
+ * A0/A1 duerfen die ADS1115-Versorgung (3.3 V) nicht ueberschreiten.
+ * Eingangsspannungen vor dem ersten Zuschalten separat messen.
  *
- * Der Teiler aus 10k oben und 2x10k in Reihe nach GND reduziert das PH4502C-Signal auf 2/3.
- * VP ist GPIO36 / ADC1_CH0 und wird nur als Analogeingang benutzt.
- * Das Kalibrier-ESP misst diesen Knoten direkt mit seinem internen ADC.
- *
- * Temperatur:
- * - wird live mitgemessen und auf OLED/Serial angezeigt
- * - wird fuer jeden pH-7-/pH-4-Kalibrierpunkt mitgespeichert
- * - ein Kalibrierpunkt wird ohne gueltige Temperaturmessung nicht akzeptiert
- *
- * WICHTIG:
- * Eine automatische Korrektur des Soll-pH der Pufferloesung wird absichtlich
- * nicht vorgenommen. Diese Korrektur ist vom konkreten Pufferprodukt und
- * dessen Temperaturtabelle abhaengig.
- *
- * Serial Monitor: 115200 Baud
- *   7 = stabilen Mittelwert als pH-7-Punkt erfassen und speichern
- *   4 = stabilen Mittelwert als pH-4-Punkt erfassen und speichern
- *   s = Status / Kalibrierwerte ausgeben
- *   r = gespeicherte Kalibrierpunkte loeschen
- *   h = Hilfe
+ * 115200 Baud: 7=pH7 kalibrieren, 4=pH4, s=Kalibrierwerte,
+ * t=komplette Diagnose, r=ADS-Kalibrierung loeschen, h=Hilfe.
+ * Kalibriert wird erst mit gueltiger DS18B20-Temperatur.
  */
+ 
+*/
 
 #include <Arduino.h>
 #include <Preferences.h>
@@ -44,13 +26,24 @@
 #include <DallasTemperature.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Adafruit_ADS1X15.h>
+#include <DHT.h>
 #include <math.h>
 
-static constexpr uint8_t PIN_PH_ADC = 36;
 static constexpr uint8_t PIN_DS18B20 = 23;
 static constexpr uint8_t PIN_OLED_SDA = 21;
 static constexpr uint8_t PIN_OLED_SCL = 22;
+static constexpr uint8_t PIN_BH_SDA = 13;
+static constexpr uint8_t PIN_BH_SCL = 14;
+static constexpr uint8_t PIN_DHT1 = 25;
+static constexpr uint8_t PIN_DHT2 = 26;
+static constexpr uint8_t PIN_DHT3 = 27;
+static constexpr uint8_t PIN_SSR_LIGHT = 17;
+static constexpr uint8_t PIN_SSR_CIRC = 18;
+static constexpr uint8_t PIN_SSR_EXH = 19;
+static constexpr uint8_t PIN_SSR_HEAT = 33;
 static constexpr uint8_t OLED_ADDR = 0x3C;
+static constexpr uint8_t ADS_ADDR = 0x48;
 
 static constexpr float R_TOP_OHM = 10000.0f;
 static constexpr float R_BOTTOM_OHM = 20000.0f;
@@ -67,7 +60,9 @@ static constexpr unsigned long OLED_INTERVAL_MS = 500;
 static constexpr float CAPTURE_MAX_STD_V = 0.010f;
 static constexpr float MIN_CAL_POINT_DISTANCE_V = 0.001f;
 
-static constexpr char NVS_NAMESPACE[] = "phcal";
+// Neues Namespace: alte interne-ADC-Kalibrierung bleibt erhalten,
+// wird aber NICHT irrtuemlich auf ADS1115-Messwerte angewendet.
+static constexpr char NVS_NAMESPACE[] = "phads_v1";
 static constexpr char NVS_HAVE_7[] = "have7";
 static constexpr char NVS_HAVE_4[] = "have4";
 static constexpr char NVS_VOLT_7[] = "volt7";
@@ -79,14 +74,28 @@ Preferences preferences;
 OneWire oneWire(PIN_DS18B20);
 DallasTemperature temperatureSensors(&oneWire);
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
+Adafruit_ADS1115 ads;
+TwoWire bhWire = TwoWire(1);
+DHT dht1(PIN_DHT1, DHT22);
+DHT dht2(PIN_DHT2, DHT22);
+DHT dht3(PIN_DHT3, DHT22);
 
 bool oledOk = false;
+bool adsOk = false;
 bool tempSensorPresent = false;
+bool bhOk = false;
+uint8_t bhAddress = 0;
+uint8_t oneWireCount = 0;
 
+struct AirData { float tempC = NAN; float humidity = NAN; bool ok = false; };
+AirData air[3];
+float bhLux = NAN;
 float liveInputV = NAN;
 float livePoV = NAN;
 float liveStdV = NAN;
+float liveTdsV = NAN;
 float liveTempC = NAN;
+float liveTemp2C = NAN;
 
 bool havePh7 = false;
 bool havePh4 = false;
@@ -96,6 +105,7 @@ float ph7TempC = NAN;
 float ph4TempC = NAN;
 
 unsigned long lastTempMs = 0;
+unsigned long lastOtherSensorsMs = 0;
 unsigned long lastOledMs = 0;
 
 struct SampleStats {
@@ -110,34 +120,99 @@ static bool validTemperature(float t) {
 }
 
 static SampleStats sampleChannel(uint16_t count, uint16_t delayMs) {
+  SampleStats empty{NAN, NAN, 0, 0};
+  if (!adsOk || count == 0) return empty;
   double sum = 0.0;
   double sumSq = 0.0;
   uint32_t minMv = UINT32_MAX;
   uint32_t maxMv = 0;
 
   for (uint16_t i = 0; i < count; ++i) {
-    const uint32_t mv = analogReadMilliVolts(PIN_PH_ADC);
-    const float v = static_cast<float>(mv) / 1000.0f;
-
+    const int16_t raw = ads.readADC_SingleEnded(0);
+    const float v = ads.computeVolts(raw);  // ADS1115 Gain_ONE
+    if (!isfinite(v) || v < 0.0f) return empty;
+    const uint32_t mv = static_cast<uint32_t>(lroundf(v * 1000.0f));
     sum += v;
-    sumSq += static_cast<double>(v) * static_cast<double>(v);
-
+    sumSq += static_cast<double>(v) * v;
     if (mv < minMv) minMv = mv;
     if (mv > maxMv) maxMv = mv;
-
-    if (delayMs > 0) delay(delayMs);
+    if (delayMs) delay(delayMs);
   }
-
   const double mean = sum / count;
-  double variance = (sumSq / count) - (mean * mean);
+  double variance = sumSq / count - mean * mean;
   if (variance < 0.0) variance = 0.0;
+  return SampleStats{static_cast<float>(mean),
+                     static_cast<float>(sqrt(variance)), minMv, maxMv};
+}
 
-  SampleStats s;
-  s.meanV = static_cast<float>(mean);
-  s.stdV = static_cast<float>(sqrt(variance));
-  s.minMv = minMv;
-  s.maxMv = maxMv;
-  return s;
+static void scanBh1750() {
+  bhOk = false;
+  bhAddress = 0;
+  for (uint8_t addr : {uint8_t(0x23), uint8_t(0x5C)}) {
+    bhWire.beginTransmission(addr);
+    if (bhWire.endTransmission() == 0) {
+      bhOk = true;
+      bhAddress = addr;
+      break;
+    }
+  }
+}
+
+static float readBh1750() {
+  if (!bhOk) return NAN;
+  bhWire.beginTransmission(bhAddress);
+  bhWire.write(0x01);  // Power ON
+  if (bhWire.endTransmission() != 0) return NAN;
+  bhWire.beginTransmission(bhAddress);
+  bhWire.write(0x10);  // Continuously H-Resolution
+  if (bhWire.endTransmission() != 0) return NAN;
+  delay(180);
+  if (bhWire.requestFrom(static_cast<int>(bhAddress), 2) != 2) return NAN;
+  const uint16_t raw = (static_cast<uint16_t>(bhWire.read()) << 8) | bhWire.read();
+  return raw / 1.2f;
+}
+
+static void updateOptionalSensors(bool force = false) {
+  if (!force && millis() - lastOtherSensorsMs < 3000UL) return;
+  lastOtherSensorsMs = millis();
+  DHT* modules[3] = {&dht1, &dht2, &dht3};
+  for (uint8_t i = 0; i < 3; ++i) {
+    AirData a;
+    a.tempC = modules[i]->readTemperature();
+    a.humidity = modules[i]->readHumidity();
+    a.ok = isfinite(a.tempC) && isfinite(a.humidity) &&
+           a.tempC > -20.0f && a.tempC < 70.0f &&
+           a.humidity >= 0.0f && a.humidity <= 100.0f;
+    if (!a.ok) { a.tempC = NAN; a.humidity = NAN; }
+    air[i] = a;
+  }
+  bhLux = readBh1750();
+}
+
+static void printHardwareStatus() {
+  Serial.println(F("\n=== HARDWARE-STATUS ==="));
+  Serial.printf("OLED 0x3C : %s\n", oledOk ? "OK" : "NICHT ERKANNT");
+  Serial.printf("ADS  0x48: %s\n", adsOk ? "OK" : "NICHT ERKANNT");
+  if (adsOk) {
+    Serial.printf("ADS A0 pH: %.5f V | PO (geschaetzt): %.5f V | Std: %.2f mV\n",
+                  liveInputV, livePoV, liveStdV * 1000.0f);
+    Serial.printf("ADS A1 TDS: %.5f V (roh, keine EC-Kalibrierung)\n", liveTdsV);
+  }
+  Serial.printf("DS18B20 GPIO23: %u Geraet(e)\n", static_cast<unsigned>(oneWireCount));
+  if (validTemperature(liveTempC)) Serial.printf(" DS #1: %.2f C\n", liveTempC);
+  else Serial.println(F(" DS #1: NICHT ERKANNT"));
+  if (oneWireCount > 1) {
+    if (validTemperature(liveTemp2C)) Serial.printf(" DS #2: %.2f C\n", liveTemp2C);
+    else Serial.println(F(" DS #2: NICHT ERKANNT"));
+  }
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (air[i].ok) Serial.printf("DHT22 #%u: %.2f C, %.1f %%\n",
+                              i + 1, air[i].tempC, air[i].humidity);
+    else Serial.printf("DHT22 #%u: NICHT ERKANNT / NOCH NICHT VERKABELT\n", i + 1);
+  }
+  if (bhOk && isfinite(bhLux)) Serial.printf("BH1750: %.0f lux\n", bhLux);
+  else Serial.println(F("BH1750: NICHT ERKANNT / NOCH NICHT VERKABELT"));
+  Serial.println(F("SSR1-4: AUS (kein Aktor-Test)"));
 }
 
 static bool calibrationReady() {
@@ -172,15 +247,12 @@ static void updateTemperature(bool force = false) {
   lastTempMs = now;
 
   temperatureSensors.requestTemperatures();
-  const float t = temperatureSensors.getTempCByIndex(0);
-
-  if (validTemperature(t)) {
-    liveTempC = t;
-    tempSensorPresent = true;
-  } else {
-    liveTempC = NAN;
-    tempSensorPresent = false;
-  }
+  oneWireCount = temperatureSensors.getDeviceCount();
+  const float t = oneWireCount > 0 ? temperatureSensors.getTempCByIndex(0) : NAN;
+  const float t2 = oneWireCount > 1 ? temperatureSensors.getTempCByIndex(1) : NAN;
+  liveTempC = validTemperature(t) ? t : NAN;
+  liveTemp2C = validTemperature(t2) ? t2 : NAN;
+  tempSensorPresent = validTemperature(liveTempC);
 }
 
 static bool loadCalibration() {
@@ -275,14 +347,15 @@ static bool clearCalibration() {
 
 static void printHelp() {
   Serial.println();
-  Serial.println(F("=== PH4502C Kalibrier-Servicegeraet ==="));
-  Serial.println(F("ADC: ESP32 intern an Board-Pin VP, KEIN ADS1115"));
-  Serial.println(F("Temperatur: DS18B20 DATA an Board-Pin D23"));
-  Serial.println(F("OLED: SSD1306 128x64 auf GPIO21/22"));
+  Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
+  Serial.println(F("ADS1115: A0 = pH, A1 = TDS; SDA D21, SCL D22"));
+  Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | BH1750: D13/14"));
+  Serial.println(F("OLED: 0x3C, D21/D22; SSR-Ausgaenge bleiben AUS"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
   Serial.println(F("s = Status + fertige Kalibrierwerte"));
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
+  Serial.println(F("t = Hardware-Status (alle Sensoren)"));
   Serial.println(F("h = Hilfe"));
   Serial.println(F("Instabile Messungen >10 mV oder fehlende Temperatur werden nicht gespeichert."));
   Serial.println(F("----------------------------------------"));
@@ -293,14 +366,14 @@ static void printCalibration() {
   Serial.println(F("--- Kalibrierstatus ---"));
 
   if (havePh7) {
-    Serial.printf("pH 7: VP = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
+    Serial.printf("pH 7: ADS A0 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
                   ph7InputV, ph7InputV * DIVIDER_RECONSTRUCT, ph7TempC);
   } else {
     Serial.println(F("pH 7: noch nicht erfasst"));
   }
 
   if (havePh4) {
-    Serial.printf("pH 4: VP = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
+    Serial.printf("pH 4: ADS A0 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
                   ph4InputV, ph4InputV * DIVIDER_RECONSTRUCT, ph4TempC);
   } else {
     Serial.println(F("pH 4: noch nicht erfasst"));
@@ -329,6 +402,10 @@ static void printCalibration() {
 }
 
 static bool captureStablePoint(float targetPh) {
+  if (!adsOk) {
+    Serial.println(F("ABGELEHNT: ADS1115 nicht erkannt."));
+    return false;
+  }
   updateTemperature(true);
   if (!validTemperature(liveTempC)) {
     Serial.println(F("ABGELEHNT: keine gueltige DS18B20-Temperaturmessung."));
@@ -339,6 +416,10 @@ static bool captureStablePoint(float targetPh) {
                 targetPh, liveTempC);
 
   const SampleStats s = sampleChannel(CAPTURE_SAMPLE_COUNT, SAMPLE_DELAY_MS);
+  if (!isfinite(s.meanV) || !isfinite(s.stdV)) {
+    Serial.println(F("ABGELEHNT: ADS1115-Auslesefehler."));
+    return false;
+  }
 
   updateTemperature(true);
   if (!validTemperature(liveTempC)) {
@@ -346,7 +427,7 @@ static bool captureStablePoint(float targetPh) {
     return false;
   }
 
-  Serial.printf("Mittelwert VP: %.6f V\n", s.meanV);
+  Serial.printf("Mittelwert ADS A0: %.6f V\n", s.meanV);
   Serial.printf("Std-Abw.:          %.6f V\n", s.stdV);
   Serial.printf("PH4502C PO:        %.6f V (rueckgerechnet)\n",
                 s.meanV * DIVIDER_RECONSTRUCT);
@@ -399,60 +480,50 @@ static bool captureStablePoint(float targetPh) {
 static void updateLive() {
   const SampleStats s = sampleChannel(LIVE_SAMPLE_COUNT, 0);
   liveInputV = s.meanV;
-  livePoV = liveInputV * DIVIDER_RECONSTRUCT;
+  livePoV = isfinite(liveInputV) ? liveInputV * DIVIDER_RECONSTRUCT : NAN;
   liveStdV = s.stdV;
+  liveTdsV = adsOk ? ads.computeVolts(ads.readADC_SingleEnded(1)) : NAN;
 }
 
 static void drawOled() {
   if (!oledOk) return;
-
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-
   display.setCursor(0, 0);
-  display.print(F("pH CAL "));
-  if (validTemperature(liveTempC)) {
-    display.print(liveTempC, 1);
-    display.print(F("C"));
-  } else {
-    display.print(F("T:--"));
-  }
-
-  display.setCursor(0, 11);
-  display.print(F("ADC "));
-  if (isnan(liveInputV)) display.print(F("--"));
-  else display.print(liveInputV, 4);
-  display.print(F("V"));
-
-  display.setCursor(0, 22);
-  display.print(F("PO  "));
-  if (isnan(livePoV)) display.print(F("--"));
-  else display.print(livePoV, 4);
-  display.print(F("V"));
-
-  display.setCursor(0, 33);
-  display.print(F("std "));
-  if (isnan(liveStdV)) display.print(F("--"));
-  else display.print(liveStdV * 1000.0f, 2);
-  display.print(F("mV"));
-
-  display.setCursor(0, 44);
-  display.print(F("7:"));
+  display.print(F("HW ADS:"));
+  display.print(adsOk ? F("OK") : F("--"));
+  display.print(F(" DS:"));
+  display.print(oneWireCount);
+  display.setCursor(0, 10);
+  display.print(F("pH A0:"));
+  if (isfinite(liveInputV)) display.print(liveInputV, 4);
+  else display.print(F("--"));
+  display.setCursor(0, 20);
+  display.print(F("TDS A1:"));
+  if (isfinite(liveTdsV)) display.print(liveTdsV, 4);
+  else display.print(F("--"));
+  display.setCursor(0, 30);
+  display.print(F("DS:"));
+  if (validTemperature(liveTempC)) display.print(liveTempC, 1);
+  else display.print(F("--"));
+  display.print(F("C "));
+  if (calibrationReady() && isfinite(liveInputV)) {
+    display.print(F("pH:"));
+    display.print(phFromInputVoltage(liveInputV), 2);
+  } else display.print(F("pH:--"));
+  display.setCursor(0, 40);
+  uint8_t dhtCount = 0;
+  for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++dhtCount;
+  display.print(F("DHT:"));
+  display.print(dhtCount);
+  display.print(F("/3 BH:"));
+  display.print(bhOk && isfinite(bhLux) ? F("OK") : F("--"));
+  display.setCursor(0, 52);
+  display.print(F("pH7:"));
   display.print(havePh7 ? F("OK") : F("--"));
-  display.print(F(" 4:"));
+  display.print(F(" pH4:"));
   display.print(havePh4 ? F("OK") : F("--"));
-
-  display.setCursor(0, 55);
-  if (calibrationReady()) {
-    const float ph = phFromInputVoltage(liveInputV);
-    display.print(F("pH "));
-    if (isnan(ph)) display.print(F("--"));
-    else display.print(ph, 2);
-  } else {
-    display.print(F("Serial 7 / 4 / s"));
-  }
-
   display.display();
 }
 
@@ -466,6 +537,8 @@ static void handleSerial() {
       captureStablePoint(4.0f);
     } else if (c == 's' || c == 'S') {
       printCalibration();
+    } else if (c == 't' || c == 'T') {
+      printHardwareStatus();
     } else if (c == 'r' || c == 'R') {
       if (clearCalibration()) {
         Serial.println(F("Kalibrierpunkte aus RAM und NVS geloescht."));
@@ -480,30 +553,14 @@ static void handleSerial() {
 }
 
 void setup() {
+  // Kleinspannungs-SSR-Ausgaenge AUS halten; es wird kein Lasttest durchgefuehrt.
+  const uint8_t ssrPins[] = {
+      PIN_SSR_LIGHT, PIN_SSR_CIRC, PIN_SSR_EXH, PIN_SSR_HEAT
+  };
+  for (uint8_t pin : ssrPins) { digitalWrite(pin, LOW); pinMode(pin, OUTPUT); }
+
   Serial.begin(115200);
   delay(400);
-
-  analogReadResolution(12);
-  analogSetPinAttenuation(PIN_PH_ADC, ADC_11db);
-
-  temperatureSensors.begin();
-  const uint8_t oneWireCount = temperatureSensors.getDeviceCount();
-  Serial.printf("1-Wire: %u Geraet(e) gefunden.\n", static_cast<unsigned>(oneWireCount));
-  for (uint8_t i = 0; i < oneWireCount; ++i) {
-    DeviceAddress address;
-    if (temperatureSensors.getAddress(address, i)) {
-      Serial.printf("1-Wire Sensor %u Adresse: ", static_cast<unsigned>(i));
-      for (uint8_t j = 0; j < 8; ++j) {
-        Serial.printf("%02X", address[j]);
-        if (j < 7) Serial.print(":");
-      }
-      Serial.println();
-    } else {
-      Serial.printf("1-Wire Sensor %u: Adresse nicht lesbar.\n", static_cast<unsigned>(i));
-    }
-  }
-  temperatureSensors.setResolution(10);
-  updateTemperature(true);
 
   Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL, 100000);
   oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
@@ -511,71 +568,78 @@ void setup() {
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 20);
-    display.println(F("pH calibration"));
-    display.setCursor(0, 34);
-    display.println(F("ADC + Temp"));
+    display.setCursor(0, 15);
+    display.println(F("Grow HW Test"));
+    display.println(F("ADS / DHT / DS / BH"));
     display.display();
   }
 
+  ads.setGain(GAIN_ONE);
+  adsOk = ads.begin(ADS_ADDR, &Wire);
+
+  bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
+  scanBh1750();
+  dht1.begin(); dht2.begin(); dht3.begin();
+
+  temperatureSensors.begin();
+  oneWireCount = temperatureSensors.getDeviceCount();
+  Serial.printf("1-Wire: %u Geraet(e) gefunden.\n", static_cast<unsigned>(oneWireCount));
+  for (uint8_t i = 0; i < oneWireCount; ++i) {
+    DeviceAddress address;
+    if (temperatureSensors.getAddress(address, i)) {
+      Serial.printf("1-Wire Sensor %u ROM: ", static_cast<unsigned>(i));
+      for (uint8_t j = 0; j < 8; ++j) {
+        Serial.printf("%02X", address[j]);
+        if (j < 7) Serial.print(":");
+      }
+      Serial.println();
+    }
+  }
+  temperatureSensors.setResolution(10);
+  updateTemperature(true);
+  updateOptionalSensors(true);
+  updateLive();
+
   const bool nvsReadable = loadCalibration();
   printHelp();
-
-  if (!nvsReadable) {
-    Serial.println(F("WARNUNG: NVS konnte nicht geoeffnet werden."));
-  }
-
-  if (!tempSensorPresent) {
-    Serial.println(F("WARNUNG: DS18B20 auf D23 nicht erkannt."));
-  }
-
-  if (!oledOk) {
-    Serial.println(F("WARNUNG: SSD1306 OLED auf 0x3C nicht erkannt."));
-  }
-
-  if (havePh7 || havePh4) {
-    Serial.println(F("Gespeicherte NVS-Kalibrierung geladen."));
-    printCalibration();
-  } else {
-    Serial.println(F("Keine gespeicherten Kalibrierpunkte vorhanden."));
-  }
-
-  Serial.println(F("Warte bis LIVE-Wert und Temperatur stabil sind, dann '7' bzw. '4' senden."));
+  if (!nvsReadable) Serial.println(F("WARNUNG: ADS-Kalibrierspeicher nicht lesbar."));
+  if (!adsOk) Serial.println(F("WARNUNG: ADS1115 auf 0x48 nicht erkannt."));
+  if (!oledOk) Serial.println(F("WARNUNG: SSD1306-OLED auf 0x3C nicht erkannt."));
+  if (!tempSensorPresent) Serial.println(F("WARNUNG: DS18B20 auf D23 nicht erkannt."));
+  if (!bhOk) Serial.println(F("BH1750 noch nicht angeschlossen oder nicht erkannt."));
+  if (havePh7 || havePh4) printCalibration();
+  printHardwareStatus();
+  Serial.println(F("Kalibrieren: nach stabilem LIVE-Wert '7' bzw. '4' senden."));
 }
 
 void loop() {
   handleSerial();
   updateTemperature();
+  updateOptionalSensors();
   updateLive();
 
   const unsigned long now = millis();
-
   static unsigned long lastPrint = 0;
   if (now - lastPrint >= 1000) {
     lastPrint = now;
-
-    Serial.printf("LIVE | VP %.6f V | PO %.6f V | std %.3f mV",
-                  liveInputV,
-                  livePoV,
-                  liveStdV * 1000.0f);
-
-    if (validTemperature(liveTempC)) {
-      Serial.printf(" | T %.2f C", liveTempC);
-    } else {
-      Serial.print(F(" | T --"));
-    }
-
-    if (calibrationReady()) {
+    Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | PO %.5f V | std %.2f mV | A1 TDS %.5f V",
+                  adsOk ? "OK" : "--", liveInputV, livePoV,
+                  liveStdV * 1000.0f, liveTdsV);
+    if (validTemperature(liveTempC)) Serial.printf(" | DS %.2f C", liveTempC);
+    else Serial.print(F(" | DS --"));
+    if (calibrationReady() && isfinite(liveInputV)) {
       Serial.printf(" | pH %.3f", phFromInputVoltage(liveInputV));
     }
-
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++n;
+    Serial.printf(" | DHT %u/3 | BH %s",
+                  static_cast<unsigned>(n),
+                  bhOk && isfinite(bhLux) ? "OK" : "--");
     Serial.println();
   }
-
   if (now - lastOledMs >= OLED_INTERVAL_MS) {
     lastOledMs = now;
     drawOled();
   }
-
   delay(10);
 }
