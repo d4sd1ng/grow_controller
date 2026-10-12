@@ -92,7 +92,6 @@ def main() -> int:
 
     sketch_dirs = [
         root / "firmware" / "growroom_telemetry_client",
-        root / "firmware" / "powerbox_actuator",
         root / "firmware" / "cyd_remote_control",
         root / "firmware" / "cyd_grow_display",
     ]
