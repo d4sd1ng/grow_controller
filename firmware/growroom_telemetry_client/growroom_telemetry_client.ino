@@ -1,22 +1,16 @@
 /**
- * Sensor-Knoten V4 fuer Grow Controller
+ * Grow Controller V5: Sensorik und vier SSR-Steuerausgaenge auf einem ESP32.
  *
- * Rolle:
- * - liest alle Sensoren im Sensorkasten
- * - berechnet VPD und AUTO-Ziele fuer Heizung/Umluft/Abluft
- * - stellt die vier Aktor-Sollwerte per lokalem HTTP fuer den Stromkasten-ESP bereit
- * - stellt Live-Werte + MANUAL-Steuerung fuer das CYD bereit
- * - sendet Telemetrie an den Homeserver (Logging/Dashboard)
+ * - 3x DHT22, 2x DS18B20, ADS1115 (pH/TDS), BH1750, OLED
+ * - lokale AUTO/MANUAL-Steuerung; SSR werden direkt geschaltet
+ * - lokale HTTP-API fuer CYD und Raspberry Pi, Telemetrie zum Homeserver
  *
- * Hardware laut wiring_plan_v2.md:
- *   GPIO21/22 -> interner I2C-Bus: OLED + ADS1115
- *   GPIO25    -> DHT22 #1 Pflanzenzone
- *   GPIO26    -> DHT22 #2 Unter-/Zuluftzone
- *   GPIO27    -> DHT22 #3 Ober-/Abluftzone
- *   GPIO32    -> 1-Wire: 2x DS18B20
- *   GPIO13/14 -> separater I2C-Bus: BH1750
+ * Kleinspannungs-Pinplan: siehe wiring_plan_v2.md (Ein-ESP32-Ausbau).
+ *   I2C OLED/ADS1115 21/22; BH1750 13/14; DHT22 25/26/27
+ *   DS18B20 23; SSR Licht 17, Umluft 18, Abluft 19, Heizung 33
  *
- * Keine SSR-Ausgaenge an diesem ESP32.
+ * Die Netzspannungsseite ist nicht Bestandteil dieser Firmware.
+ * Heizung benoetigt eine unabhaengige, fachgerecht ausgelegte Temperaturbegrenzung.
  */
 #include <Arduino.h>
 #include <WiFi.h>
@@ -50,7 +44,11 @@ const bool SERVER_TLS_INSECURE = false;
 static constexpr uint8_t PIN_DHT1 = 25;
 static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
-static constexpr uint8_t PIN_ONEWIRE = 32;
+static constexpr uint8_t PIN_ONEWIRE = 23;
+static constexpr uint8_t PIN_SSR_LIGHT = 17;
+static constexpr uint8_t PIN_SSR_CIRC = 18;
+static constexpr uint8_t PIN_SSR_EXHAUST = 19;
+static constexpr uint8_t PIN_SSR_HEATER = 33;
 
 static constexpr int PIN_I2C_SDA = 21;
 static constexpr int PIN_I2C_SCL = 22;
@@ -62,7 +60,6 @@ static constexpr unsigned long SENSOR_READ_MS = 2000;
 static constexpr unsigned long OLED_REFRESH_MS = 1000;
 static constexpr unsigned long TELEMETRY_INTERVAL_MS = 10000;
 static constexpr unsigned long WIFI_RECONNECT_MS = 5000;
-static constexpr unsigned long POWER_STATUS_TIMEOUT_MS = 15000;
 
 /* ---------- Regelparameter ---------- */
 static constexpr float TARGET_AIR_TEMP = 24.0f;
@@ -88,6 +85,7 @@ static constexpr float PH_CAL_VOLT_7 = 1.677193f;
 static constexpr uint8_t OLED_ADDR = 0x3C;
 static constexpr int OLED_RESET = -1;
 Adafruit_SSD1306 display(128, 64, &Wire, OLED_RESET);
+bool oledOk = false;
 Adafruit_ADS1115 ads;
 
 /* BH1750 auf zweitem ESP32-I2C-Controller */
@@ -135,8 +133,7 @@ struct ActuatorState {
 };
 
 ActuatorState targets;
-ActuatorState powerActual;
-unsigned long lastPowerStatusMs = 0;
+ActuatorState actual;  // GPIO-Ausgabezustand; keine Rueckmeldung vom SSR-/Lastkreis
 uint32_t commandSeq = 0;
 char controlMode[8] = "auto";
 
@@ -163,7 +160,9 @@ static AirReading readDht(DHT &dht) {
   AirReading r;
   r.tempC = dht.readTemperature();
   r.rh = dht.readHumidity();
-  r.ok = !isnan(r.tempC) && !isnan(r.rh);
+  r.ok = isfinite(r.tempC) && isfinite(r.rh) &&
+         r.tempC > -20.0f && r.tempC < 70.0f &&
+         r.rh >= 0.0f && r.rh <= 100.0f;
   if (!r.ok) {
     r.tempC = NAN;
     r.rh = NAN;
@@ -223,8 +222,39 @@ static void writeActuators(JsonObject obj, const ActuatorState &s) {
   obj["exhaust_vent"] = s.exhaust;
 }
 
-static bool powerOnline() {
-  return lastPowerStatusMs != 0 && (millis() - lastPowerStatusMs) <= POWER_STATUS_TIMEOUT_MS;
+/* Die GPIOs werden im Setup zuerst auf AUS gesetzt.
+ * Das Auslesen von actual beschreibt nur den ausgegebenen Pegel,
+ * keine elektrische Rueckmeldung von einem SSR.
+ */
+static void initActuatorPins() {
+  const uint8_t pins[] = {
+      PIN_SSR_LIGHT, PIN_SSR_CIRC, PIN_SSR_EXHAUST, PIN_SSR_HEATER
+  };
+  for (uint8_t pin : pins) {
+    digitalWrite(pin, LOW);
+    pinMode(pin, OUTPUT);
+  }
+  actual = ActuatorState{};
+}
+
+static bool sameState(const ActuatorState &a, const ActuatorState &b) {
+  return a.light == b.light && a.heater == b.heater &&
+         a.circulation == b.circulation && a.exhaust == b.exhaust;
+}
+
+static void applyActuators() {
+  // Hardware-Schutzbedingung fuer beide Betriebsarten: ohne gueltigen
+  // DHT22-#1-Wert wird keine Heizfreigabe gehalten oder wiederhergestellt.
+  if (!sensors.dht[0].ok && targets.heater) {
+    targets.heater = false;
+    ++commandSeq;
+  }
+  if (sameState(actual, targets)) return;
+  digitalWrite(PIN_SSR_LIGHT, targets.light ? HIGH : LOW);
+  digitalWrite(PIN_SSR_CIRC, targets.circulation ? HIGH : LOW);
+  digitalWrite(PIN_SSR_EXHAUST, targets.exhaust ? HIGH : LOW);
+  digitalWrite(PIN_SSR_HEATER, targets.heater ? HIGH : LOW);
+  actual = targets;
 }
 
 /* ---------- BH1750 ---------- */
@@ -313,10 +343,11 @@ static void autoControl() {
   /* Licht wird spaeter durch Zeitplan/Serverziel ergaenzt und hier nicht veraendert. */
 
   if (!sensors.dht[0].ok) {
+    ActuatorState before = targets;
     targets.heater = false;
     targets.circulation = true;
     targets.exhaust = true;
-    ++commandSeq;
+    if (!sameState(before, targets)) ++commandSeq;
     return;
   }
 
@@ -333,12 +364,7 @@ static void autoControl() {
   if (t > TARGET_AIR_TEMP + 2.0f) targets.exhaust = true;
   else if (t < TARGET_AIR_TEMP + 0.5f) targets.exhaust = false;
 
-  if (before.light != targets.light ||
-      before.heater != targets.heater ||
-      before.circulation != targets.circulation ||
-      before.exhaust != targets.exhaust) {
-    ++commandSeq;
-  }
+  if (!sameState(before, targets)) ++commandSeq;
 }
 
 /* ---------- Lokale HTTP-API ---------- */
@@ -379,10 +405,10 @@ static void handleSummary() {
     setJsonFloat(reading, prefix + "humidity", sensors.dht[i].rh);
   }
 
-  JsonObject power = doc.createNestedObject("power_node");
-  power["online"] = powerOnline();
-  JsonObject actualObj = power.createNestedObject("actual");
-  writeActuators(actualObj, powerActual);
+  JsonObject outputs = doc.createNestedObject("actuators");
+  outputs["source"] = "local_gpio";
+  JsonObject actualObj = outputs.createNestedObject("actual");
+  writeActuators(actualObj, actual);
 
   String body;
   serializeJson(doc, body);
@@ -399,6 +425,8 @@ static void handleActuatorTargets() {
   doc["source_ms"] = millis();
   JsonObject commands = doc.createNestedObject("commands");
   writeActuators(commands, targets);
+  JsonObject active = doc.createNestedObject("actual");
+  writeActuators(active, actual);
 
   String body;
   serializeJson(doc, body);
@@ -411,6 +439,12 @@ static void handleControlTargets() {
   StaticJsonDocument<512> in;
   if (deserializeJson(in, localServer.arg("plain"))) {
     return localServer.send(400, "application/json", "{\"ok\":false,\"error\":\"bad_json\"}");
+  }
+
+  if (in.containsKey("heater") && in["heater"].as<bool>() &&
+      !sensors.dht[0].ok) {
+    return localServer.send(409, "application/json",
+                            "{\"ok\":false,\"error\":\"air_sensor_invalid\"}");
   }
 
   bool changed = false;
@@ -432,8 +466,10 @@ static void handleControlTargets() {
   }
 
   if (changed) {
-    strncpy(controlMode, "manual", sizeof(controlMode));
+    strncpy(controlMode, "manual", sizeof(controlMode) - 1);
+    controlMode[sizeof(controlMode) - 1] = '\0';
     ++commandSeq;
+    applyActuators();
   }
 
   localServer.send(200, "application/json", "{\"ok\":true}");
@@ -455,26 +491,8 @@ static void handleControlMode() {
   strncpy(controlMode, mode, sizeof(controlMode) - 1);
   controlMode[sizeof(controlMode) - 1] = '\0';
   ++commandSeq;
-  localServer.send(200, "application/json", "{\"ok\":true}");
-}
-
-static void handlePowerStatus() {
-  if (!localAuthorized()) return sendUnauthorized();
-
-  StaticJsonDocument<512> in;
-  if (deserializeJson(in, localServer.arg("plain"))) {
-    return localServer.send(400, "application/json", "{\"ok\":false,\"error\":\"bad_json\"}");
-  }
-
-  JsonObject s = in["actual"];
-  if (!s.isNull()) {
-    powerActual.light = s["light"] | false;
-    powerActual.heater = s["heater"] | false;
-    powerActual.circulation = s["circulation_vent"] | false;
-    powerActual.exhaust = s["exhaust_vent"] | false;
-    lastPowerStatusMs = millis();
-  }
-
+  autoControl();
+  applyActuators();
   localServer.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -484,7 +502,6 @@ static void setupLocalApi() {
   localServer.on("/api/local/actuators", HTTP_GET, handleActuatorTargets);
   localServer.on("/api/local/control/targets", HTTP_POST, handleControlTargets);
   localServer.on("/api/local/control/mode", HTTP_POST, handleControlMode);
-  localServer.on("/api/local/actuator-status", HTTP_POST, handlePowerStatus);
   localServer.begin();
 }
 
@@ -517,19 +534,18 @@ static bool sendTelemetry() {
     setJsonFloat(root, prefix + "humidity", sensors.dht[i].rh);
   }
 
-  const ActuatorState &reported = powerOnline() ? powerActual : targets;
   JsonObject relays = root.createNestedObject("relays");
-  writeActuators(relays, reported);
+  writeActuators(relays, actual);
 
   JsonObject dev = root.createNestedObject("device_info");
   dev["device_id"] = "grow_sensor_01";
-  dev["firmware_version"] = "4.0.0-hw-v2";
+  dev["firmware_version"] = "5.0.0-single-esp";
   dev["control_mode"] = controlMode;
   dev["ads1115"] = sensors.adsOk;
   dev["bh1750"] = bh1750Present;
   dev["bh1750_address"] = bh1750Addr;
   dev["ds18b20_count"] = sensors.dsCount;
-  dev["power_node_online"] = powerOnline();
+  dev["actuator_controller"] = "local_gpio";
 
   String body;
   serializeJson(doc, body);
@@ -548,6 +564,7 @@ static bool sendTelemetry() {
 /* ---------- OLED ---------- */
 
 static void drawOled() {
+  if (!oledOk) return;
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
@@ -577,10 +594,10 @@ static void drawOled() {
   display.setCursor(0, 48);
   display.printf("%s L%d H%d C%d E%d",
                  controlMode,
-                 targets.light,
-                 targets.heater,
-                 targets.circulation,
-                 targets.exhaust);
+                 actual.light,
+                 actual.heater,
+                 actual.circulation,
+                 actual.exhaust);
 
   display.display();
 }
@@ -588,13 +605,15 @@ static void drawOled() {
 /* ---------- Setup / Loop ---------- */
 
 void setup() {
+  // Noch vor WLAN, I2C und Sensormessung alle SSR-Ausgaenge deaktivieren.
+  initActuatorPins();
   Serial.begin(115200);
   delay(300);
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
 
-  const bool oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+  oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   if (oledOk) {
     display.clearDisplay();
     display.setTextSize(1);
@@ -633,8 +652,11 @@ void setup() {
     }
   }
 
-  setupLocalApi();
   readSensors();
+  lastSensorRead = millis();
+  autoControl();
+  applyActuators();
+  setupLocalApi();
 }
 
 void loop() {
@@ -653,6 +675,7 @@ void loop() {
   }
 
   autoControl();
+  applyActuators();
 
   if (now - lastOledRefresh >= OLED_REFRESH_MS) {
     lastOledRefresh = now;
