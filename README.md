@@ -1,101 +1,48 @@
-# Growroom Control System
+# Grow Controller
 
-Autonomes Growroom-Steuersystem mit getrenntem Sensor-ESP und Stromkasten-ESP, portablem CYD, FastAPI/Streamlit-Server und persistenter Telemetrie.
+Grow-Controller fuer Indoor-Salat auf **einem ESP32 mit integriertem OLED**, mit Cheap Yellow Display (CYD) als Fernbedienung und Raspberry Pi als Telemetrie-/Dashboard-Server.
 
-**Verdrahtung:** [wiring_plan_v2.md](wiring_plan_v2.md) · **Firmware:** [firmware/README.md](firmware/README.md) · **Aktueller Stand:** [current_state.md](current_state.md)
+**Aktuelle Anschluesse:** [wiring_plan_v2.md](wiring_plan_v2.md) (Ein-ESP32-Plan V3) · **Firmware:** [firmware/README.md](firmware/README.md) · **Status:** [current_state.md](current_state.md)
 
-## Hardware-V2-Architektur
+## Architektur
 
 ```text
-Sensor-ESP
-  3x DHT22
-  2x DS18B20
-  ADS1115 -> PH4502C + CQRobot TDS
-  BH1750
-  OLED
-       |
-       | WLAN / lokale HTTP-API
-       v
-Stromkasten-ESP
-  LIGHT / CIRC / EXH / HEAT
-       ^
-       |
-       +---- CYD: Live-Steuerung direkt zum Sensor-ESP
-
-Sensor-ESP ---- Telemetrie ----> Raspberry Pi / FastAPI / Dashboard
-                                 derzeit SQLite
-                                 PostgreSQL-Migration folgt separat
+DHT22 / DS18B20 / PH4502C / CQRobot TDS / BH1750
+                   |
+                   v
+     Ein ESP32 mit OLED + ADS1115
+         |                 |
+         |                 +--> SSR1..4 (Licht/Umluft/Abluft/Heizung)
+         |
+         +---- WLAN <----> CYD (Anzeige und Bedienung)
+         +---- WLAN -----> Raspberry Pi (FastAPI, Dashboard, Historie)
 ```
 
-Die Wasserpumpe läuft dauerhaft. Sie ist **kein** SSR-Kanal, kein GPIO-Ziel und kein Software-Aktor.
-
-## Setup
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Unter Linux entsprechend die venv mit `source .venv/bin/activate` aktivieren.
-
-`.env.example` nach `.env` kopieren und Werte setzen. Secrets gehören nur in `.env` bzw. in die daraus generierten `device_secrets.h`-Dateien.
-
-```bash
-python export_firmware_secrets_from_env.py
-```
-
-Der Export erzeugt Secrets für Sensor-ESP, Stromkasten-ESP und beide CYD-Sketchvarianten.
-
-## Server starten
-
-```bash
-python run_telemetry_api.py
-streamlit run main.py
-```
-
-Standard-API-Port: `8765`.
-
-Wichtige Server-Endpunkte:
-
-- `POST /api/v1/telemetry`
-- `GET /api/v1/telemetry/latest`
-- `GET /api/v1/telemetry/series`
-- `GET /api/v1/alerts/recent`
-- `GET/POST /api/v1/control/*`
-
-Die reale Echtzeitsteuerung zwischen Sensor-ESP, Stromkasten-ESP und CYD ist nicht vom Raspberry Pi abhängig.
-
-## Aktorkanäle
-
-| Key | Funktion |
-|---|---|
-| `light` | Beleuchtung |
-| `heater` | Heizstrahler |
-| `circulation_vent` | beide Umluftventilatoren |
-| `exhaust_vent` | Abluft |
-
-## Telemetrie
-
-Der aktuelle Zwischenstand verwendet weiterhin SQLite unter `data/grow_telemetry.db`. Die Hardware-V2-Felder sind bereits berücksichtigt; zusätzliche Sensorwerte bleiben über `extras_json` erhalten.
-
-Die geplante Produktionsarchitektur verwendet den bereits vorhandenen PostgreSQL-Container auf dem Raspberry Pi. Dieser Umbau ist der nächste separate Schritt.
+Kein zweiter ESP32 und kein ATmega2560. Keine Wasserpumpe als Lastkanal. Die 230-V-Seite ist nicht Teil der Mikrocontrollerverdrahtung.
 
 ## Firmware
 
-- `firmware/growroom_telemetry_client/` — Sensor-/Steuerknoten
-- `firmware/powerbox_actuator/` — Stromkasten-Aktorknoten
-- `firmware/cyd_remote_control/` — 3-Panel-CYD-Fernbedienung
-- `firmware/cyd_grow_display/` — alternative LVGL-CYD-Oberfläche
-- `firmware/ph_calibration_tool/` — pH-Servicegerät auf Ersatz-ESP
+- `firmware/growroom_telemetry_client/` — aktive Sensor- und SSR-Steuerung fuer den **einen ESP32**.
+- `firmware/ph_calibration_tool/` — temporaerer Hardware-/pH-Kalibriersketch auf demselben ESP32 (SSR AUS).
+- `firmware/ds18b20_diagnostic/` — optionaler 1-Wire-Testscketch.
+- `firmware/cyd_remote_control/` — CYD-Fernbedienung.
+- `firmware/cyd_grow_display/` — alternative CYD-Firmware.
+- `firmware/powerbox_actuator/` — alter Zwei-ESP32-Sketch, **nicht mehr verwenden**.
 
-## pH-Kalibrierung
+## Server
 
-Historische Messgerade:
+Der aktuelle Code nutzt weiterhin FastAPI und Streamlit. Die Telemetrie liegt im Zwischenstand in SQLite; die geplante PostgreSQL-Migration ist ein separater Schritt. Die lokale ESP32-Steuerung benoetigt zur Aktorschaltung keine Kommunikation mit dem Raspberry Pi.
 
-`pH = -5.7 × U_PO + 21.34`
+## Vorbereitung
 
-Für die neue ADS1115-Messkette liegen entsprechende Startwerte in der Sensor-Firmware. Das separate Kalibrier-Tool erfasst später pH 7 und pH 4 erneut über die komplette reale Messkette.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python export_firmware_secrets_from_env.py
+```
+
+Dafuer muss eine gueltige lokale `.env` vorliegen. Keine Secrets in Git ablegen.
 
 ## Tests
 
@@ -103,4 +50,4 @@ Für die neue ADS1115-Messkette liegen entsprechende Startwerte in der Sensor-Fi
 python -m unittest system_tests test_extended
 ```
 
-Vor dem Merge des Hardware-V2-Branches nach `main` sollen zusätzlich die verwendeten Arduino-Sketches mit der realen ESP32-Toolchain kompiliert werden.
+Arduino-Sketches zusaetzlich mit der realen ESP32-Toolchain kompilieren und anschliessend zuerst nur die Kleinspannungs-Sensoren pruefen. SSR-Lastseite bis zur fachgerechten Pruefung ausser Betrieb lassen.
