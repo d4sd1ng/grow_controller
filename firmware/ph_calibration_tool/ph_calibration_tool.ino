@@ -148,7 +148,8 @@ static SampleStats sampleChannel(uint16_t count, uint16_t delayMs) {
 static void scanBh1750() {
   bhOk = false;
   bhAddress = 0;
-  for (uint8_t addr : {uint8_t(0x23), uint8_t(0x5C)}) {
+  const uint8_t candidates[] = {0x23, 0x5C};
+  for (uint8_t addr : candidates) {
     bhWire.beginTransmission(addr);
     if (bhWire.endTransmission() == 0) {
       bhOk = true;
