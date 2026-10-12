@@ -1,114 +1,62 @@
-# ESP32-Firmware — Hardware V2
+# Grow Controller — Firmware fuer einen ESP32
 
-## Rollen
+## Aktive Geraete
 
-| Sketch | Gerät | Aufgabe |
+| Sketch | Geraet | Funktion |
 |---|---|---|
-| `growroom_telemetry_client` | Sensor-ESP | Sensoren lesen, AUTO/MANUAL-Ziele halten, OLED, lokale API, Telemetrie |
-| `powerbox_actuator` | Stromkasten-ESP | vier SSR-Eingänge schalten, Sollwerte direkt vom Sensor-ESP holen, Failsafe |
-| `cyd_remote_control` | CYD | primäre 3-Panel-Fernbedienung; Live/Control direkt zum Sensor-ESP, Historie/Alerts vom Server |
-| `cyd_grow_display` | CYD | alternative kompakte LVGL-Oberfläche |
-| `ph_calibration_tool` | Ersatz-ESP | pH-7-/pH-4-Kalibrierung direkt ueber den internen ESP32-ADC; kein ADS1115 am Servicegeraet |
+| `growroom_telemetry_client` | einziger ESP32 (mit OLED) | 3x DHT22, 2x DS18B20, ADS1115 pH/TDS, BH1750, vier lokale SSR-Steuerausgaenge, AUTO/MANUAL, CYD-API, Telemetrie |
+| `ph_calibration_tool` | derselbe ESP32, temporär geflasht | Hardwarediagnose aller Sensortypen und pH-7-/pH-4-Kalibrierung ueber ADS1115 A0 |
+| `ds18b20_diagnostic` | derselbe ESP32, temporär geflasht | 1-Wire-Diagnose auf GPIO23 |
+| `cyd_remote_control` | vorhandenes CYD | primaere Fernbedienung |
+| `cyd_grow_display` | dasselbe CYD, alternative Firmware | alternative LVGL-Oberflaeche |
+| `powerbox_actuator` | **LEGACY — nicht mehr einsetzen** | alter zweiter ESP32; nicht Teil der Ein-ESP32-Architektur |
 
-Es gibt nur **ein CYD**; `cyd_remote_control` und `cyd_grow_display` sind alternative Firmwarevarianten für dieses Gerät.
+## Kleinspannungs-Pins
 
-## Sensor-ESP lokale API
+| GPIO | Funktion |
+|---:|---|
+| 21/22 | OLED und ADS1115 |
+| 23 | DS18B20-Datenbus |
+| 25/26/27 | DHT22 #1/#2/#3 |
+| 13/14 | BH1750 separater I2C-Bus |
+| 17 | SSR1 Licht |
+| 18 | SSR2 Umluft |
+| 19 | SSR3 Abluft |
+| 33 | SSR4 Heizung |
 
-Port: `8081`
+Vollstaendig: [../wiring_plan_v2.md](../wiring_plan_v2.md).
+
+## Kalibrier-/Diagnosesketch
+
+Arduino Serial Monitor **115200 Baud**:
+- `t`: vollstaendige Hardwarediagnose
+- `7`: stabilen pH-7-Pufferpunkt ueber ADS1115 A0 speichern
+- `4`: stabilen pH-4-Pufferpunkt ueber ADS1115 A0 speichern
+- `s`: pH-Kalibrierpunkte und Konstanten fuer die produktive Firmware anzeigen
+- `r`: nur die neue ADS-Kalibrierung im NVS (`phads_v1`) loeschen
+- `h`: Hilfe
+
+ADS1115 A0=pH, A1=TDS; OLED und ADS1115 auf I2C GPIO21/22. Das alte Kalibrierschema ueber VP bleibt in einem **getrennten NVS-Namespace** unberuehrt; die alte VP-Kalibrierung wird nicht unbemerkt fuer ADS-Werte verwendet. Kalibrierpunkte benoetigen eine gueltige DS18B20-Temperatur. Bei fehlendem ADS1115 oder unruhiger Messung wird die Erfassung abgelehnt.
+
+Die drei DHT22 und der BH1750 sind bisher nicht verkabelt. Sie duerfen in der Diagnose als nicht erkannt angezeigt werden, ohne die anderen Tests zu blockieren. SSR-Ausgaenge bleiben im Diagnosesketch immer LOW.
+
+## Lokale HTTP-API, Port 8081
 
 | Methode | Pfad | Zweck |
 |---|---|---|
-| GET | `/api/local/summary` | Livewerte, Modus, Ziele, Power-Node-Status |
-| GET | `/api/local/actuators` | Sollzustände für Stromkasten-ESP |
-| POST | `/api/local/control/targets` | Teilupdate LIGHT/HEAT/CIRC/EXH, setzt MANUAL |
-| POST | `/api/local/control/mode` | `auto` / `manual` |
-| POST | `/api/local/actuator-status` | Rückmeldung des Stromkasten-ESP |
+| GET | `/api/local/summary` | Livewerte, Modus, Sollwerte und lokale Ausgangszustaende |
+| GET | `/api/local/actuators` | API-Kompatibilitaet: Soll-/Ist-GPIO-Zustaende |
+| POST | `/api/local/control/targets` | `light`/`heater`/`circulation_vent`/`exhaust_vent`, MANUAL |
+| POST | `/api/local/control/mode` | `auto`/`manual` |
 
-Der Header `X-Telemetry-Key` wird verwendet, wenn `TELEMETRY_API_KEY` gesetzt ist.
+Ein separater HTTP-Power-Knoten existiert nicht mehr. Der Heizkanal wird bei ungueltiger Klimamessung gesperrt. Eine unabhaengige physische Temperaturbegrenzung ist trotzdem notwendig.
 
-## Bibliotheken
+## Benoetigte Arduino-Bibliotheken
 
-### Sensor-ESP
+Adafruit ADS1X15, Adafruit GFX, Adafruit SSD1306, DHT sensor library, OneWire, DallasTemperature, ArduinoJson und ESP32 Arduino Core. Fuer das CYD zudem die Bibliotheken der gewaehlten CYD-Variante.
 
-- Adafruit ADS1X15
-- Adafruit GFX
-- Adafruit SSD1306
-- DHT sensor library
-- OneWire
-- DallasTemperature
-- ArduinoJson
-- ESP32 Arduino Core
+## Konfiguration und Pruefung
 
-### pH-Servicegeraet
+Im Projektroot `python export_firmware_secrets_from_env.py` ausfuehren, um `device_secrets.h` fuer den Einzel-ESP32-Sketch und CYD zu erzeugen (Dateien sind git-ignoriert). Keine WLAN-Passwoerter in Git committen.
 
-- Adafruit GFX
-- Adafruit SSD1306
-- OneWire
-- DallasTemperature
-- ESP32 Arduino Core
-- kein ADS1115
-
-### CYD Remote
-
-- TFT_eSPI
-- XPT2046_Touchscreen
-- ArduinoJson
-
-### CYD LVGL
-
-- LVGL v8
-- TFT_eSPI
-- XPT2046_Touchscreen
-- ArduinoJson
-
-### Stromkasten-ESP
-
-- ArduinoJson
-- ESP32 Arduino Core
-
-## Secrets
-
-Im Projektroot:
-
-```bash
-python export_firmware_secrets_from_env.py
-```
-
-Dadurch wird in jedem relevanten Sketchordner eine git-ignorierte `device_secrets.h` erzeugt.
-
-Benötigte Werte:
-
-- `IOT_WIFI_SSID`
-- `IOT_WIFI_PASSWORD`
-- `IOT_TELEMETRY_SERVER_HOST`
-- `TELEMETRY_API_KEY`
-- optional Server-Port/HTTPS-Parameter
-
-## Aktoren
-
-Nur diese vier Keys sind gültig:
-
-- `light`
-- `heater`
-- `circulation_vent`
-- `exhaust_vent`
-
-Die Wasserpumpe wird nicht gesteuert.
-
-## pH-Servicegerät
-
-`ph_calibration_tool.ino` benoetigt keinen ADS1115. Der PH4502C-PO-Ausgang geht ueber denselben 10k/(2x10k)-Spannungsteiler direkt auf D33 des Ersatz-ESP. Ein DS18B20 auf D18 misst die Temperatur; jeder pH-7-/pH-4-Punkt wird nur mit gueltiger Temperatur angenommen und zusammen mit dieser im NVS gespeichert. Das integrierte SSD1306-OLED auf GPIO21/22 zeigt Temperatur, ADC-/PO-Spannung, Streuung, Kalibrierstatus und nach zwei Punkten den berechneten pH-Wert.
-
-Serial Monitor: 115200 Baud.
-
-- `7` = stabilen pH-7-Punkt mitteln und dauerhaft im ESP32-NVS speichern
-- `4` = stabilen pH-4-Punkt mitteln und dauerhaft im ESP32-NVS speichern
-- `s` = Status und direkt übernehmbare `PH_CAL_VOLT_4`/`PH_CAL_VOLT_7`-Konstanten ausgeben
-- `r` = gespeicherte Punkte aus RAM und NVS löschen
-- `h` = Hilfe
-
-Messungen mit mehr als 10 mV Standardabweichung oder ohne gueltige DS18B20-Temperatur werden verworfen und nicht gespeichert. Nach einem Neustart laedt das Servicegeraet die zuletzt gespeicherten Kalibrierpunkte samt Temperatur automatisch wieder. Eine automatische Korrektur des Soll-pH der Pufferloesung wird nicht vorgenommen, weil dafuer die Temperaturtabelle des konkret verwendeten Pufferprodukts erforderlich ist.
-
-## Vor produktivem Flashen
-
-Jeden tatsächlich verwendeten Sketch mit der installierten ESP32-/Arduino-Toolchain kompilieren. Danach zuerst Kleinspannungsseite und WLAN-Kommunikation testen.
+Vor dem Flashen muss die neue Firmware mit der lokal installierten Arduino-ESP32-Toolchain kompiliert werden. Danach die Kleinspannungs-Sensorik testen. Die SSR-Lastseite bleibt bis zur fachgerechten Pruefung ausser Betrieb.
