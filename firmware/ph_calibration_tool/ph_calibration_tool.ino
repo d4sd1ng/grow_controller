@@ -16,8 +16,6 @@
  * t=komplette Diagnose, r=ADS-Kalibrierung loeschen, h=Hilfe.
  * Kalibriert wird erst mit gueltiger DS18B20-Temperatur.
  */
- 
-*/
 
 #include <Arduino.h>
 #include <Preferences.h>
