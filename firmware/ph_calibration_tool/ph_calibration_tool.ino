@@ -31,6 +31,7 @@
 static constexpr uint8_t PIN_DS18B20 = 23;
 static constexpr uint8_t PIN_PH_DO = 32;
 static constexpr bool PH_DO_WIRED = false; // erst nach 3.3-V-Pegelpruefung aktivieren
+static constexpr bool PH_TO_WIRED = false; // TO an A2 erst nach sicherer Pegelpruefung
 static constexpr uint8_t PIN_OLED_SDA = 21;
 static constexpr uint8_t PIN_OLED_SCL = 22;
 static constexpr uint8_t PIN_BH_SDA = 13;
@@ -200,7 +201,8 @@ static void printHardwareStatus() {
     Serial.printf("ADS A0 pH: %.5f V | PO (geschaetzt): %.5f V | Std: %.2f mV\n",
                   liveInputV, livePoV, liveStdV * 1000.0f);
     Serial.printf("ADS A1 TDS: %.5f V (roh, keine EC-Kalibrierung)\n", liveTdsV);
-    Serial.printf("ADS A2 TO: %.5f V (roh, keine Celsius-Kennlinie)\n", liveToV);
+    if (PH_TO_WIRED) Serial.printf("ADS A2 TO: %.5f V (roh, keine Celsius-Kennlinie)\n", liveToV);
+    else Serial.println(F("ADS A2 TO: NOCH NICHT VERKABELT/GEPRUEFT"));
   }
   Serial.printf("PH4502C DO GPIO32: %s\n", PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "NICHT VERKABELT/DEAKTIVIERT");
   Serial.printf("DS18B20 GPIO23: %u Geraet(e)\n", static_cast<unsigned>(oneWireCount));
@@ -485,7 +487,7 @@ static void updateLive() {
   livePoV = isfinite(liveInputV) ? liveInputV * DIVIDER_RECONSTRUCT : NAN;
   liveStdV = s.stdV;
   liveTdsV = adsOk ? ads.computeVolts(ads.readADC_SingleEnded(1)) : NAN;
-  liveToV = adsOk ? ads.computeVolts(ads.readADC_SingleEnded(2)) : NAN;
+  liveToV = adsOk && PH_TO_WIRED ? ads.computeVolts(ads.readADC_SingleEnded(2)) : NAN;
   if (PH_DO_WIRED) liveDoHigh = digitalRead(PIN_PH_DO) == HIGH;
 }
 
