@@ -29,6 +29,8 @@
 #include <math.h>
 
 static constexpr uint8_t PIN_DS18B20 = 23;
+static constexpr uint8_t PIN_PH_DO = 32;
+static constexpr bool PH_DO_WIRED = false; // erst nach 3.3-V-Pegelpruefung aktivieren
 static constexpr uint8_t PIN_OLED_SDA = 21;
 static constexpr uint8_t PIN_OLED_SCL = 22;
 static constexpr uint8_t PIN_BH_SDA = 13;
@@ -92,6 +94,8 @@ float liveInputV = NAN;
 float livePoV = NAN;
 float liveStdV = NAN;
 float liveTdsV = NAN;
+float liveToV = NAN;
+bool liveDoHigh = false;
 float liveTempC = NAN;
 float liveTemp2C = NAN;
 
@@ -196,7 +200,9 @@ static void printHardwareStatus() {
     Serial.printf("ADS A0 pH: %.5f V | PO (geschaetzt): %.5f V | Std: %.2f mV\n",
                   liveInputV, livePoV, liveStdV * 1000.0f);
     Serial.printf("ADS A1 TDS: %.5f V (roh, keine EC-Kalibrierung)\n", liveTdsV);
+    Serial.printf("ADS A2 TO: %.5f V (roh, keine Celsius-Kennlinie)\n", liveToV);
   }
+  Serial.printf("PH4502C DO GPIO32: %s\n", PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "NICHT VERKABELT/DEAKTIVIERT");
   Serial.printf("DS18B20 GPIO23: %u Geraet(e)\n", static_cast<unsigned>(oneWireCount));
   if (validTemperature(liveTempC)) Serial.printf(" DS #1: %.2f C\n", liveTempC);
   else Serial.println(F(" DS #1: NICHT ERKANNT"));
@@ -285,7 +291,7 @@ static bool saveCalibration() {
 
   if (havePh7) {
     ok = ok && (preferences.putFloat(NVS_VOLT_7, ph7InputV) == sizeof(float));
-    ok = ok && (preferences.putFloat(NVS_TEMP_7, ph7TempC) == sizeof(float));
+    ok = ok && (preferences.putFloat(NVS_TEMP_7, ph7TempC) == sizeof(float)); // NAN = nicht gemessen
   } else {
     if (preferences.isKey(NVS_VOLT_7)) ok = ok && preferences.remove(NVS_VOLT_7);
     if (preferences.isKey(NVS_TEMP_7)) ok = ok && preferences.remove(NVS_TEMP_7);
@@ -316,12 +322,16 @@ static bool saveCalibration() {
   if (storedHave7 != havePh7 || storedHave4 != havePh4) return false;
   if (havePh7 &&
       (isnan(storedPh7) || fabsf(storedPh7 - ph7InputV) > 0.000001f ||
-       isnan(storedTemp7) || fabsf(storedTemp7 - ph7TempC) > 0.01f)) {
+       !(isnan(storedTemp7) && isnan(ph7TempC)) &&
+       !(isfinite(storedTemp7) && isfinite(ph7TempC) &&
+         fabsf(storedTemp7 - ph7TempC) <= 0.01f))) {
     return false;
   }
   if (havePh4 &&
       (isnan(storedPh4) || fabsf(storedPh4 - ph4InputV) > 0.000001f ||
-       isnan(storedTemp4) || fabsf(storedTemp4 - ph4TempC) > 0.01f)) {
+       !(isnan(storedTemp4) && isnan(ph4TempC)) &&
+       !(isfinite(storedTemp4) && isfinite(ph4TempC) &&
+         fabsf(storedTemp4 - ph4TempC) <= 0.01f))) {
     return false;
   }
 
@@ -347,7 +357,8 @@ static bool clearCalibration() {
 static void printHelp() {
   Serial.println();
   Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
-  Serial.println(F("ADS1115: A0 = pH, A1 = TDS; SDA D21, SCL D22"));
+  Serial.println(F("ADS1115: A0 = PO pH, A1 = TDS, A2 = TO (roh); SDA D21, SCL D22"));
+  Serial.println(F("PH4502C DO: GPIO32 (nur 3.3V-sicher, anfangs deaktiviert)"));
   Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | BH1750: D13/14"));
   Serial.println(F("OLED: 0x3C, D21/D22; SSR-Ausgaenge bleiben AUS"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
@@ -356,7 +367,7 @@ static void printHelp() {
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
   Serial.println(F("h = Hilfe"));
-  Serial.println(F("Instabile Messungen >10 mV oder fehlende Temperatur werden nicht gespeichert."));
+  Serial.println(F("Instabile Messungen >10 mV werden nicht gespeichert. Temperatur optional."));
   Serial.println(F("----------------------------------------"));
 }
 
@@ -406,13 +417,9 @@ static bool captureStablePoint(float targetPh) {
     return false;
   }
   updateTemperature(true);
-  if (!validTemperature(liveTempC)) {
-    Serial.println(F("ABGELEHNT: keine gueltige DS18B20-Temperaturmessung."));
-    return false;
-  }
-
-  Serial.printf("\nErfasse pH %.0f bei %.2f C ... Sonde waehrend der Messung ruhig lassen.\n",
-                targetPh, liveTempC);
+  Serial.printf("\nErfasse pH %.0f; Sonde ruhig lassen.\n", targetPh);
+  if (!validTemperature(liveTempC))
+    Serial.println(F("HINWEIS: Temperatur nicht verfuegbar; Puffer-pH nach Herstellerangabe/Referenztemperatur bewerten."));
 
   const SampleStats s = sampleChannel(CAPTURE_SAMPLE_COUNT, SAMPLE_DELAY_MS);
   if (!isfinite(s.meanV) || !isfinite(s.stdV)) {
@@ -420,11 +427,7 @@ static bool captureStablePoint(float targetPh) {
     return false;
   }
 
-  updateTemperature(true);
-  if (!validTemperature(liveTempC)) {
-    Serial.println(F("ABGELEHNT: Temperaturmessung nach der Erfassung ungueltig."));
-    return false;
-  }
+  updateTemperature(true); // fehlende DS18B20-Temperatur blockiert die Kalibrierung nicht
 
   Serial.printf("Mittelwert ADS A0: %.6f V\n", s.meanV);
   Serial.printf("Std-Abw.:          %.6f V\n", s.stdV);
@@ -471,7 +474,7 @@ static bool captureStablePoint(float targetPh) {
     return false;
   }
 
-  Serial.println(F("OK: Kalibrierpunkt mit Temperatur dauerhaft gespeichert und verifiziert."));
+  Serial.println(F("OK: Kalibrierpunkt dauerhaft gespeichert und verifiziert."));
   printCalibration();
   return true;
 }
@@ -482,6 +485,8 @@ static void updateLive() {
   livePoV = isfinite(liveInputV) ? liveInputV * DIVIDER_RECONSTRUCT : NAN;
   liveStdV = s.stdV;
   liveTdsV = adsOk ? ads.computeVolts(ads.readADC_SingleEnded(1)) : NAN;
+  liveToV = adsOk ? ads.computeVolts(ads.readADC_SingleEnded(2)) : NAN;
+  if (PH_DO_WIRED) liveDoHigh = digitalRead(PIN_PH_DO) == HIGH;
 }
 
 static void drawOled() {
@@ -499,8 +504,8 @@ static void drawOled() {
   if (isfinite(liveInputV)) display.print(liveInputV, 4);
   else display.print(F("--"));
   display.setCursor(0, 20);
-  display.print(F("TDS A1:"));
-  if (isfinite(liveTdsV)) display.print(liveTdsV, 4);
+  display.print(F("TO A2:"));
+  if (isfinite(liveToV)) display.print(liveToV, 4);
   else display.print(F("--"));
   display.setCursor(0, 30);
   display.print(F("DS:"));
@@ -579,6 +584,7 @@ void setup() {
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
   scanBh1750();
   dht1.begin(); dht2.begin(); dht3.begin();
+  if (PH_DO_WIRED) pinMode(PIN_PH_DO, INPUT);
 
   temperatureSensors.begin();
   oneWireCount = temperatureSensors.getDeviceCount();
@@ -631,6 +637,7 @@ void loop() {
     }
     uint8_t n = 0;
     for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++n;
+    Serial.printf(" | TO A2 %.4f V | DO %s", liveToV, PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "--");
     Serial.printf(" | DHT %u/3 | BH %s",
                   static_cast<unsigned>(n),
                   bhOk && isfinite(bhLux) ? "OK" : "--");
