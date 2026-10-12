@@ -1,4 +1,5 @@
 /**
+ * LEGACY / NICHT MEHR FLASHEN: durch die Ein-ESP32-Firmware ersetzt.
  * Stromkasten-Aktor-Knoten V1
  *
  * Rolle:
