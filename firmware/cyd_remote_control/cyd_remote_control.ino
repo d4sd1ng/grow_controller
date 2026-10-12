@@ -79,6 +79,7 @@ struct RemoteState {
   bool light, heat, circ, exh;
   bool haveReading;
   float tempC, rh, ec, ph, tdsPpm, waterC;
+  char phStatus[16]; // high/low/normal/sensor_fault
   bool haveWater;
   char alertLines[5][72];
   uint8_t nAlerts;
@@ -205,11 +206,14 @@ bool fetchSummary() {
   JsonObject r = doc["reading"];
   state.haveReading = !r.isNull();
   state.haveWater = false;
+  state.phStatus[0] = 0;
   if (state.haveReading) {
     state.tempC = r["air_temperature"] | 0.0f;
     state.rh = r["humidity"] | 0.0f;
     state.ec = r["ec"] | 0.0f;
     state.ph = r["ph"] | 0.0f;
+    const char *phAlarm = r["ph_alarm"] | "";
+    snprintf(state.phStatus, sizeof(state.phStatus), "%s", phAlarm);
     state.tdsPpm = r["tds_ppm"] | 0.0f;
     JsonVariant water = r["water_temperature"];
     if (!water.isNull()) {
@@ -379,6 +383,17 @@ static void drawCenterPanel() {
   tft.drawString("BENACHRICHTIGUNGEN", x0, y);
   y += 11;
   tft.setTextColor(TFT_WHITE, 0x2965);
+  // Live-Alarm direkt vom ESP, nicht auf verzögerte Server-Alerts warten.
+  if (!strcmp(state.phStatus, "low") || !strcmp(state.phStatus, "high") ||
+      !strcmp(state.phStatus, "sensor_fault")) {
+    tft.setTextColor(TFT_RED, 0x2965);
+    const char *alarmText = !strcmp(state.phStatus, "low") ? "pH ALARM <5.5" :
+                            !strcmp(state.phStatus, "high") ? "pH ALARM >6.5" :
+                            "pH SENSOR/KAL FEHLER";
+    tft.drawString(alarmText, x0, y);
+    y += 11;
+    tft.setTextColor(TFT_WHITE, 0x2965);
+  }
   if (state.nAlerts == 0) {
     tft.setTextColor(0x8D79, 0x2965);
     tft.drawString("— keine —", x0, y);
