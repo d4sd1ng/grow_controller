@@ -47,6 +47,7 @@ static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
 static constexpr uint8_t PIN_ONEWIRE = 23;
 static constexpr uint8_t PIN_PH_DO = 32;
+static constexpr bool PH_TO_WIRED = false; // TO on A2 only after ADC-safe voltage verification
 static constexpr bool PH_DO_WIRED = false; // erst nach sicherer Pegelpruefung aktivieren
 static constexpr uint8_t PIN_SSR_LIGHT = 17;
 static constexpr uint8_t PIN_SSR_CIRC = 18;
@@ -155,7 +156,7 @@ char controlMode[8] = "auto";
 enum class PhAlarm : uint8_t { Normal, Low, High, Fault };
 PhAlarm phAlarm = PhAlarm::Fault, phPending = PhAlarm::Fault;
 uint8_t phSamples = 0;
-bool phAlertPending = false;
+bool phAlertPending = true; // initial sensor fault is an alert
 unsigned long lastPhAlertAttempt = 0;
 static const char *phCode(PhAlarm status) {
   switch (status) {
@@ -372,10 +373,10 @@ static void readSensors() {
   if (sensors.adsOk) {
     const int16_t rawPh = ads.readADC_SingleEnded(0);
     const int16_t rawTds = ads.readADC_SingleEnded(1);
-    const int16_t rawTo = ads.readADC_SingleEnded(2);
+    const int16_t rawTo = PH_TO_WIRED ? ads.readADC_SingleEnded(2) : 0;
     sensors.phInputV = adsCountsToVolts(rawPh);
     sensors.tdsInputV = adsCountsToVolts(rawTds);
-    sensors.phToInputV = adsCountsToVolts(rawTo);
+    sensors.phToInputV = PH_TO_WIRED ? adsCountsToVolts(rawTo) : NAN;
     sensors.ph = phFromVoltage(sensors.phInputV);
 
     /*
@@ -623,6 +624,7 @@ static bool sendTelemetry() {
   dev["bh1750_address"] = bh1750Addr;
   dev["ds18b20_count"] = sensors.dsCount;
   dev["ph_do_configured"] = PH_DO_WIRED;
+  dev["ph_to_configured"] = PH_TO_WIRED;
   dev["ph_to_type"] = "raw_voltage_uncalibrated";
   dev["actuator_controller"] = "local_gpio";
 
