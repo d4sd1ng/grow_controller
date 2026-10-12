@@ -343,10 +343,11 @@ static void autoControl() {
   /* Licht wird spaeter durch Zeitplan/Serverziel ergaenzt und hier nicht veraendert. */
 
   if (!sensors.dht[0].ok) {
-    ActuatorState before = targets;
-    targets.heater = false;
-    targets.circulation = true;
-    targets.exhaust = true;
+    // Waehrend der DHT22 noch nicht verkabelt oder ausgefallen ist,
+    // aktiviert AUTO keinerlei SSR. Keine automatisch laufenden
+    // Ventilatoren oder Heizung bei ungueltiger Temperatur/Feuchte.
+    const ActuatorState before = targets;
+    targets = ActuatorState{};
     if (!sameState(before, targets)) ++commandSeq;
     return;
   }
