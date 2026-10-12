@@ -18,6 +18,7 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -45,6 +46,8 @@ static constexpr uint8_t PIN_DHT1 = 25;
 static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
 static constexpr uint8_t PIN_ONEWIRE = 23;
+static constexpr uint8_t PIN_PH_DO = 32;
+static constexpr bool PH_DO_WIRED = false; // erst nach sicherer Pegelpruefung aktivieren
 static constexpr uint8_t PIN_SSR_LIGHT = 17;
 static constexpr uint8_t PIN_SSR_CIRC = 18;
 static constexpr uint8_t PIN_SSR_EXHAUST = 19;
@@ -66,20 +69,30 @@ static constexpr float TARGET_AIR_TEMP = 24.0f;
 static constexpr float TARGET_HUMIDITY = 60.0f;
 static constexpr float TEMP_HYST = 0.5f;
 static constexpr float HUM_HYST = 2.0f;
+static constexpr float PH_LOW = 5.5f;
+static constexpr float PH_HIGH = 6.5f;
+static constexpr float PH_HYST = 0.10f;
+static constexpr uint8_t PH_CONFIRM = 3;
 
-/* ---------- Analog-Kalibrierung ----------
- * Historische, selbst gemessene pH-Kalibrierung:
- *   pH = -5.7 * U_PO + 21.34
- * Mit dem 10k/20k-Teiler gilt U_ADS = U_PO * 2/3.
- * Daraus folgen die Startwerte am ADS1115:
- *   pH 7 -> ca. 1.677193 V
- *   pH 4 -> ca. 2.028070 V
- *
- * Diese Werte sind funktionsfaehige Ausgangswerte. Nach Aufbau der finalen
- * Messkette werden sie mit firmware/ph_calibration_tool erneut vermessen.
+/* pH-Kalibrierung von Diagnose-Sketch in ESP32-NVS ("phads_v1").
+ * Ohne 2 echte Kalibrierpunkte keine Grenzwertalarm-Entscheidung.
  */
-static constexpr float PH_CAL_VOLT_4 = 2.028070f;
-static constexpr float PH_CAL_VOLT_7 = 1.677193f;
+float phVolt4 = NAN, phVolt7 = NAN;
+bool phCalibrated = false;
+static void loadPhCalibration() {
+  Preferences prefs;
+  phCalibrated = false;
+  if (!prefs.begin("phads_v1", true)) return;
+  const bool have4 = prefs.getBool("have4", false);
+  const bool have7 = prefs.getBool("have7", false);
+  phVolt4 = prefs.getFloat("volt4", NAN);
+  phVolt7 = prefs.getFloat("volt7", NAN);
+  prefs.end();
+  phCalibrated = have4 && have7 && isfinite(phVolt4) && isfinite(phVolt7) &&
+      phVolt4 >= 0.0f && phVolt4 <= 3.3f &&
+      phVolt7 >= 0.0f && phVolt7 <= 3.3f &&
+      fabsf(phVolt4 - phVolt7) >= 0.001f;
+}
 
 /* ---------- OLED / I2C ---------- */
 static constexpr uint8_t OLED_ADDR = 0x3C;
@@ -114,6 +127,8 @@ struct SensorData {
 
   float phInputV = NAN;
   float ph = NAN;
+  float phToInputV = NAN; // TO raw volts, no temperature conversion yet
+  bool phDoHigh = false;
   float tdsInputV = NAN;
   float tdsPpm = NAN;
   float ec = NAN;  // absichtlich erst nach echter EC/TDS-Kalibrierung befuellen
@@ -176,10 +191,8 @@ static float adsCountsToVolts(int16_t raw) {
 }
 
 static float phFromVoltage(float v) {
-  if (isnan(v) || isnan(PH_CAL_VOLT_4) || isnan(PH_CAL_VOLT_7)) return NAN;
-  const float dv = PH_CAL_VOLT_4 - PH_CAL_VOLT_7;
-  if (fabsf(dv) < 0.001f) return NAN;
-  return 7.0f + (v - PH_CAL_VOLT_7) * (4.0f - 7.0f) / dv;
+  if (!phCalibrated || !isfinite(v) || v < 0.0f || v > 3.3f) return NAN;
+  return 7.0f + (v - phVolt7) * (-3.0f) / (phVolt4 - phVolt7);
 }
 
 static float cqrobotTdsPpm(float inputV, float temperatureC) {
@@ -196,12 +209,12 @@ static float cqrobotTdsPpm(float inputV, float temperatureC) {
 }
 
 static void setJsonFloat(JsonObject obj, const char *key, float value) {
-  if (isnan(value)) obj[key] = nullptr;
+  if (!isfinite(value)) obj[key] = nullptr;
   else obj[key] = value;
 }
 
 static void setJsonFloat(JsonObject obj, const String &key, float value) {
-  if (isnan(value)) obj[key] = nullptr;
+  if (!isfinite(value)) obj[key] = nullptr;
   else obj[key] = value;
 }
 
@@ -313,8 +326,10 @@ static void readSensors() {
   if (sensors.adsOk) {
     const int16_t rawPh = ads.readADC_SingleEnded(0);
     const int16_t rawTds = ads.readADC_SingleEnded(1);
+    const int16_t rawTo = ads.readADC_SingleEnded(2);
     sensors.phInputV = adsCountsToVolts(rawPh);
     sensors.tdsInputV = adsCountsToVolts(rawTds);
+    sensors.phToInputV = adsCountsToVolts(rawTo);
     sensors.ph = phFromVoltage(sensors.phInputV);
 
     /*
@@ -327,11 +342,13 @@ static void readSensors() {
     sensors.tdsPpm = cqrobotTdsPpm(sensors.tdsInputV, tdsTempC);
   } else {
     sensors.phInputV = NAN;
+    sensors.phToInputV = NAN;
     sensors.tdsInputV = NAN;
     sensors.ph = NAN;
     sensors.tdsPpm = NAN;
   }
 
+  if (PH_DO_WIRED) sensors.phDoHigh = digitalRead(PIN_PH_DO) == HIGH;
   sensors.lux = readBh1750();
 }
 
@@ -610,6 +627,9 @@ void setup() {
   initActuatorPins();
   Serial.begin(115200);
   delay(300);
+  loadPhCalibration();
+  if (!phCalibrated) Serial.println("WARNUNG: pH-Kalibrierung fehlt.");
+  if (PH_DO_WIRED) pinMode(PIN_PH_DO, INPUT);
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
