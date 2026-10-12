@@ -152,6 +152,52 @@ ActuatorState actual;  // GPIO-Ausgabezustand; keine Rueckmeldung vom SSR-/Lastk
 uint32_t commandSeq = 0;
 char controlMode[8] = "auto";
 
+enum class PhAlarm : uint8_t { Normal, Low, High, Fault };
+PhAlarm phAlarm = PhAlarm::Fault, phPending = PhAlarm::Fault;
+uint8_t phSamples = 0;
+bool phAlertPending = false;
+unsigned long lastPhAlertAttempt = 0;
+static const char *phCode(PhAlarm status) {
+  switch (status) {
+    case PhAlarm::Normal: return "normal";
+    case PhAlarm::Low: return "low";
+    case PhAlarm::High: return "high";
+    default: return "sensor_fault";
+  }
+}
+static const char *phMessage(PhAlarm status) {
+  switch (status) {
+    case PhAlarm::Normal: return "pH wieder im Bereich 5.5-6.5";
+    case PhAlarm::Low: return "pH-Alarm: unter 5.5";
+    case PhAlarm::High: return "pH-Alarm: ueber 6.5";
+    default: return "pH-Sensoralarm: ungueltige Messung oder Kalibrierung";
+  }
+}
+static void setPhAlarm(PhAlarm next) {
+  if (next == phAlarm) return;
+  phAlarm = next;
+  phAlertPending = true;
+  Serial.printf("pH-STATUS: %s\n", phMessage(next));
+}
+static void updatePhAlarm() {
+  if (!phCalibrated || !sensors.adsOk || !isfinite(sensors.ph) ||
+      sensors.ph < 0.0f || sensors.ph > 14.0f) {
+    phSamples = 0;
+    setPhAlarm(PhAlarm::Fault);
+    return;
+  }
+  PhAlarm next = PhAlarm::Normal;
+  const float v = sensors.ph;
+  if (v < PH_LOW || (phAlarm == PhAlarm::Low && v < PH_LOW + PH_HYST))
+    next = PhAlarm::Low;
+  else if (v > PH_HIGH || (phAlarm == PhAlarm::High && v > PH_HIGH - PH_HYST))
+    next = PhAlarm::High;
+  if (next == phAlarm) { phSamples = 0; return; }
+  if (next != phPending) { phPending = next; phSamples = 1; }
+  else if (phSamples < PH_CONFIRM) ++phSamples;
+  if (phSamples >= PH_CONFIRM) { phSamples = 0; setPhAlarm(next); }
+}
+
 /* ---------- Lokale API ---------- */
 static constexpr uint16_t LOCAL_HTTP_PORT = 8081;
 WebServer localServer(LOCAL_HTTP_PORT);
@@ -349,6 +395,7 @@ static void readSensors() {
   }
 
   if (PH_DO_WIRED) sensors.phDoHigh = digitalRead(PIN_PH_DO) == HIGH;
+  updatePhAlarm();
   sensors.lux = readBh1750();
 }
 
@@ -409,6 +456,12 @@ static void handleSummary() {
   setJsonFloat(reading, "vpd", sensors.vpd);
   setJsonFloat(reading, "ph", sensors.ph);
   setJsonFloat(reading, "ph_voltage", sensors.phInputV);
+  setJsonFloat(reading, "ph_to_voltage", sensors.phToInputV);
+  if (PH_DO_WIRED) reading["ph_do_high"] = sensors.phDoHigh;
+  else reading["ph_do_high"] = nullptr;
+  reading["ph_calibrated"] = phCalibrated;
+  reading["ph_alarm"] = phCode(phAlarm);
+  reading["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
   reading["ec"] = nullptr;
   setJsonFloat(reading, "tds_ppm", sensors.tdsPpm);
   setJsonFloat(reading, "tds_voltage", sensors.tdsInputV);
@@ -538,6 +591,12 @@ static bool sendTelemetry() {
   root["light_level"] = sensors.lux;
   root["ec"] = nullptr;
   setJsonFloat(root, "ph", sensors.ph);
+  setJsonFloat(root, "ph_to_voltage", sensors.phToInputV);
+  if (PH_DO_WIRED) root["ph_do_high"] = sensors.phDoHigh;
+  else root["ph_do_high"] = nullptr;
+  root["ph_calibrated"] = phCalibrated;
+  root["ph_alarm"] = phCode(phAlarm);
+  root["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
 
   setJsonFloat(root, "vpd", sensors.vpd);
   setJsonFloat(root, "ph_voltage", sensors.phInputV);
@@ -563,6 +622,8 @@ static bool sendTelemetry() {
   dev["bh1750"] = bh1750Present;
   dev["bh1750_address"] = bh1750Addr;
   dev["ds18b20_count"] = sensors.dsCount;
+  dev["ph_do_configured"] = PH_DO_WIRED;
+  dev["ph_to_type"] = "raw_voltage_uncalibrated";
   dev["actuator_controller"] = "local_gpio";
 
   String body;
@@ -577,6 +638,25 @@ static bool sendTelemetry() {
   const int code = http.POST(body);
   http.end();
   return code == 200;
+}
+
+static void sendPhAlertEvent() {
+  if (!phAlertPending || WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.setTimeout(5000);
+  if (!growHttpBegin(http, "/api/v1/alerts")) return;
+  http.addHeader("Content-Type", "application/json");
+  if (strlen(TELEMETRY_API_KEY) > 0)
+    http.addHeader("X-Telemetry-Key", TELEMETRY_API_KEY);
+  StaticJsonDocument<256> doc;
+  doc["severity"] = phAlarm == PhAlarm::Normal ? "info" : "warn";
+  doc["source"] = "grow_sensor_01";
+  doc["message"] = phMessage(phAlarm);
+  String body;
+  serializeJson(doc, body);
+  const int response = http.POST(body);
+  http.end();
+  if (response == 200) phAlertPending = false;
 }
 
 /* ---------- OLED ---------- */
@@ -610,12 +690,10 @@ static void drawOled() {
   else display.printf("%.0f", sensors.tdsPpm);
 
   display.setCursor(0, 48);
-  display.printf("%s L%d H%d C%d E%d",
-                 controlMode,
-                 actual.light,
-                 actual.heater,
-                 actual.circulation,
-                 actual.exhaust);
+  if (phAlarm == PhAlarm::Low) display.print("ALARM pH <5.5");
+  else if (phAlarm == PhAlarm::High) display.print("ALARM pH >6.5");
+  else if (phAlarm == PhAlarm::Fault) display.print("pH SENSOR/KAL FEHLER");
+  else display.print("pH OK 5.5-6.5");
 
   display.display();
 }
@@ -706,6 +784,11 @@ void loop() {
   if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
     lastTelemetry = now;
     sendTelemetry();
+  }
+  if (phAlertPending && WiFi.status() == WL_CONNECTED &&
+      now - lastPhAlertAttempt >= 10000UL) {
+    lastPhAlertAttempt = now;
+    sendPhAlertEvent();
   }
 
   delay(2);
