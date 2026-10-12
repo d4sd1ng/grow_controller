@@ -1,109 +1,46 @@
-# Current State — Growroom Control System
+# Current State — Grow Controller
 
-**Stand:** 2026-10-07  
-**Arbeitsbranch:** `hardware-v2-firmware`
-
-## Architektur
-
-```text
-Sensor-ESP (ESP32 OLED-0.96 V3.0)
-  -> Sensoren lesen
-  -> AUTO/MANUAL-Zielzustände halten
-  -> lokale HTTP-API :8081
-  -> Telemetrie an Server
-             |
-             | WLAN
-             v
-Stromkasten-ESP
-  -> GPIO17 Licht
-  -> GPIO18 Umluft
-  -> GPIO19 Abluft
-  -> GPIO23 Heizung
-  -> Watchdog: Kommunikationsverlust => alle vier Ausgänge AUS
-
-CYD
-  -> Livewerte + Steuerung direkt vom Sensor-ESP
-  -> Historie/Alerts über den Server (TFT_eSPI-Remote)
-
-Raspberry Pi / Server
-  -> FastAPI
-  -> Streamlit Dashboard
-  -> derzeit noch SQLite
-  -> PostgreSQL-Umbau ist der nächste separate Schritt
-```
+**Stand:** 2026-10-12
+**Arbeitsbranch:** `feature/ph-calibration-service-esp`
+**Architektur:** ein ESP32 mit OLED, vier lokale SSR-Steuerausgaenge
 
 ## Hardware
 
-### Sensor-ESP
-
-| Funktion | Pin |
-|---|---:|
-| OLED + ADS1115 SDA | GPIO21 |
-| OLED + ADS1115 SCL | GPIO22 |
-| DHT22 #1 | GPIO25 |
-| DHT22 #2 | GPIO26 |
-| DHT22 #3 | GPIO27 |
-| 2x DS18B20 1-Wire | GPIO32 |
-| BH1750 SDA | GPIO13 |
-| BH1750 SCL | GPIO14 |
-
-ADS1115: A0 = PH4502C über 10k/20k-Teiler, A1 = CQRobot TDS.
-
-### Stromkasten-ESP
-
-| GPIO | SSR |
-|---:|---|
-| 17 | Licht |
-| 18 | beide Umluftventilatoren |
-| 19 | Abluft |
-| 23 | Heizstrahler |
-
-FOTEK SSR-10DA: vorhandene Geräte sind mit 3–32 VDC Input beschriftet. Deshalb keine zusätzliche ULN2803A-Stufe im aktuellen Plan.
-
-Die Wasserpumpe läuft dauerhaft und wird nicht geschaltet.
-
-## Firmware
-
-| Sketch | Rolle |
+| Pin | Funktion |
 |---|---|
-| `firmware/growroom_telemetry_client/growroom_telemetry_client.ino` | Sensor-/Steuerknoten |
-| `firmware/powerbox_actuator/powerbox_actuator.ino` | Stromkasten-Aktorknoten |
-| `firmware/cyd_remote_control/cyd_remote_control.ino` | primäre 3-Panel-CYD-Fernbedienung |
-| `firmware/cyd_grow_display/cyd_grow_display.ino` | alternative kompakte LVGL-CYD-Oberfläche |
-| `firmware/ph_calibration_tool/ph_calibration_tool.ino` | dauerhaftes Service-/Kalibrier-Tool auf Ersatz-ESP |
+| GPIO21/22 | OLED und ADS1115 |
+| GPIO23 | DS18B20 1-Wire |
+| GPIO25/26/27 | 3x DHT22 — noch nicht verkabelt |
+| GPIO13/14 | BH1750 — noch nicht verkabelt |
+| GPIO17 | SSR1 Licht |
+| GPIO18 | SSR2 Umluft |
+| GPIO19 | SSR3 Abluft |
+| GPIO33 | SSR4 Heizung |
 
-## pH
+ADS1115: A0 PH4502C ueber Spannungsteiler 10k/20k, A1 CQRobot TDS. Das vorhandene OLED wird gemeinsam mit dem ADS1115 am I2C-Bus betrieben.
 
-Historische reale Kalibrierung:
+Der einzelne ESP32 und die Sensorplatinen ziehen in das gemeinsame Controller-/Relaisgehaeuse. Netzein- und -ausgaenge bleiben in einer getrennten, fachgerecht installierten und geprueften Leistungssektion. Klimasensoren muessen ausserhalb des Gehaeuses in den Messzonen positioniert werden.
 
-`pH = -5.7 × U_PO + 21.34`
+## Firmware-Stand
 
-Mit dem aktuellen 10k/20k-Spannungsteiler sind in der Sensor-Firmware vorläufig äquivalente ADS1115-Punkte hinterlegt:
+- `firmware/growroom_telemetry_client` schaltet die vier Kleinspannungs-SSR-GPIOs lokal, ohne Powerbox-ESP32 ueber WLAN abzufragen.
+- Die CYD- und Server-API bleibt weitgehend kompatibel; der alte `power_node`-Status und dessen POST-Endpunkt sind entfallen.
+- Bei ungueltiger DHT22-#1-Messung wird die Heizung gesperrt; unabhaengiger Uebertemperaturschutz ist weiterhin erforderlich.
+- `firmware/ph_calibration_tool` dient als temporaerer Hardwaretest und pH-Kalibrierung **ueber ADS1115 A0**, mit TDS-Auslesung auf A1. OLED, DS18B20, DHT22 und BH1750 werden diagnostiziert.
+- DHT22/BH1750 duerfen vor dem Anschluss als fehlend erscheinen. Vier SSR-Steuerausgaenge bleiben waehrend des Diagnosesketchs auf AUS.
+- Die alte pH-Kalibrierung des ESP32-internen ADC bleibt in einem getrennten NVS-Namespace erhalten und wird nicht automatisch auf ADS1115-Werte angewendet.
+- Alter `firmware/powerbox_actuator`-Sketch bleibt als Legacy im Repo und darf fuer den Einzel-ESP32-Aufbau nicht verwendet werden.
 
-- pH 7: ca. 1.677193 V am ADS1115
-- pH 4: ca. 2.028070 V am ADS1115
+## Serverstand
 
-Das Kalibrier-Servicegeraet verwendet keinen ADS1115. Der PH4502C-PO-Ausgang wird ueber 10k/(2x10k) direkt auf D33 des Ersatz-ESP gefuehrt und mit dessen internem ADC gemessen. Ein DS18B20 auf D18 misst die Kalibriertemperatur; pH-7-/pH-4-Punkte werden nur mit gueltiger Temperatur angenommen und zusammen mit dieser im ESP32-NVS gespeichert. Das integrierte SSD1306-OLED auf D21/D22 zeigt Temperatur, ADC-/PO-Spannung, Streuung, Kalibrierstatus und nach zwei Punkten den berechneten pH-Wert. Eine automatische Puffer-Temperaturkorrektur bleibt bewusst aus, bis die Temperaturtabelle des konkret verwendeten Pufferprodukts feststeht. Offen sind Kompilier-/Flash-Test und die physische Kalibrierung mit den realen Pufferloesungen.
+FastAPI/Streamlit/SQLite-Zwischenstand unveraendert. PostgreSQL-Migration ist nach dem Hardware-Funktionstest als separater Schritt geplant. Die Sensordaten- und Aktor-Keys bleiben kompatibel, nur die Powerbox-Node-Meldung entfällt.
 
-## Server-Zwischenstand vor PostgreSQL
+## Noch offen
 
-Der Server bleibt bis zum nächsten Umbau SQLite-basiert. Wenn `IOT_SENSOR_HOST` gesetzt ist, leiten Dashboard und FastAPI MANUAL-/Modus-Befehle über die lokale Sensor-ESP-API weiter; ohne diese Konfiguration bleibt der Python-Simulator/Fallback aktiv. Das Daten-/Control-Modell ist bereits auf Hardware V2 umgestellt:
-
-- Aktoren: `light`, `heater`, `circulation_vent`, `exhaust_vent`
-- keine steuerbare Pumpe mehr;
-- neue Messwerte wie TDS, zusätzliche DHT22- und DS18B20-Werte werden vom Ingest validiert und können als Zusatzfelder gespeichert werden;
-- bestehende SQLite-Dateien erhalten beim Öffnen automatisch eine `light`-Spalte; eine alte physische `pump`-Spalte kann als ungenutztes Legacy-Feld bestehen bleiben.
-
-## Offener Software-Schritt
-
-**PostgreSQL-Migration.**
-
-Dabei wird der bestehende PostgreSQL-Container auf dem Raspberry Pi verwendet. SQLite wird danach aus dem Produktionspfad entfernt.
-
-## Vor Merge nach main
-
-- Python-Unit-Tests ausführen.
-- Sensor-ESP kompilieren.
-- Stromkasten-ESP kompilieren.
-- verwendete CYD-Variante kompilieren.
-- nach Hardwareaufbau pH-Punkte und DS18B20-ROM-Zuordnung verifizieren.
+1. Kalibriersketch und Hauptfirmware mit der lokalen Arduino-ESP32-Toolchain kompilieren.
+2. Zuerst ADS1115 A0/A1, OLED und DS18B20 ueber den Hardware-Diagnosesketch pruefen.
+3. Drei DHT22 und BH1750 verkabeln und dann die Diagnose erneut ausfuehren.
+4. Spannungsgrenzen am ADS1115 und SSR-Steuereingangsstroeme elektrisch pruefen.
+5. pH-7-/pH-4-Pufferkalibrierung der realen ADS1115-Messkette.
+6. Steuerungs- und Sicherheitspruefungen vor jeder Inbetriebnahme mit Lasten.
+7. PostgreSQL-Migration.
