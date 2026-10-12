@@ -252,8 +252,13 @@ void fetchSummaryAndUpdate() {
     exh = targets["exhaust_vent"] | false;
   }
 
+  // pH-Alarm direkt aus der lokalen ESP32-Zusammenfassung lesen.
+  const char *phAlarm = r["ph_alarm"] | "sensor_fault";
   const char *alertMsg = nullptr;
   const char *alertSev = nullptr;
+  if (!strcmp(phAlarm, "low")) { alertMsg = "pH unter 5.5"; alertSev = "ALARM"; }
+  else if (!strcmp(phAlarm, "high")) { alertMsg = "pH ueber 6.5"; alertSev = "ALARM"; }
+  else if (!strcmp(phAlarm, "sensor_fault")) { alertMsg = "pH-Sensor/Kalibrierung"; alertSev = "FEHLER"; }
 
   updateLabels(mode, t, rh, tdsPpm, ph, light, heat, circ, exh, alertMsg, alertSev);
   lv_label_set_text_fmt(lbl_wifi, "WiFi OK | %s", WiFi.localIP().toString().c_str());
