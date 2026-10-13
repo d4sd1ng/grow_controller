@@ -124,6 +124,7 @@ float toPointV[2] = {NAN, NAN};
 float toPointC[2] = {NAN, NAN};
 bool toPointSet[2] = {false, false};
 bool toCalibrated = false;
+bool toNewPoint1Captured = false; // Session: neuer Punkt 1 erforderlich vor Punkt 2
 float ecCalTempC = NAN;
 float liveWaterTempC = NAN;
 uint8_t waterSensorRom[8] = {};
@@ -385,6 +386,7 @@ static bool captureEc1413() {
 
 static void loadToCalibration() {
   toCalibrated = false;
+  toNewPoint1Captured = false;
   Preferences p;
   if (!p.begin(TO_NVS_NAMESPACE, true)) return;
   const bool valid = p.getBool("valid", false);
@@ -427,6 +429,15 @@ static bool captureToPoint(uint8_t point, float referenceC) {
     Serial.println(F("TO NICHT erfasst: Signal ungueltig, gesaettigt oder instabil."));
     return false;
   }
+  // Nie alte NVS-Punkte mit einem neuen Referenzpunkt mischen.
+  if (point == 2 && !toNewPoint1Captured) {
+    Serial.println(F("TO: erst neuen Punkt 1 (a <C>) erfassen, dann Punkt 2 (b <C>)."));
+    return false;
+  }
+  if (point == 1) {
+    toPointSet[0] = toPointSet[1] = false;
+    toNewPoint1Captured = true;
+  }
   const uint8_t i = point - 1;
   toPointV[i] = st.meanV;
   toPointC[i] = referenceC;
@@ -438,6 +449,7 @@ static bool captureToPoint(uint8_t point, float referenceC) {
     Serial.println(F("TO: zweiter Punkt mit mindestens 5 C Abstand benoetigt."));
     return true;
   }
+  toNewPoint1Captured = false;
   if (fabsf(toPointV[0] - toPointV[1]) < TO_CAL_MIN_VOLT_SPAN_V ||
       fabsf(toPointC[0] - toPointC[1]) < TO_CAL_MIN_TEMP_SPAN_C) {
     Serial.println(F("TO NICHT kalibriert: Temperatur- oder Spannungsabstand zu klein."));
@@ -916,14 +928,15 @@ static void handleSerial() {
       selectWaterSensorRom(Serial.readStringUntil('\n'));
       updateTemperature(true);
     } else if (c == 'a' || c == 'b') {
-      const String arg = Serial.readStringUntil('\n');
-      const String number = arg.substring(0, arg.length());
-      if (number.length() == 0 ||
-          !(number[0] == ' ' || number[0] == '+' || number[0] == '-' ||
-            (number[0] >= '0' && number[0] <= '9'))) {
-        Serial.println(F("Syntax: a 20.0 oder b 30.0"));
+      String arg = Serial.readStringUntil('\n');
+      arg.trim();
+      const char *begin = arg.c_str();
+      char *end = nullptr;
+      const float tempC = strtof(begin, &end);
+      if (begin == end || *end != '\0' || !isfinite(tempC)) {
+        Serial.println(F("TO Syntax: a 20.0 bzw. b 30.0 (numerische Celsius-Referenz)."));
       } else {
-        captureToPoint(c == 'a' ? 1 : 2, number.toFloat());
+        captureToPoint(c == 'a' ? 1 : 2, tempC);
       }
     } else if (c == 's' || c == 'S') {
       printCalibration();
