@@ -50,11 +50,7 @@ static constexpr uint8_t PIN_SSR_HEAT = 33;
 static constexpr uint8_t OLED_ADDR = 0x3C;
 static constexpr uint8_t ADS_ADDR = 0x48;
 
-static constexpr float R_TOP_OHM = 10000.0f;
-static constexpr float R_BOTTOM_OHM = 20000.0f;
-static constexpr float DIVIDER_RATIO =
-    R_BOTTOM_OHM / (R_TOP_OHM + R_BOTTOM_OHM); // 2/3
-static constexpr float DIVIDER_RECONSTRUCT = 1.0f / DIVIDER_RATIO; // 1.5
+static constexpr float PH7_PO_REFERENCE_V = 2.50f; // vorgegebene PH4502C-PO-Referenz bei pH 7
 
 static constexpr uint16_t LIVE_SAMPLE_COUNT = 32;
 static constexpr uint16_t CAPTURE_SAMPLE_COUNT = 160;
@@ -111,7 +107,6 @@ struct AirData { float tempC = NAN; float humidity = NAN; bool ok = false; };
 AirData air[3];
 float bhLux = NAN;
 float liveInputV = NAN;
-float livePoV = NAN;
 float liveStdV = NAN;
 float liveTdsV = NAN;
 float liveTdsStdV = NAN;
@@ -476,10 +471,8 @@ static void printHardwareStatus() {
   Serial.printf("OLED 0x3C : %s\n", oledOk ? "OK" : "NICHT ERKANNT");
   Serial.printf("ADS  0x48: %s\n", adsOk ? "OK" : "NICHT ERKANNT");
   if (adsOk) {
-    Serial.printf("ADS A0 pH: %.5f V | PO (rechnerisch): %.5f V | Std: %.2f mV\n",
-                  liveInputV, livePoV, liveStdV * 1000.0f);
-    if (livePoV > 3.35f)
-      Serial.println(F("ACHTUNG: PO-Rechenwert >3.3V. Bei PH4502C-VCC=3.3V sind Teilerannahme/Versorgung widerspruechlich."));
+    Serial.printf("ADS A0 pH: %.5f V | Std: %.2f mV | PO-Soll bei pH7: %.2f V\n",
+                  liveInputV, liveStdV * 1000.0f, PH7_PO_REFERENCE_V);
     Serial.printf("ADS A1 TDS: %.5f V | Std %.2f mV\n", liveTdsV, liveTdsStdV * 1000.0f);
     if (ecCalibrated && validTemperature(liveWaterTempC))
       Serial.printf("EC auf 25C normiert: %.3f mS/cm | DS %.2f C\n",
@@ -727,7 +720,8 @@ static void printHelp() {
   Serial.println(F("OLED: 0x3C, D21/D22; SSR-Ausgaenge bleiben AUS"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
-  Serial.printf("pH-Kalibriertemperatur manuell: %.1f C (fuer pH 7 und pH 4)\n", PH_CAL_WATER_TEMP_C);
+  Serial.printf("pH-Puffer-Temperatur: %.1f C | PH4502C PO-Soll bei pH7: %.2f V\n",
+                PH_CAL_WATER_TEMP_C, PH7_PO_REFERENCE_V);
   Serial.println(F("s = Status + fertige Kalibrierwerte"));
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
@@ -752,15 +746,15 @@ static void printCalibration() {
   else Serial.println(F("TO: NICHT KALIBRIERT"));
 
   if (havePh7) {
-    Serial.printf("pH 7: ADS A0 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
-                  ph7InputV, ph7InputV * DIVIDER_RECONSTRUCT, ph7TempC);
+    Serial.printf("pH 7: ADS A0 = %.6f V | PO-Soll %.2f V | T = %.2f C\n",
+                  ph7InputV, PH7_PO_REFERENCE_V, ph7TempC);
   } else {
     Serial.println(F("pH 7: noch nicht erfasst"));
   }
 
   if (havePh4) {
-    Serial.printf("pH 4: ADS A0 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
-                  ph4InputV, ph4InputV * DIVIDER_RECONSTRUCT, ph4TempC);
+    Serial.printf("pH 4: ADS A0 = %.6f V | T = %.2f C\n",
+                  ph4InputV, ph4TempC);
   } else {
     Serial.println(F("pH 4: noch nicht erfasst"));
   }
@@ -770,12 +764,12 @@ static void printCalibration() {
     const float offset = calibrationOffset();
 
     Serial.println();
-    Serial.println(F("Werte fuer die Produktions-Messkette am gleichen 10k/20k-Knoten:"));
+    Serial.println(F("Kalibrierwerte in ADS1115-A0-Eingangsspannung:"));
     Serial.printf("static constexpr float PH_CAL_VOLT_4 = %.6ff;\n", ph4InputV);
     Serial.printf("static constexpr float PH_CAL_VOLT_7 = %.6ff;\n", ph7InputV);
 
     Serial.println();
-    Serial.println(F("Kalibriergerade bezogen auf die Spannung hinter dem Teiler:"));
+    Serial.println(F("Kalibriergerade bezogen auf gemessene ADS1115-A0-Spannung:"));
     Serial.printf("PH_SLOPE  = %.6ff;\n", slope);
     Serial.printf("PH_OFFSET = %.6ff;\n", offset);
     Serial.println(F("Formel: pH = PH_SLOPE * input_voltage + PH_OFFSET"));
@@ -803,8 +797,9 @@ static bool captureStablePoint(float targetPh) {
 
   Serial.printf("Mittelwert ADS A0: %.6f V\n", s.meanV);
   Serial.printf("Std-Abw.:          %.6f V\n", s.stdV);
-  Serial.printf("PH4502C PO:        %.6f V (rueckgerechnet)\n",
-                s.meanV * DIVIDER_RECONSTRUCT);
+  if (targetPh == 7.0f)
+    Serial.printf("PH4502C PO-Soll:    %.5f V (pH 7, nicht aus A0 rueckgerechnet)\n",
+                  PH7_PO_REFERENCE_V);
   Serial.printf("pH-Puffer-Temp:    %.2f C (manuell)\n", PH_CAL_WATER_TEMP_C);
   Serial.printf("mV min/max:        %lu / %lu\n",
                 static_cast<unsigned long>(s.minMv),
@@ -854,7 +849,6 @@ static bool captureStablePoint(float targetPh) {
 static void updateLive() {
   const SampleStats s = sampleChannel(0, LIVE_SAMPLE_COUNT, 0);
   liveInputV = s.meanV;
-  livePoV = isfinite(liveInputV) ? liveInputV * DIVIDER_RECONSTRUCT : NAN;
   liveStdV = s.stdV;
   const EcWindowStats tdsSample = sampleEcWindow();
   liveTdsV = tdsSample.medianV;
@@ -1030,9 +1024,8 @@ void loop() {
   static unsigned long lastPrint = 0;
   if (now - lastPrint >= 1000) {
     lastPrint = now;
-    Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | PO(rechnerisch) %.5f V | std %.2f mV | A1 TDS %.5f V",
-                  adsOk ? "OK" : "--", liveInputV, livePoV,
-                  liveStdV * 1000.0f, liveTdsV);
+    Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | std %.2f mV | A1 TDS %.5f V",
+                  adsOk ? "OK" : "--", liveInputV, liveStdV * 1000.0f, liveTdsV);
     if (validTemperature(liveWaterTempC)) Serial.printf(" | DS-Wasser %.2f C", liveWaterTempC);
     else Serial.print(F(" | DS --"));
     if (calibrationReady() && isfinite(liveInputV)) {
