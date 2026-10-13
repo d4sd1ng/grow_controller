@@ -36,11 +36,15 @@ Arduino Serial Monitor **115200 Baud**:
 - `4`: stabilen pH-4-Pufferpunkt ueber ADS1115 A0 speichern
 - `s`: pH-Kalibrierpunkte und Konstanten fuer die produktive Firmware anzeigen
 - `r`: nur die neue ADS-Kalibrierung im NVS (`phads_v1`) loeschen
+- `e`: 1413-uS/cm-EC-Referenz (1,413 mS/cm bei 25 Grad C) am ADS1115 A1 erfassen; bei zu unruhigem Signal keine Speicherung
 - `h`: Hilfe
 
-ADS1115 A0=PO pH, A1=TDS, A2=TO (derzeit deaktiviert); PH4502C DO vorgesehen an GPIO32 (ebenfalls deaktiviert). OLED und ADS1115 auf I2C GPIO21/22. Das alte Kalibrierschema ueber VP bleibt in einem **getrennten NVS-Namespace** unberuehrt; die alte VP-Kalibrierung wird nicht unbemerkt fuer ADS-Werte verwendet. Kalibrierpunkte koennen auch ohne DS18B20 gespeichert werden; die fehlende Temperatur wird als unbekannt behandelt und der Pufferwert ist anhand seiner Referenztemperatur zu bewerten. Bei fehlendem ADS1115 oder unruhiger Messung wird die Erfassung abgelehnt.
+ADS1115 A0=PO pH, A1=TDS/EC, A2=TO (derzeit deaktiviert); PH4502C DO vorgesehen an GPIO32 (ebenfalls deaktiviert). OLED und ADS1115 auf I2C GPIO21/22. Das alte Kalibrierschema ueber VP bleibt in einem **getrennten NVS-Namespace** unberuehrt; die alte VP-Kalibrierung wird nicht unbemerkt fuer ADS-Werte verwendet. Kalibrierpunkte koennen auch ohne DS18B20 gespeichert werden; die fehlende Temperatur wird als unbekannt behandelt und der Pufferwert ist anhand seiner Referenztemperatur zu bewerten. Bei fehlendem ADS1115 oder unruhiger Messung wird die Erfassung abgelehnt.
 
 Die drei DHT22 und der BH1750 sind bisher nicht verkabelt. Sie duerfen in der Diagnose als nicht erkannt angezeigt werden, ohne die anderen Tests zu blockieren. SSR-Ausgaenge bleiben im Diagnosesketch immer LOW.
+
+## TDS/EC-Kalibrierung
+Der CQRobot-TDS-Sensor liegt am ADS1115 A1. Der Kalibriersketch erfasst mit Befehl `e` die Referenzloesung mit 1413 uS/cm (1,413 mS/cm bei 25 C), prueft die Signalstreuung und schreibt einen Kalibrierfaktor nach NVS `ecads_v1`. Bei zu grosser Standardabweichung (>25 mV) oder Spanne (>90 mV) wird KEINE Kalibrierung gespeichert. Die Produktions-Firmware liest `ecads_v1` beim Start, zeigt EC in mS/cm auf OLED und CYD und liefert `ec` in Telemetrie und lokaler API. Ohne gespeicherte Kalibrierung bleibt `ec=null`, statt einen scheinbar genauen Wert zu melden. Ohne zugeordneten Wassertemperatur-Sensor gelten die EC-Werte unter Annahme von 25 C; bei abweichender Wassertemperatur fehlen noch Daten zur echten Temperaturkompensation.
 
 ## pH-Ueberwachung
 
