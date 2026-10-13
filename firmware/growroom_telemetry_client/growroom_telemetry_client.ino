@@ -275,24 +275,39 @@ static float cqrobotEcMs(float inputV) {
   const float ppm = cqrobotTdsPpm(inputV, NAN);
   return isfinite(ppm) ? ppm * ecFactor / 500.0f : NAN;
 }
+/* CQRobot-Abtastung: 30 ADS1115-A1-Werte im Abstand von 40 ms.
+ * Ringpuffer verhindert 1.2 s blockierendes Lesen im Regel-/HTTP-Loop.
+ * Der pH-Kanal A0 wird dabei nicht veraendert.
+ */
+static constexpr uint8_t EC_FILTER_SAMPLES = 30;
+float ecVoltageRing[EC_FILTER_SAMPLES] = {};
+uint8_t ecRingIndex = 0, ecRingCount = 0;
+unsigned long lastEcSampleMs = 0;
+
+static void sampleTdsBackground(unsigned long nowMs) {
+  if (!sensors.adsOk) return;
+  if (lastEcSampleMs != 0 && nowMs - lastEcSampleMs < 40UL) return;
+  lastEcSampleMs = nowMs;
+  const float v = adsCountsToVolts(ads.readADC_SingleEnded(1));
+  if (!isfinite(v) || v < 0.0f || v > 2.3f) return;
+  ecVoltageRing[ecRingIndex] = v;
+  ecRingIndex = (ecRingIndex + 1) % EC_FILTER_SAMPLES;
+  if (ecRingCount < EC_FILTER_SAMPLES) ++ecRingCount;
+}
 static float readTdsMedianVoltage() {
-  if (!sensors.adsOk) return NAN;
-  static constexpr uint8_t SAMPLES = 17;
-  float values[SAMPLES];
-  for (uint8_t i = 0; i < SAMPLES; ++i) {
-    values[i] = adsCountsToVolts(ads.readADC_SingleEnded(1));
-    delay(5);
-  }
-  for (uint8_t i = 1; i < SAMPLES; ++i) {
-    float key = values[i];
-    int j = i;
+  if (ecRingCount < EC_FILTER_SAMPLES) return NAN;
+  float values[EC_FILTER_SAMPLES];
+  for (uint8_t i = 0; i < EC_FILTER_SAMPLES; ++i) values[i] = ecVoltageRing[i];
+  for (uint8_t i = 1; i < EC_FILTER_SAMPLES; ++i) {
+    const float key = values[i];
+    uint8_t j = i;
     while (j > 0 && values[j - 1] > key) {
       values[j] = values[j - 1];
       --j;
     }
     values[j] = key;
   }
-  return values[SAMPLES / 2];
+  return (values[EC_FILTER_SAMPLES / 2 - 1] + values[EC_FILTER_SAMPLES / 2]) * 0.5f;
 }
 
 static void setJsonFloat(JsonObject obj, const char *key, float value) {
@@ -815,6 +830,7 @@ void loop() {
   const unsigned long now = millis();
 
   localServer.handleClient();
+  sampleTdsBackground(now);
 
   if (WiFi.status() != WL_CONNECTED && now - lastWifiReconnect >= WIFI_RECONNECT_MS) {
     lastWifiReconnect = now;
