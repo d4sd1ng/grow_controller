@@ -14,7 +14,7 @@
  *
  * 115200 Baud: 7=pH7 kalibrieren, 4=pH4, s=Kalibrierwerte,
  * t=komplette Diagnose, r=ADS-Kalibrierung loeschen, h=Hilfe.
- * Kalibriert wird erst mit gueltiger DS18B20-Temperatur.
+ * pH kann auch ohne DS18B20 kalibriert werden; EC 1413uS mit 'e'.
  */
 
 #include <Arduino.h>
@@ -54,6 +54,11 @@ static constexpr float DIVIDER_RECONSTRUCT = 1.0f / DIVIDER_RATIO; // 1.5
 
 static constexpr uint16_t LIVE_SAMPLE_COUNT = 32;
 static constexpr uint16_t CAPTURE_SAMPLE_COUNT = 160;
+static constexpr uint16_t EC_LIVE_SAMPLE_COUNT = 17;
+static constexpr uint16_t EC_CAPTURE_SAMPLES = 120;
+static constexpr float EC_REFERENCE_MS_CM = 1.413f; // 1413 uS/cm bei 25 C
+static constexpr float EC_MAX_STD_V = 0.025f;
+static constexpr float EC_MAX_SPAN_V = 0.090f;
 static constexpr uint16_t SAMPLE_DELAY_MS = 20;
 static constexpr unsigned long TEMP_INTERVAL_MS = 2000;
 static constexpr unsigned long OLED_INTERVAL_MS = 500;
@@ -70,6 +75,9 @@ static constexpr char NVS_VOLT_7[] = "volt7";
 static constexpr char NVS_VOLT_4[] = "volt4";
 static constexpr char NVS_TEMP_7[] = "temp7";
 static constexpr char NVS_TEMP_4[] = "temp4";
+static constexpr char EC_NAMESPACE[] = "ecads_v1";
+static constexpr char EC_NVS_FACTOR[] = "factor";
+static constexpr char EC_NVS_REFERENCE_V[] = "ref_v";
 
 Preferences preferences;
 OneWire oneWire(PIN_DS18B20);
@@ -95,6 +103,10 @@ float liveInputV = NAN;
 float livePoV = NAN;
 float liveStdV = NAN;
 float liveTdsV = NAN;
+float liveTdsStdV = NAN;
+float ecFactor = NAN;
+float ecReferenceInputV = NAN;
+bool ecCalibrated = false;
 float liveToV = NAN;
 bool liveDoHigh = false;
 float liveTempC = NAN;
@@ -122,7 +134,7 @@ static bool validTemperature(float t) {
   return !isnan(t) && t > -20.0f && t < 80.0f && t != DEVICE_DISCONNECTED_C;
 }
 
-static SampleStats sampleChannel(uint16_t count, uint16_t delayMs) {
+static SampleStats sampleChannel(uint8_t channel, uint16_t count, uint16_t delayMs) {
   SampleStats empty{NAN, NAN, 0, 0};
   if (!adsOk || count == 0) return empty;
   double sum = 0.0;
@@ -131,7 +143,7 @@ static SampleStats sampleChannel(uint16_t count, uint16_t delayMs) {
   uint32_t maxMv = 0;
 
   for (uint16_t i = 0; i < count; ++i) {
-    const int16_t raw = ads.readADC_SingleEnded(0);
+    const int16_t raw = ads.readADC_SingleEnded(channel);
     const float v = ads.computeVolts(raw);  // ADS1115 Gain_ONE
     if (!isfinite(v) || v < 0.0f) return empty;
     const uint32_t mv = static_cast<uint32_t>(lroundf(v * 1000.0f));
@@ -193,6 +205,75 @@ static void updateOptionalSensors(bool force = false) {
   bhLux = readBh1750();
 }
 
+/* CQRobot-Spezifikation: ppm = polynomial(U) * 0.5.
+ * Referenzfaktor ppm/(500 ppm pro mS/cm) -> polynomial(U)/1000 mS/cm
+ * bei 25 C. Kalibrierung skaliert die Kennlinie auf 1413 uS/cm.
+ */
+static float ecUncalibratedMs(float v) {
+  if (!isfinite(v) || v < 0.0f || v > 2.3f) return NAN;
+  return (133.42f*v*v*v - 255.86f*v*v + 857.39f*v) / 1000.0f;
+}
+static float ecFromVoltage(float v) {
+  const float base = ecUncalibratedMs(v);
+  return ecCalibrated && isfinite(base) ? base * ecFactor : NAN;
+}
+static void loadEcCalibration() {
+  ecCalibrated = false;
+  Preferences ecPrefs;
+  if (!ecPrefs.begin(EC_NAMESPACE, true)) return;
+  const bool valid = ecPrefs.getBool("valid", false);
+  ecFactor = ecPrefs.getFloat(EC_NVS_FACTOR, NAN);
+  ecReferenceInputV = ecPrefs.getFloat(EC_NVS_REFERENCE_V, NAN);
+  ecPrefs.end();
+  ecCalibrated = valid && isfinite(ecFactor) &&
+                 ecFactor >= 0.1f && ecFactor <= 10.0f &&
+                 isfinite(ecReferenceInputV) && ecReferenceInputV > 0.05f &&
+                 ecReferenceInputV <= 2.3f;
+}
+static bool captureEc1413() {
+  if (!adsOk) { Serial.println(F("EC ABGELEHNT: ADS1115 fehlt.")); return false; }
+  Serial.println(F("EC 1413 uS/cm @25 C: erfasse A1 ueber 3 s ..."));
+  const SampleStats stats = sampleChannel(1, EC_CAPTURE_SAMPLES, 25);
+  const float spanV = (static_cast<float>(stats.maxMv) -
+                       static_cast<float>(stats.minMv)) / 1000.0f;
+  Serial.printf("EC A1: Mittel %.5f V | Std %.3f mV | Spanne %.3f V\n",
+                stats.meanV, stats.stdV * 1000.0f, spanV);
+  if (!isfinite(stats.meanV) || !isfinite(stats.stdV) ||
+      stats.stdV > EC_MAX_STD_V || spanV > EC_MAX_SPAN_V) {
+    Serial.println(F("EC NICHT gespeichert: A1 schwankt zu stark (Std >25 mV oder Spanne >90 mV)."));
+    return false;
+  }
+  const float ecRaw = ecUncalibratedMs(stats.meanV);
+  if (!isfinite(ecRaw) || ecRaw < 0.05f) {
+    Serial.println(F("EC NICHT gespeichert: unplausibles A1-Signal."));
+    return false;
+  }
+  const float factor = EC_REFERENCE_MS_CM / ecRaw;
+  if (!isfinite(factor) || factor < 0.1f || factor > 10.0f) {
+    Serial.println(F("EC NICHT gespeichert: Kalibrierfaktor unplausibel."));
+    return false;
+  }
+  Preferences ecPrefs;
+  if (!ecPrefs.begin(EC_NAMESPACE, false)) {
+    Serial.println(F("EC NICHT gespeichert: NVS nicht verfuegbar."));
+    return false;
+  }
+  bool ok = ecPrefs.putFloat(EC_NVS_FACTOR, factor) == sizeof(float);
+  ok = (ecPrefs.putFloat(EC_NVS_REFERENCE_V, stats.meanV) == sizeof(float)) && ok;
+  ok = (ecPrefs.putBool("valid", true) == sizeof(bool)) && ok;
+  ecPrefs.end();
+  if (!ok) { Serial.println(F("EC NICHT gespeichert: NVS Schreibfehler.")); return false; }
+  loadEcCalibration();
+  if (!ecCalibrated || fabsf(ecFactor - factor) > 0.00001f) {
+    Serial.println(F("EC NICHT bestaetigt: NVS Lesefehler."));
+    return false;
+  }
+  Serial.printf("EC KALIBRIERT: 1413 uS/cm = 1.413 mS/cm | A1 %.5f V | Faktor %.5f\n",
+                ecReferenceInputV, ecFactor);
+  Serial.println(F("ACHTUNG: Referenzleitfaehigkeit gilt bei 25 C. Ohne Wassertemperatur keine echte Temperaturkompensation."));
+  return true;
+}
+
 static void printHardwareStatus() {
   Serial.println(F("\n=== HARDWARE-STATUS ==="));
   Serial.printf("OLED 0x3C : %s\n", oledOk ? "OK" : "NICHT ERKANNT");
@@ -200,7 +281,9 @@ static void printHardwareStatus() {
   if (adsOk) {
     Serial.printf("ADS A0 pH: %.5f V | PO (geschaetzt): %.5f V | Std: %.2f mV\n",
                   liveInputV, livePoV, liveStdV * 1000.0f);
-    Serial.printf("ADS A1 TDS: %.5f V (roh, keine EC-Kalibrierung)\n", liveTdsV);
+    Serial.printf("ADS A1 TDS: %.5f V | Std %.2f mV\n", liveTdsV, liveTdsStdV * 1000.0f);
+    if (ecCalibrated) Serial.printf("EC (25C angen.): %.3f mS/cm\n", ecFromVoltage(liveTdsV));
+    else Serial.println(F("EC: NICHT KALIBRIERT (e = 1413 uS/cm Referenz erfassen)"));
     if (PH_TO_WIRED) Serial.printf("ADS A2 TO: %.5f V (roh, keine Celsius-Kennlinie)\n", liveToV);
     else Serial.println(F("ADS A2 TO: NOCH NICHT VERKABELT/GEPRUEFT"));
   }
@@ -368,6 +451,7 @@ static void printHelp() {
   Serial.println(F("s = Status + fertige Kalibrierwerte"));
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
+  Serial.println(F("e = EC kalibrieren: A1 in 1413 uS/cm Referenzloesung @25 C"));
   Serial.println(F("h = Hilfe"));
   Serial.println(F("Instabile Messungen >10 mV werden nicht gespeichert. Temperatur optional."));
   Serial.println(F("----------------------------------------"));
@@ -376,6 +460,8 @@ static void printHelp() {
 static void printCalibration() {
   Serial.println();
   Serial.println(F("--- Kalibrierstatus ---"));
+  if (ecCalibrated) Serial.printf("EC: kalibriert 1413uS/cm | A1 %.5f V | Faktor %.5f\n", ecReferenceInputV, ecFactor);
+  else Serial.println(F("EC: NICHT KALIBRIERT"));
 
   if (havePh7) {
     Serial.printf("pH 7: ADS A0 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
@@ -423,7 +509,7 @@ static bool captureStablePoint(float targetPh) {
   if (!validTemperature(liveTempC))
     Serial.println(F("HINWEIS: Temperatur nicht verfuegbar; Puffer-pH nach Herstellerangabe/Referenztemperatur bewerten."));
 
-  const SampleStats s = sampleChannel(CAPTURE_SAMPLE_COUNT, SAMPLE_DELAY_MS);
+  const SampleStats s = sampleChannel(0, CAPTURE_SAMPLE_COUNT, SAMPLE_DELAY_MS);
   if (!isfinite(s.meanV) || !isfinite(s.stdV)) {
     Serial.println(F("ABGELEHNT: ADS1115-Auslesefehler."));
     return false;
@@ -482,11 +568,13 @@ static bool captureStablePoint(float targetPh) {
 }
 
 static void updateLive() {
-  const SampleStats s = sampleChannel(LIVE_SAMPLE_COUNT, 0);
+  const SampleStats s = sampleChannel(0, LIVE_SAMPLE_COUNT, 0);
   liveInputV = s.meanV;
   livePoV = isfinite(liveInputV) ? liveInputV * DIVIDER_RECONSTRUCT : NAN;
   liveStdV = s.stdV;
-  liveTdsV = adsOk ? ads.computeVolts(ads.readADC_SingleEnded(1)) : NAN;
+  const SampleStats tdsSample = sampleChannel(1, EC_LIVE_SAMPLE_COUNT, 5);
+  liveTdsV = tdsSample.meanV;
+  liveTdsStdV = tdsSample.stdV;
   liveToV = adsOk && PH_TO_WIRED ? ads.computeVolts(ads.readADC_SingleEnded(2)) : NAN;
   if (PH_DO_WIRED) liveDoHigh = digitalRead(PIN_PH_DO) == HIGH;
 }
@@ -541,6 +629,8 @@ static void handleSerial() {
       captureStablePoint(7.0f);
     } else if (c == '4') {
       captureStablePoint(4.0f);
+    } else if (c == 'e' || c == 'E') {
+      captureEc1413();
     } else if (c == 's' || c == 'S') {
       printCalibration();
     } else if (c == 't' || c == 'T') {
@@ -607,6 +697,7 @@ void setup() {
   updateOptionalSensors(true);
   updateLive();
 
+  loadEcCalibration();
   const bool nvsReadable = loadCalibration();
   printHelp();
   if (!nvsReadable) Serial.println(F("WARNUNG: ADS-Kalibrierspeicher nicht lesbar."));
@@ -639,6 +730,8 @@ void loop() {
     }
     uint8_t n = 0;
     for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++n;
+    if (ecCalibrated) Serial.printf(" | EC %.3f mS/cm (25C)", ecFromVoltage(liveTdsV));
+    else Serial.print(F(" | EC -- (nicht kalibriert)"));
     Serial.printf(" | TO A2 %.4f V | DO %s", liveToV, PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "--");
     Serial.printf(" | DHT %u/3 | BH %s",
                   static_cast<unsigned>(n),
