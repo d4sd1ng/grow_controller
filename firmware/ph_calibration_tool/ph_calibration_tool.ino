@@ -31,7 +31,8 @@
 static constexpr uint8_t PIN_DS18B20 = 23;
 static constexpr uint8_t PIN_PH_DO = 32;
 static constexpr bool PH_DO_WIRED = false; // erst nach 3.3-V-Pegelpruefung aktivieren
-static constexpr bool PH_TO_WIRED = false; // TO an A2 erst nach sicherer Pegelpruefung
+// TO erst aktivieren, nachdem sein maximaler Ausgangspegel nachweislich <= ADS-VDD (3.3 V) ist.
+static constexpr bool PH_TO_WIRED = false;
 static constexpr uint8_t PIN_OLED_SDA = 21;
 static constexpr uint8_t PIN_OLED_SCL = 22;
 static constexpr uint8_t PIN_BH_SDA = 13;
@@ -80,6 +81,9 @@ static constexpr char NVS_TEMP_4[] = "temp4";
 static constexpr char EC_NAMESPACE[] = "ecads_v1";
 static constexpr char EC_NVS_FACTOR[] = "factor";
 static constexpr char EC_NVS_REFERENCE_V[] = "ref_v";
+static constexpr char TO_NVS_NAMESPACE[] = "toads_v1";
+static constexpr float TO_CAL_MIN_TEMP_SPAN_C = 5.0f;
+static constexpr float TO_CAL_MIN_VOLT_SPAN_V = 0.025f;
 
 Preferences preferences;
 OneWire oneWire(PIN_DS18B20);
@@ -110,7 +114,14 @@ float ecFactor = NAN;
 float ecReferenceInputV = NAN;
 bool ecCalibrated = false;
 float liveToV = NAN;
+float liveToStdV = NAN;
 bool liveDoHigh = false;
+float toPointV[2] = {NAN, NAN};
+float toPointC[2] = {NAN, NAN};
+bool toPointSet[2] = {false, false};
+bool toCalibrated = false;
+float ecCalTempC = NAN;
+float liveWaterTempC = NAN;
 float liveTempC = NAN;
 float liveTemp2C = NAN;
 
@@ -257,12 +268,19 @@ static void updateOptionalSensors(bool force = false) {
  * Referenzfaktor ppm/(500 ppm pro mS/cm) -> polynomial(U)/1000 mS/cm
  * bei 25 C. Kalibrierung skaliert die Kennlinie auf 1413 uS/cm.
  */
+// Gleiche 2%-pro-C-Kompensation wie CQRobot (Spannung vor Kennlinie korrigieren).
+// KEINE 25-C-Ersatztemperatur. Fehlt DS18B20, bleibt EC ungueltig.
+static float ecCompensatedVoltage(float voltageV, float waterTempC) {
+  if (!isfinite(voltageV) || !validTemperature(waterTempC)) return NAN;
+  const float coefficient = 1.0f + 0.02f * (waterTempC - 25.0f);
+  return coefficient > 0.1f ? voltageV / coefficient : NAN;
+}
 static float ecUncalibratedMs(float v) {
   if (!isfinite(v) || v < 0.0f || v > 2.3f) return NAN;
   return (133.42f*v*v*v - 255.86f*v*v + 857.39f*v) / 1000.0f;
 }
-static float ecFromVoltage(float v) {
-  const float base = ecUncalibratedMs(v);
+static float ecFromVoltage(float v, float waterTempC) {
+  const float base = ecUncalibratedMs(ecCompensatedVoltage(v, waterTempC));
   return ecCalibrated && isfinite(base) ? base * ecFactor : NAN;
 }
 static void loadEcCalibration() {
@@ -272,6 +290,7 @@ static void loadEcCalibration() {
   const bool valid = ecPrefs.getBool("valid", false);
   ecFactor = ecPrefs.getFloat(EC_NVS_FACTOR, NAN);
   ecReferenceInputV = ecPrefs.getFloat(EC_NVS_REFERENCE_V, NAN);
+  ecCalTempC = ecPrefs.getFloat("temp_c", NAN);
   ecPrefs.end();
   ecCalibrated = valid && isfinite(ecFactor) &&
                  ecFactor >= 0.1f && ecFactor <= 10.0f &&
@@ -280,7 +299,12 @@ static void loadEcCalibration() {
 }
 static bool captureEc1413() {
   if (!adsOk) { Serial.println(F("EC ABGELEHNT: ADS1115 fehlt.")); return false; }
-  Serial.println(F("EC 1413 uS/cm @25 C: erfasse 8 Medianfenster, 30 Werte alle 40 ms ..."));
+  updateTemperature(true);
+  if (!validTemperature(liveWaterTempC)) {
+    Serial.println(F("EC NICHT kalibriert: Wasser-DS18B20 fehlt oder Zuordnung unklar; alter Faktor bleibt erhalten."));
+    return false;
+  }
+  Serial.printf("EC Referenz 1413 uS/cm bei 25 C | Wasser %.2f C | 8 Medianfenster, 30x40ms ...\n", liveWaterTempC);
   double sum = 0.0, sumSq = 0.0;
   float minMedianV = INFINITY, maxMedianV = -INFINITY;
   float rawMinV = INFINITY, rawMaxV = -INFINITY;
@@ -320,7 +344,7 @@ static bool captureEc1413() {
     Serial.println(F("EC NICHT gespeichert: auch gefilterte Fenster sind instabil (Std >10 mV oder Spanne >30 mV)."));
     return false;
   }
-  const float ecRaw = ecUncalibratedMs(meanMedianV);
+  const float ecRaw = ecUncalibratedMs(ecCompensatedVoltage(meanMedianV, liveWaterTempC));
   if (!isfinite(ecRaw) || ecRaw < 0.05f) {
     Serial.println(F("EC NICHT gespeichert: unplausibles A1-Signal."));
     return false;
@@ -337,6 +361,7 @@ static bool captureEc1413() {
   }
   bool ok = ecPrefs.putFloat(EC_NVS_FACTOR, factor) == sizeof(float);
   ok = (ecPrefs.putFloat(EC_NVS_REFERENCE_V, meanMedianV) == sizeof(float)) && ok;
+  ok = (ecPrefs.putFloat("temp_c", liveWaterTempC) == sizeof(float)) && ok;
   ok = (ecPrefs.putBool("valid", true) == sizeof(bool)) && ok;
   ecPrefs.end();
   if (!ok) { Serial.println(F("EC NICHT gespeichert: NVS Schreibfehler.")); return false; }
@@ -345,10 +370,85 @@ static bool captureEc1413() {
     Serial.println(F("EC NICHT bestaetigt: NVS Lesefehler."));
     return false;
   }
-  Serial.printf("EC KALIBRIERT: 1413 uS/cm = 1.413 mS/cm | A1 %.5f V | Faktor %.5f\n",
-                ecReferenceInputV, ecFactor);
-  Serial.println(F("ACHTUNG: Referenzleitfaehigkeit gilt bei 25 C. Ohne Wassertemperatur keine echte Temperaturkompensation."));
+  Serial.printf("EC KALIBRIERT: 1.413 mS/cm bei 25 C | A1 %.5f V | T-Wasser %.2f C | Faktor %.5f\n",
+                ecReferenceInputV, ecCalTempC, ecFactor);
+  Serial.println(F("EC: Wassertemperatur des DS18B20 wurde fuer Kalibrierung erfasst."));
   return true;
+}
+
+static void loadToCalibration() {
+  toCalibrated = false;
+  Preferences p;
+  if (!p.begin(TO_NVS_NAMESPACE, true)) return;
+  const bool valid = p.getBool("valid", false);
+  const float v1 = p.getFloat("v1", NAN), v2 = p.getFloat("v2", NAN);
+  const float c1 = p.getFloat("c1", NAN), c2 = p.getFloat("c2", NAN);
+  p.end();
+  if (!valid || !isfinite(v1) || !isfinite(v2) ||
+      !isfinite(c1) || !isfinite(c2) ||
+      v1 <= 0.05f || v1 >= 3.25f || v2 <= 0.05f || v2 >= 3.25f ||
+      c1 < -5.0f || c1 > 60.0f || c2 < -5.0f || c2 > 60.0f ||
+      fabsf(v1 - v2) < TO_CAL_MIN_VOLT_SPAN_V ||
+      fabsf(c1 - c2) < TO_CAL_MIN_TEMP_SPAN_C) return;
+  toPointV[0] = v1; toPointV[1] = v2;
+  toPointC[0] = c1; toPointC[1] = c2;
+  toPointSet[0] = toPointSet[1] = true;
+  toCalibrated = true;
+}
+static float toCaseTempC(float v) {
+  if (!PH_TO_WIRED || !toCalibrated || !isfinite(v)) return NAN;
+  if (v < fminf(toPointV[0], toPointV[1]) ||
+      v > fmaxf(toPointV[0], toPointV[1])) return NAN;
+  const float t = toPointC[0] + (v - toPointV[0]) *
+      (toPointC[1] - toPointC[0]) / (toPointV[1] - toPointV[0]);
+  return t >= -5.0f && t <= 60.0f ? t : NAN;
+}
+static bool captureToPoint(uint8_t point, float referenceC) {
+  if (!PH_TO_WIRED || !adsOk) {
+    Serial.println(F("TO NICHT AKTIV: A2 erst nach nachgewiesener 3.3-V-Pegelsicherheit freigeben."));
+    return false;
+  }
+  if (point < 1 || point > 2 || !isfinite(referenceC) ||
+      referenceC < -5.0f || referenceC > 60.0f) {
+    Serial.println(F("TO FEHLER: Referenztemperatur -5..60 C erforderlich."));
+    return false;
+  }
+  const SampleStats st = sampleChannel(2, 32, 20);
+  if (!isfinite(st.meanV) || !isfinite(st.stdV) ||
+      st.meanV <= 0.05f || st.meanV >= 3.25f ||
+      st.stdV > 0.010f) {
+    Serial.println(F("TO NICHT erfasst: Signal ungueltig, gesaettigt oder instabil."));
+    return false;
+  }
+  const uint8_t i = point - 1;
+  toPointV[i] = st.meanV;
+  toPointC[i] = referenceC;
+  toPointSet[i] = true;
+  toCalibrated = false;
+  Serial.printf("TO Punkt %u: A2 %.5f V bei %.2f C (Std %.2f mV)\n",
+                static_cast<unsigned>(point), st.meanV, referenceC, st.stdV * 1000.0f);
+  if (!toPointSet[0] || !toPointSet[1]) {
+    Serial.println(F("TO: zweiter Punkt mit mindestens 5 C Abstand benoetigt."));
+    return true;
+  }
+  if (fabsf(toPointV[0] - toPointV[1]) < TO_CAL_MIN_VOLT_SPAN_V ||
+      fabsf(toPointC[0] - toPointC[1]) < TO_CAL_MIN_TEMP_SPAN_C) {
+    Serial.println(F("TO NICHT kalibriert: Temperatur- oder Spannungsabstand zu klein."));
+    return false;
+  }
+  Preferences p;
+  if (!p.begin(TO_NVS_NAMESPACE, false)) return false;
+  bool ok = p.putFloat("v1", toPointV[0]) == sizeof(float);
+  ok = (p.putFloat("c1", toPointC[0]) == sizeof(float)) && ok;
+  ok = (p.putFloat("v2", toPointV[1]) == sizeof(float)) && ok;
+  ok = (p.putFloat("c2", toPointC[1]) == sizeof(float)) && ok;
+  ok = (p.putBool("valid", true) == sizeof(bool)) && ok;
+  p.end();
+  if (!ok) { Serial.println(F("TO NVS-Speicherung fehlgeschlagen.")); return false; }
+  loadToCalibration();
+  Serial.println(toCalibrated ? F("TO GEHAEUSETEMPERATUR KALIBRIERT") :
+                               F("TO NVS-Lesen fehlgeschlagen."));
+  return toCalibrated;
 }
 
 static void printHardwareStatus() {
@@ -359,9 +459,14 @@ static void printHardwareStatus() {
     Serial.printf("ADS A0 pH: %.5f V | PO (geschaetzt): %.5f V | Std: %.2f mV\n",
                   liveInputV, livePoV, liveStdV * 1000.0f);
     Serial.printf("ADS A1 TDS: %.5f V | Std %.2f mV\n", liveTdsV, liveTdsStdV * 1000.0f);
-    if (ecCalibrated) Serial.printf("EC (25C angen.): %.3f mS/cm\n", ecFromVoltage(liveTdsV));
+    if (ecCalibrated && validTemperature(liveWaterTempC))
+      Serial.printf("EC auf 25C normiert: %.3f mS/cm | DS %.2f C\n",
+                    ecFromVoltage(liveTdsV, liveWaterTempC), liveWaterTempC);
     else Serial.println(F("EC: NICHT KALIBRIERT (e = 1413 uS/cm Referenz erfassen)"));
-    if (PH_TO_WIRED) Serial.printf("ADS A2 TO: %.5f V (roh, keine Celsius-Kennlinie)\n", liveToV);
+    if (PH_TO_WIRED) {
+      Serial.printf("ADS A2 TO: %.5f V | Std %.2f mV\n", liveToV, liveToStdV * 1000.0f);
+      if (toCalibrated) Serial.printf("TO Gehaeuse: %.2f C (2-Punkt-Interpolation)\n", toCaseTempC(liveToV));
+    }
     else Serial.println(F("ADS A2 TO: NOCH NICHT VERKABELT/GEPRUEFT"));
   }
   Serial.printf("PH4502C DO GPIO32: %s\n", PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "NICHT VERKABELT/DEAKTIVIERT");
@@ -401,11 +506,21 @@ static float calibrationOffset() {
   return 7.0f - slope * ph7InputV;
 }
 
+static bool phTemperatureCompensationReady() {
+  return calibrationReady() && validTemperature(liveWaterTempC) &&
+      validTemperature(ph7TempC) && validTemperature(ph4TempC) &&
+      fabsf(ph7TempC - ph4TempC) <= 3.0f;
+}
 static float phFromInputVoltage(float inputV) {
   const float slope = calibrationSlope();
-  const float offset = calibrationOffset();
-  if (isnan(slope) || isnan(offset) || isnan(inputV)) return NAN;
-  return slope * inputV + offset;
+  if (!isfinite(slope) || !isfinite(inputV)) return NAN;
+  float deltaFromPh7 = slope * (inputV - ph7InputV);
+  // Nernst-Korrektur der Elektrodensteilheit, nur mit gemessener Kalibriertemperatur.
+  if (phTemperatureCompensationReady()) {
+    const float calibrationKelvin = 273.15f + 0.5f * (ph7TempC + ph4TempC);
+    deltaFromPh7 *= calibrationKelvin / (273.15f + liveWaterTempC);
+  }
+  return 7.0f + deltaFromPh7;
 }
 
 static void updateTemperature(bool force = false) {
@@ -420,6 +535,8 @@ static void updateTemperature(bool force = false) {
   liveTempC = validTemperature(t) ? t : NAN;
   liveTemp2C = validTemperature(t2) ? t2 : NAN;
   tempSensorPresent = validTemperature(liveTempC);
+  // Einer: eindeutig Wasser, zwei: ohne feste ROM-Zuordnung nicht entscheiden.
+  liveWaterTempC = oneWireCount == 1 ? liveTempC : NAN;
 }
 
 static bool loadCalibration() {
@@ -528,7 +645,9 @@ static void printHelp() {
   Serial.println(F("s = Status + fertige Kalibrierwerte"));
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
-  Serial.println(F("e = EC kalibrieren: A1 in 1413 uS/cm Referenzloesung @25 C"));
+  Serial.println(F("e = EC kalibrieren: A1 in 1413 uS/cm Referenzloesung, DS18B20 erforderlich"));
+  Serial.println(F("a <C> = TO/Gehaeuse Referenzpunkt 1 bei C Grad Celsius"));
+  Serial.println(F("b <C> = TO/Gehaeuse Referenzpunkt 2 (Abstand >=5 C)"));
   Serial.println(F("h = Hilfe"));
   Serial.println(F("Instabile Messungen >10 mV werden nicht gespeichert. Temperatur optional."));
   Serial.println(F("----------------------------------------"));
@@ -537,7 +656,11 @@ static void printHelp() {
 static void printCalibration() {
   Serial.println();
   Serial.println(F("--- Kalibrierstatus ---"));
-  if (ecCalibrated) Serial.printf("EC: kalibriert 1413uS/cm | A1 %.5f V | Faktor %.5f\n", ecReferenceInputV, ecFactor);
+  if (ecCalibrated) Serial.printf("EC: Kalibrierfaktor %.5f | Ref A1 %.5f V | Ref-DS %s\n",
+                                 ecFactor, ecReferenceInputV,
+                                 validTemperature(ecCalTempC) ? "vorhanden" : "ALT: ohne Wasser-DS");
+  if (toCalibrated) Serial.printf("TO: %.2f V=%.1f C, %.2f V=%.1f C\n",
+                                  toPointV[0], toPointC[0], toPointV[1], toPointC[1]);
   else Serial.println(F("EC: NICHT KALIBRIERT"));
 
   if (havePh7) {
@@ -652,7 +775,14 @@ static void updateLive() {
   const EcWindowStats tdsSample = sampleEcWindow();
   liveTdsV = tdsSample.medianV;
   liveTdsStdV = tdsSample.rawStdV;
-  liveToV = adsOk && PH_TO_WIRED ? ads.computeVolts(ads.readADC_SingleEnded(2)) : NAN;
+  if (adsOk && PH_TO_WIRED) {
+    const SampleStats toSample = sampleChannel(2, 16, 5);
+    liveToV = toSample.meanV;
+    liveToStdV = toSample.stdV;
+  } else {
+    liveToV = NAN;
+    liveToStdV = NAN;
+  }
   if (PH_DO_WIRED) liveDoHigh = digitalRead(PIN_PH_DO) == HIGH;
 }
 
@@ -671,8 +801,11 @@ static void drawOled() {
   if (isfinite(liveInputV)) display.print(liveInputV, 4);
   else display.print(F("--"));
   display.setCursor(0, 20);
-  display.print(F("TO A2:"));
-  if (isfinite(liveToV)) display.print(liveToV, 4);
+  display.print(F("TO:"));
+  if (isfinite(toCaseTempC(liveToV))) {
+    display.print(toCaseTempC(liveToV), 1);
+    display.print(F("C"));
+  } else if (isfinite(liveToV)) display.print(liveToV, 3);
   else display.print(F("--"));
   display.setCursor(0, 30);
   display.print(F("DS:"));
@@ -708,6 +841,16 @@ static void handleSerial() {
       captureStablePoint(4.0f);
     } else if (c == 'e' || c == 'E') {
       captureEc1413();
+    } else if (c == 'a' || c == 'b') {
+      const String arg = Serial.readStringUntil('\n');
+      const String number = arg.substring(0, arg.length());
+      if (number.length() == 0 ||
+          !(number[0] == ' ' || number[0] == '+' || number[0] == '-' ||
+            (number[0] >= '0' && number[0] <= '9'))) {
+        Serial.println(F("Syntax: a 20.0 oder b 30.0"));
+      } else {
+        captureToPoint(c == 'a' ? 1 : 2, number.toFloat());
+      }
     } else if (c == 's' || c == 'S') {
       printCalibration();
     } else if (c == 't' || c == 'T') {
@@ -775,6 +918,7 @@ void setup() {
   updateLive();
 
   loadEcCalibration();
+  loadToCalibration();
   const bool nvsReadable = loadCalibration();
   printHelp();
   if (!nvsReadable) Serial.println(F("WARNUNG: ADS-Kalibrierspeicher nicht lesbar."));
@@ -807,9 +951,13 @@ void loop() {
     }
     uint8_t n = 0;
     for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++n;
-    if (ecCalibrated) Serial.printf(" | EC %.3f mS/cm (25C)", ecFromVoltage(liveTdsV));
-    else Serial.print(F(" | EC -- (nicht kalibriert)"));
-    Serial.printf(" | A1 RohStd %.1f mV | TO A2 %.4f V | DO %s", liveTdsStdV * 1000.0f, liveToV, PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "--");
+    if (ecCalibrated && validTemperature(liveWaterTempC))
+      Serial.printf(" | EC %.3f mS/cm@25C (DS %.2fC)", ecFromVoltage(liveTdsV, liveWaterTempC), liveWaterTempC);
+    else Serial.print(F(" | EC -- (Kalibrierung/DS fehlt)"));
+    Serial.printf(" | A1 RohStd %.1f mV | TO A2 %.4f V | Gehaeuse %.2f C | pH-TK %s | DO %s",
+      liveTdsStdV * 1000.0f, liveToV, toCaseTempC(liveToV),
+      phTemperatureCompensationReady() ? "DS" : "--",
+      PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "--");
     Serial.printf(" | DHT %u/3 | BH %s",
                   static_cast<unsigned>(n),
                   bhOk && isfinite(bhLux) ? "OK" : "--");
