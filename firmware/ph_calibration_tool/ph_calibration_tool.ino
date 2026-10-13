@@ -777,8 +777,8 @@ static bool captureStablePoint(float targetPh) {
   }
   updateTemperature(true);
   Serial.printf("\nErfasse pH %.0f; Sonde ruhig lassen.\n", targetPh);
-  if (!validTemperature(liveTempC))
-    Serial.println(F("HINWEIS: Temperatur nicht verfuegbar; Puffer-pH nach Herstellerangabe/Referenztemperatur bewerten."));
+  if (!validTemperature(liveWaterTempC))
+    Serial.println(F("HINWEIS: Wassertemperatur nicht verfuegbar; pH-Punkt wird ohne Temperatur erfasst."));
 
   const SampleStats s = sampleChannel(0, CAPTURE_SAMPLE_COUNT, SAMPLE_DELAY_MS);
   if (!isfinite(s.meanV) || !isfinite(s.stdV)) {
@@ -792,7 +792,7 @@ static bool captureStablePoint(float targetPh) {
   Serial.printf("Std-Abw.:          %.6f V\n", s.stdV);
   Serial.printf("PH4502C PO:        %.6f V (rueckgerechnet)\n",
                 s.meanV * DIVIDER_RECONSTRUCT);
-  Serial.printf("Temperatur:        %.2f C\n", liveTempC);
+  Serial.printf("Wasser-DS18B20:   %.2f C\n", liveWaterTempC);
   Serial.printf("mV min/max:        %lu / %lu\n",
                 static_cast<unsigned long>(s.minMv),
                 static_cast<unsigned long>(s.maxMv));
@@ -811,11 +811,11 @@ static bool captureStablePoint(float targetPh) {
 
   if (targetPh == 7.0f) {
     ph7InputV = s.meanV;
-    ph7TempC = liveTempC;
+    ph7TempC = liveWaterTempC;
     havePh7 = true;
   } else if (targetPh == 4.0f) {
     ph4InputV = s.meanV;
-    ph4TempC = liveTempC;
+    ph4TempC = liveWaterTempC;
     havePh4 = true;
   } else {
     Serial.println(F("FEHLER: unbekannter Kalibrierpunkt."));
