@@ -80,6 +80,22 @@ static constexpr uint8_t PH_CONFIRM = 3;
  */
 float phVolt4 = NAN, phVolt7 = NAN;
 bool phCalibrated = false;
+bool ecCalibrated = false;
+float ecFactor = NAN;
+float ecReferenceInputV = NAN;
+static void loadEcCalibration() {
+  Preferences prefs;
+  ecCalibrated = false;
+  if (!prefs.begin("ecads_v1", true)) return;
+  const bool valid = prefs.getBool("valid", false);
+  ecFactor = prefs.getFloat("factor", NAN);
+  ecReferenceInputV = prefs.getFloat("ref_v", NAN);
+  prefs.end();
+  ecCalibrated = valid && isfinite(ecFactor) &&
+      ecFactor >= 0.1f && ecFactor <= 10.0f &&
+      isfinite(ecReferenceInputV) && ecReferenceInputV > 0.05f &&
+      ecReferenceInputV <= 2.3f;
+}
 static void loadPhCalibration() {
   Preferences prefs;
   phCalibrated = false;
@@ -132,7 +148,7 @@ struct SensorData {
   bool phDoHigh = false;
   float tdsInputV = NAN;
   float tdsPpm = NAN;
-  float ec = NAN;  // absichtlich erst nach echter EC/TDS-Kalibrierung befuellen
+  float ec = NAN; // mS/cm, 25C Referenz
 
   float vpd = NAN;
   uint32_t lux = 0;
@@ -254,6 +270,30 @@ static float cqrobotTdsPpm(float inputV, float temperatureC) {
        + 857.39f * compensatedV) * 0.5f;
   return ppm < 0.0f ? 0.0f : ppm;
 }
+static float cqrobotEcMs(float inputV) {
+  if (!ecCalibrated) return NAN;
+  const float ppm = cqrobotTdsPpm(inputV, NAN);
+  return isfinite(ppm) ? ppm * ecFactor / 500.0f : NAN;
+}
+static float readTdsMedianVoltage() {
+  if (!sensors.adsOk) return NAN;
+  static constexpr uint8_t SAMPLES = 17;
+  float values[SAMPLES];
+  for (uint8_t i = 0; i < SAMPLES; ++i) {
+    values[i] = adsCountsToVolts(ads.readADC_SingleEnded(1));
+    delay(5);
+  }
+  for (uint8_t i = 1; i < SAMPLES; ++i) {
+    float key = values[i];
+    int j = i;
+    while (j > 0 && values[j - 1] > key) {
+      values[j] = values[j - 1];
+      --j;
+    }
+    values[j] = key;
+  }
+  return values[SAMPLES / 2];
+}
 
 static void setJsonFloat(JsonObject obj, const char *key, float value) {
   if (!isfinite(value)) obj[key] = nullptr;
@@ -372,10 +412,10 @@ static void readSensors() {
 
   if (sensors.adsOk) {
     const int16_t rawPh = ads.readADC_SingleEnded(0);
-    const int16_t rawTds = ads.readADC_SingleEnded(1);
+    const float sampledTdsV = readTdsMedianVoltage();
     const int16_t rawTo = PH_TO_WIRED ? ads.readADC_SingleEnded(2) : 0;
     sensors.phInputV = adsCountsToVolts(rawPh);
-    sensors.tdsInputV = adsCountsToVolts(rawTds);
+    sensors.tdsInputV = sampledTdsV;
     sensors.phToInputV = PH_TO_WIRED ? adsCountsToVolts(rawTo) : NAN;
     sensors.ph = phFromVoltage(sensors.phInputV);
 
@@ -386,13 +426,16 @@ static void readSensors() {
      * verwendet.
      */
     const float tdsTempC = sensors.dsCount == 1 ? sensors.ds1C : NAN;
-    sensors.tdsPpm = cqrobotTdsPpm(sensors.tdsInputV, tdsTempC);
+    sensors.tdsPpm = cqrobotTdsPpm(sensors.tdsInputV, NAN); // no assigned water temperature yet
+    sensors.ec = cqrobotEcMs(sensors.tdsInputV);
+    if (isfinite(sensors.ec)) sensors.tdsPpm = sensors.ec * 500.0f;
   } else {
     sensors.phInputV = NAN;
     sensors.phToInputV = NAN;
     sensors.tdsInputV = NAN;
     sensors.ph = NAN;
     sensors.tdsPpm = NAN;
+    sensors.ec = NAN;
   }
 
   if (PH_DO_WIRED) sensors.phDoHigh = digitalRead(PIN_PH_DO) == HIGH;
@@ -463,7 +506,9 @@ static void handleSummary() {
   reading["ph_calibrated"] = phCalibrated;
   reading["ph_alarm"] = phCode(phAlarm);
   reading["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
-  reading["ec"] = nullptr;
+  setJsonFloat(reading, "ec", sensors.ec); // mS/cm
+  reading["ec_calibrated"] = ecCalibrated;
+  setJsonFloat(reading, "ec_reference_voltage", ecReferenceInputV);
   setJsonFloat(reading, "tds_ppm", sensors.tdsPpm);
   setJsonFloat(reading, "tds_voltage", sensors.tdsInputV);
   reading["light_level"] = sensors.lux;
@@ -590,7 +635,9 @@ static bool sendTelemetry() {
   root["water_temperature"] = nullptr;
   root["case_temperature"] = nullptr;
   root["light_level"] = sensors.lux;
-  root["ec"] = nullptr;
+  setJsonFloat(root, "ec", sensors.ec); // mS/cm
+  root["ec_calibrated"] = ecCalibrated;
+  setJsonFloat(root, "ec_reference_voltage", ecReferenceInputV);
   setJsonFloat(root, "ph", sensors.ph);
   setJsonFloat(root, "ph_to_voltage", sensors.phToInputV);
   if (PH_DO_WIRED) root["ph_do_high"] = sensors.phDoHigh;
@@ -626,6 +673,8 @@ static bool sendTelemetry() {
   dev["ph_do_configured"] = PH_DO_WIRED;
   dev["ph_to_configured"] = PH_TO_WIRED;
   dev["ph_to_type"] = "raw_voltage_uncalibrated";
+  dev["ec_reference_us_cm"] = 1413;
+  dev["ec_temp_compensation"] = "assumed_25C_until_water_sensor_assigned";
   dev["actuator_controller"] = "local_gpio";
 
   String body;
@@ -687,9 +736,9 @@ static void drawOled() {
   display.print("pH ");
   if (isnan(sensors.ph)) display.print("--");
   else display.printf("%.2f", sensors.ph);
-  display.print(" TDS ");
-  if (isnan(sensors.tdsPpm)) display.print("--");
-  else display.printf("%.0f", sensors.tdsPpm);
+  display.print(" EC ");
+  if (!isfinite(sensors.ec)) display.print("--");
+  else display.printf("%.2f", sensors.ec);
 
   display.setCursor(0, 48);
   if (phAlarm == PhAlarm::Low) display.print("ALARM pH <5.5");
@@ -708,6 +757,8 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   loadPhCalibration();
+  loadEcCalibration();
+  if (!ecCalibrated) Serial.println("EC unkalibriert: 'e' im Diagnose-Sketch verwenden.");
   if (!phCalibrated) Serial.println("WARNUNG: pH-Kalibrierung fehlt.");
   if (PH_DO_WIRED) pinMode(PIN_PH_DO, INPUT);
 
