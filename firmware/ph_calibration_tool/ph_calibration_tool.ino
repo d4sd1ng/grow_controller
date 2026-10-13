@@ -82,6 +82,7 @@ static constexpr char EC_NAMESPACE[] = "ecads_v1";
 static constexpr char EC_NVS_FACTOR[] = "factor";
 static constexpr char EC_NVS_REFERENCE_V[] = "ref_v";
 static constexpr char TO_NVS_NAMESPACE[] = "toads_v1";
+static constexpr char WATER_ROM_NVS_NAMESPACE[] = "waterds_v1";
 static constexpr float TO_CAL_MIN_TEMP_SPAN_C = 5.0f;
 static constexpr float TO_CAL_MIN_VOLT_SPAN_V = 0.025f;
 
@@ -122,6 +123,8 @@ bool toPointSet[2] = {false, false};
 bool toCalibrated = false;
 float ecCalTempC = NAN;
 float liveWaterTempC = NAN;
+uint8_t waterSensorRom[8] = {};
+bool waterSensorRomSelected = false;
 float liveTempC = NAN;
 float liveTemp2C = NAN;
 
@@ -470,7 +473,9 @@ static void printHardwareStatus() {
     else Serial.println(F("ADS A2 TO: NOCH NICHT VERKABELT/GEPRUEFT"));
   }
   Serial.printf("PH4502C DO GPIO32: %s\n", PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "NICHT VERKABELT/DEAKTIVIERT");
-  Serial.printf("DS18B20 GPIO23: %u Geraet(e)\n", static_cast<unsigned>(oneWireCount));
+  Serial.printf("DS18B20 GPIO23: %u Geraet(e) | Wasser: %.2f C | ROM-Zuordnung: %s\n",
+                static_cast<unsigned>(oneWireCount), liveWaterTempC,
+                waterSensorRomSelected ? "gespeichert" : (oneWireCount == 1 ? "ein Sensor" : "fehlt"));
   if (validTemperature(liveTempC)) Serial.printf(" DS #1: %.2f C\n", liveTempC);
   else Serial.println(F(" DS #1: NICHT ERKANNT"));
   if (oneWireCount > 1) {
@@ -523,6 +528,62 @@ static float phFromInputVoltage(float inputV) {
   return 7.0f + deltaFromPh7;
 }
 
+static void loadWaterSensorRom() {
+  waterSensorRomSelected = false;
+  Preferences p;
+  if (!p.begin(WATER_ROM_NVS_NAMESPACE, true)) return;
+  if (p.getBytesLength("rom") == 8) {
+    p.getBytes("rom", waterSensorRom, 8);
+    waterSensorRomSelected =
+        waterSensorRom[0] == 0x28 &&
+        OneWire::crc8(waterSensorRom, 7) == waterSensorRom[7];
+  }
+  p.end();
+}
+static bool selectWaterSensorRom(String raw) {
+  raw.trim();
+  raw.replace(":", "");
+  raw.replace("-", "");
+  if (raw.length() != 16) {
+    Serial.println(F("Wasser-DS: w 28XXXXXXXXXXXXXX (16 Hex-Zeichen aus 1-Wire-Liste)"));
+    return false;
+  }
+  uint8_t candidate[8];
+  for (uint8_t i = 0; i < 8; ++i) {
+    const String part = raw.substring(i * 2, i * 2 + 2);
+    for (uint8_t j = 0; j < 2; ++j) {
+      const char ch = part[j];
+      if (!isxdigit(static_cast<unsigned char>(ch))) {
+        Serial.println(F("Wasser-DS: ROM enthaelt ungueltiges Hex."));
+        return false;
+      }
+    }
+    candidate[i] = static_cast<uint8_t>(strtoul(part.c_str(), nullptr, 16));
+  }
+  if (candidate[0] != 0x28 || OneWire::crc8(candidate, 7) != candidate[7]) {
+    Serial.println(F("Wasser-DS: keine gueltige DS18B20-ROM oder CRC-Fehler."));
+    return false;
+  }
+  bool found = false;
+  for (uint8_t i = 0; i < temperatureSensors.getDeviceCount(); ++i) {
+    DeviceAddress addr;
+    if (temperatureSensors.getAddress(addr, i) &&
+        memcmp(addr, candidate, 8) == 0) found = true;
+  }
+  if (!found) {
+    Serial.println(F("Wasser-DS: ROM ist nicht auf dem Bus vorhanden."));
+    return false;
+  }
+  Preferences p;
+  if (!p.begin(WATER_ROM_NVS_NAMESPACE, false)) return false;
+  const bool saved = p.putBytes("rom", candidate, 8) == 8;
+  p.end();
+  if (!saved) return false;
+  loadWaterSensorRom();
+  Serial.println(F("Wasser-DS18B20 nach ROM gespeichert."));
+  return waterSensorRomSelected;
+}
+
 static void updateTemperature(bool force = false) {
   const unsigned long now = millis();
   if (!force && now - lastTempMs < TEMP_INTERVAL_MS) return;
@@ -535,8 +596,13 @@ static void updateTemperature(bool force = false) {
   liveTempC = validTemperature(t) ? t : NAN;
   liveTemp2C = validTemperature(t2) ? t2 : NAN;
   tempSensorPresent = validTemperature(liveTempC);
-  // Einer: eindeutig Wasser, zwei: ohne feste ROM-Zuordnung nicht entscheiden.
-  liveWaterTempC = oneWireCount == 1 ? liveTempC : NAN;
+  // Nur eine vorhandene Sonde: automatisch Wasser. Bei mehreren eindeutige ROM erforderlich.
+  if (waterSensorRomSelected) {
+    const float tWater = temperatureSensors.getTempC(waterSensorRom);
+    liveWaterTempC = validTemperature(tWater) ? tWater : NAN;
+  } else {
+    liveWaterTempC = oneWireCount == 1 ? liveTempC : NAN;
+  }
 }
 
 static bool loadCalibration() {
@@ -646,6 +712,7 @@ static void printHelp() {
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
   Serial.println(F("e = EC kalibrieren: A1 in 1413 uS/cm Referenzloesung, DS18B20 erforderlich"));
+  Serial.println(F("w <ROM> = Wasser-DS18B20 aus mehreren Sensoren anhand 16-stelliger ROM festlegen"));
   Serial.println(F("a <C> = TO/Gehaeuse Referenzpunkt 1 bei C Grad Celsius"));
   Serial.println(F("b <C> = TO/Gehaeuse Referenzpunkt 2 (Abstand >=5 C)"));
   Serial.println(F("h = Hilfe"));
@@ -841,6 +908,9 @@ static void handleSerial() {
       captureStablePoint(4.0f);
     } else if (c == 'e' || c == 'E') {
       captureEc1413();
+    } else if (c == 'w' || c == 'W') {
+      selectWaterSensorRom(Serial.readStringUntil('\n'));
+      updateTemperature(true);
     } else if (c == 'a' || c == 'b') {
       const String arg = Serial.readStringUntil('\n');
       const String number = arg.substring(0, arg.length());
@@ -899,6 +969,7 @@ void setup() {
   if (PH_DO_WIRED) pinMode(PIN_PH_DO, INPUT);
 
   temperatureSensors.begin();
+  loadWaterSensorRom();
   oneWireCount = temperatureSensors.getDeviceCount();
   Serial.printf("1-Wire: %u Geraet(e) gefunden.\n", static_cast<unsigned>(oneWireCount));
   for (uint8_t i = 0; i < oneWireCount; ++i) {
@@ -944,7 +1015,7 @@ void loop() {
     Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | PO %.5f V | std %.2f mV | A1 TDS %.5f V",
                   adsOk ? "OK" : "--", liveInputV, livePoV,
                   liveStdV * 1000.0f, liveTdsV);
-    if (validTemperature(liveTempC)) Serial.printf(" | DS %.2f C", liveTempC);
+    if (validTemperature(liveWaterTempC)) Serial.printf(" | DS-Wasser %.2f C", liveWaterTempC);
     else Serial.print(F(" | DS --"));
     if (calibrationReady() && isfinite(liveInputV)) {
       Serial.printf(" | pH %.3f", phFromInputVoltage(liveInputV));
