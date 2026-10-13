@@ -78,6 +78,7 @@ struct RemoteState {
   char mode[12];
   bool light, heat, circ, exh;
   bool haveReading;
+  bool haveEc;
   float tempC, rh, ec, ph, tdsPpm, waterC;
   char phStatus[16]; // high/low/normal/sensor_fault
   bool haveWater;
@@ -206,11 +207,13 @@ bool fetchSummary() {
   JsonObject r = doc["reading"];
   state.haveReading = !r.isNull();
   state.haveWater = false;
+  state.haveEc = false;
   state.phStatus[0] = 0;
   if (state.haveReading) {
     state.tempC = r["air_temperature"] | 0.0f;
     state.rh = r["humidity"] | 0.0f;
     state.ec = r["ec"] | 0.0f;
+    state.haveEc = !r["ec"].isNull();
     state.ph = r["ph"] | 0.0f;
     const char *phAlarm = r["ph_alarm"] | "";
     snprintf(state.phStatus, sizeof(state.phStatus), "%s", phAlarm);
@@ -356,10 +359,10 @@ static void drawCenterPanel() {
     snprintf(ln, sizeof(ln), "T %.1f C   rH %.0f%%", state.tempC, state.rh);
     tft.drawString(ln, x0, y);
     y += 12;
-    if (state.tdsPpm > 0.0f)
-      snprintf(ln, sizeof(ln), "TDS %.0f  pH %.2f", state.tdsPpm, state.ph);
+    if (state.haveEc)
+      snprintf(ln, sizeof(ln), "EC %.3f   pH %.2f", state.ec, state.ph);
     else
-      snprintf(ln, sizeof(ln), "EC %.2f   pH %.2f", state.ec, state.ph);
+      snprintf(ln, sizeof(ln), "EC --   pH %.2f", state.ph);
     tft.drawString(ln, x0, y);
     y += 12;
     snprintf(ln, sizeof(ln), "VPD %.2f kPa", computeVpd(state.tempC, state.rh));
