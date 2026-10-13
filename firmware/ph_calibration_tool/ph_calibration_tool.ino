@@ -69,6 +69,7 @@ static constexpr uint16_t SAMPLE_DELAY_MS = 20;
 static constexpr unsigned long TEMP_INTERVAL_MS = 2000;
 static constexpr unsigned long OLED_INTERVAL_MS = 500;
 
+static constexpr float PH_CAL_WATER_TEMP_C = 21.4f; // vom Nutzer gemessene Temperatur fuer beide pH-Puffer
 static constexpr float CAPTURE_MAX_STD_V = 0.010f;
 static constexpr float MIN_CAL_POINT_DISTANCE_V = 0.001f;
 
@@ -726,6 +727,7 @@ static void printHelp() {
   Serial.println(F("OLED: 0x3C, D21/D22; SSR-Ausgaenge bleiben AUS"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
+  Serial.printf("pH-Kalibriertemperatur manuell: %.1f C (fuer pH 7 und pH 4)\n", PH_CAL_WATER_TEMP_C);
   Serial.println(F("s = Status + fertige Kalibrierwerte"));
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
@@ -790,10 +792,8 @@ static bool captureStablePoint(float targetPh) {
     Serial.println(F("ABGELEHNT: ADS1115 nicht erkannt."));
     return false;
   }
-  updateTemperature(true);
-  Serial.printf("\nErfasse pH %.0f; Sonde ruhig lassen.\n", targetPh);
-  if (!validTemperature(liveWaterTempC))
-    Serial.println(F("HINWEIS: Wassertemperatur nicht verfuegbar; pH-Punkt wird ohne Temperatur erfasst."));
+  Serial.printf("\nErfasse pH %.0f bei manuell vorgegebener Puffer-Temperatur %.1f C; Sonde ruhig lassen.\n",
+                targetPh, PH_CAL_WATER_TEMP_C);
 
   const SampleStats s = sampleChannel(0, CAPTURE_SAMPLE_COUNT, SAMPLE_DELAY_MS);
   if (!isfinite(s.meanV) || !isfinite(s.stdV)) {
@@ -801,13 +801,11 @@ static bool captureStablePoint(float targetPh) {
     return false;
   }
 
-  updateTemperature(true); // fehlende DS18B20-Temperatur blockiert die Kalibrierung nicht
-
   Serial.printf("Mittelwert ADS A0: %.6f V\n", s.meanV);
   Serial.printf("Std-Abw.:          %.6f V\n", s.stdV);
   Serial.printf("PH4502C PO:        %.6f V (rueckgerechnet)\n",
                 s.meanV * DIVIDER_RECONSTRUCT);
-  Serial.printf("Wasser-DS18B20:   %.2f C\n", liveWaterTempC);
+  Serial.printf("pH-Puffer-Temp:    %.2f C (manuell)\n", PH_CAL_WATER_TEMP_C);
   Serial.printf("mV min/max:        %lu / %lu\n",
                 static_cast<unsigned long>(s.minMv),
                 static_cast<unsigned long>(s.maxMv));
@@ -826,11 +824,11 @@ static bool captureStablePoint(float targetPh) {
 
   if (targetPh == 7.0f) {
     ph7InputV = s.meanV;
-    ph7TempC = liveWaterTempC;
+    ph7TempC = PH_CAL_WATER_TEMP_C;
     havePh7 = true;
   } else if (targetPh == 4.0f) {
     ph4InputV = s.meanV;
-    ph4TempC = liveWaterTempC;
+    ph4TempC = PH_CAL_WATER_TEMP_C;
     havePh4 = true;
   } else {
     Serial.println(F("FEHLER: unbekannter Kalibrierpunkt."));
