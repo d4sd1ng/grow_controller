@@ -475,8 +475,10 @@ static void printHardwareStatus() {
   Serial.printf("OLED 0x3C : %s\n", oledOk ? "OK" : "NICHT ERKANNT");
   Serial.printf("ADS  0x48: %s\n", adsOk ? "OK" : "NICHT ERKANNT");
   if (adsOk) {
-    Serial.printf("ADS A0 pH: %.5f V | PO (geschaetzt): %.5f V | Std: %.2f mV\n",
+    Serial.printf("ADS A0 pH: %.5f V | PO (rechnerisch): %.5f V | Std: %.2f mV\n",
                   liveInputV, livePoV, liveStdV * 1000.0f);
+    if (livePoV > 3.35f)
+      Serial.println(F("ACHTUNG: PO-Rechenwert >3.3V. Bei PH4502C-VCC=3.3V sind Teilerannahme/Versorgung widerspruechlich."));
     Serial.printf("ADS A1 TDS: %.5f V | Std %.2f mV\n", liveTdsV, liveTdsStdV * 1000.0f);
     if (ecCalibrated && validTemperature(liveWaterTempC))
       Serial.printf("EC auf 25C normiert: %.3f mS/cm | DS %.2f C\n",
@@ -742,9 +744,10 @@ static void printCalibration() {
   if (ecCalibrated) Serial.printf("EC: Kalibrierfaktor %.5f | Ref A1 %.5f V | Ref-DS %s\n",
                                  ecFactor, ecReferenceInputV,
                                  validTemperature(ecCalTempC) ? "vorhanden" : "ALT: ohne Wasser-DS");
+  else Serial.println(F("EC: NICHT KALIBRIERT"));
   if (toCalibrated) Serial.printf("TO: %.2f V=%.1f C, %.2f V=%.1f C\n",
                                   toPointV[0], toPointC[0], toPointV[1], toPointC[1]);
-  else Serial.println(F("EC: NICHT KALIBRIERT"));
+  else Serial.println(F("TO: NICHT KALIBRIERT"));
 
   if (havePh7) {
     Serial.printf("pH 7: ADS A0 = %.6f V | PH4502C PO ~= %.6f V | T = %.2f C\n",
@@ -1029,7 +1032,7 @@ void loop() {
   static unsigned long lastPrint = 0;
   if (now - lastPrint >= 1000) {
     lastPrint = now;
-    Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | PO %.5f V | std %.2f mV | A1 TDS %.5f V",
+    Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | PO(rechnerisch) %.5f V | std %.2f mV | A1 TDS %.5f V",
                   adsOk ? "OK" : "--", liveInputV, livePoV,
                   liveStdV * 1000.0f, liveTdsV);
     if (validTemperature(liveWaterTempC)) Serial.printf(" | DS-Wasser %.2f C", liveWaterTempC);
