@@ -176,6 +176,7 @@ void exampleToggleHeater(bool on) {
 }
 
 void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
+                  float ec, bool ecValid,
                   bool light, bool heat, bool circ, bool exh,
                   const char *alert, const char *alertSev) {
   relay_light = light;
@@ -186,7 +187,8 @@ void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
   lv_label_set_text_fmt(lbl_mode, "Modus: %s", mode ? mode : "?");
   lv_label_set_text_fmt(lbl_temp, "Temperatur: %.1f C", t);
   lv_label_set_text_fmt(lbl_hum, "Luftfeuchte: %.0f %%", rh);
-  lv_label_set_text_fmt(lbl_ecph, "TDS %.0f | pH %.2f", tdsPpm, ph);
+  if (ecValid) lv_label_set_text_fmt(lbl_ecph, "EC %.3f mS/cm | pH %.2f", ec, ph);
+  else lv_label_set_text_fmt(lbl_ecph, "EC -- | pH %.2f", ph);
   lv_label_set_text_fmt(lbl_relay, "L:%s H:%s C:%s E:%s",
                         light ? "ON" : "off",
                         heat ? "ON" : "off",
@@ -234,13 +236,16 @@ void fetchSummaryAndUpdate() {
   JsonObject c = doc["control"];
   const char *mode = c["control_mode"];
 
-  float t = 0, rh = 0, tdsPpm = 0, ph = 0;
+  float t = 0, rh = 0, tdsPpm = 0, ph = 0, ec = 0;
+  bool ecValid = false;
   JsonObject r = doc["reading"];
   if (!r.isNull()) {
     t = r["air_temperature"] | 0.0f;
     rh = r["humidity"] | 0.0f;
     tdsPpm = r["tds_ppm"] | 0.0f;
     ph = r["ph"] | 0.0f;
+    ec = r["ec"] | 0.0f;
+    ecValid = !r["ec"].isNull();
   }
 
   bool light = false, heat = false, circ = false, exh = false;
@@ -260,7 +265,7 @@ void fetchSummaryAndUpdate() {
   else if (!strcmp(phAlarm, "high")) { alertMsg = "pH ueber 6.5"; alertSev = "ALARM"; }
   else if (!strcmp(phAlarm, "sensor_fault")) { alertMsg = "pH-Sensor/Kalibrierung"; alertSev = "FEHLER"; }
 
-  updateLabels(mode, t, rh, tdsPpm, ph, light, heat, circ, exh, alertMsg, alertSev);
+  updateLabels(mode, t, rh, tdsPpm, ph, ec, ecValid, light, heat, circ, exh, alertMsg, alertSev);
   lv_label_set_text_fmt(lbl_wifi, "WiFi OK | %s", WiFi.localIP().toString().c_str());
 }
 
