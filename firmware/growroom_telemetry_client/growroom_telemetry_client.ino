@@ -47,7 +47,8 @@ static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
 static constexpr uint8_t PIN_ONEWIRE = 23;
 static constexpr uint8_t PIN_PH_DO = 32;
-static constexpr bool PH_TO_WIRED = false; // TO on A2 only after ADC-safe voltage verification
+// Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
+static constexpr bool PH_TO_WIRED = false;
 static constexpr bool PH_DO_WIRED = false; // erst nach sicherer Pegelpruefung aktivieren
 static constexpr uint8_t PIN_SSR_LIGHT = 17;
 static constexpr uint8_t PIN_SSR_CIRC = 18;
@@ -80,7 +81,13 @@ static constexpr uint8_t PH_CONFIRM = 3;
  */
 float phVolt4 = NAN, phVolt7 = NAN;
 bool phCalibrated = false;
+float phCalTemp4C = NAN, phCalTemp7C = NAN;
 bool ecCalibrated = false;
+float ecCalTempC = NAN;
+bool waterSensorRomSelected = false;
+uint8_t waterSensorRom[8] = {};
+bool toCalibrated = false;
+float toVoltage1 = NAN, toVoltage2 = NAN, toTemp1C = NAN, toTemp2C = NAN;
 float ecFactor = NAN;
 float ecReferenceInputV = NAN;
 static void loadEcCalibration() {
@@ -90,6 +97,7 @@ static void loadEcCalibration() {
   const bool valid = prefs.getBool("valid", false);
   ecFactor = prefs.getFloat("factor", NAN);
   ecReferenceInputV = prefs.getFloat("ref_v", NAN);
+  ecCalTempC = prefs.getFloat("temp_c", NAN);
   prefs.end();
   ecCalibrated = valid && isfinite(ecFactor) &&
       ecFactor >= 0.1f && ecFactor <= 10.0f &&
@@ -104,6 +112,8 @@ static void loadPhCalibration() {
   const bool have7 = prefs.getBool("have7", false);
   phVolt4 = prefs.getFloat("volt4", NAN);
   phVolt7 = prefs.getFloat("volt7", NAN);
+  phCalTemp4C = prefs.getFloat("temp4", NAN);
+  phCalTemp7C = prefs.getFloat("temp7", NAN);
   prefs.end();
   phCalibrated = have4 && have7 && isfinite(phVolt4) && isfinite(phVolt7) &&
       phVolt4 >= 0.0f && phVolt4 <= 3.3f &&
@@ -140,6 +150,9 @@ struct SensorData {
   AirReading dht[3];
   float ds1C = NAN;
   float ds2C = NAN;
+  float waterTempC = NAN;
+  float caseTempC = NAN;
+  bool phTempCompensated = false;
   uint8_t dsCount = 0;
 
   float phInputV = NAN;
@@ -148,7 +161,7 @@ struct SensorData {
   bool phDoHigh = false;
   float tdsInputV = NAN;
   float tdsPpm = NAN;
-  float ec = NAN; // mS/cm, 25C Referenz
+  float ec = NAN; // mS/cm, bezogen auf 25 C mit DS18B20-Kompensation
 
   float vpd = NAN;
   uint32_t lux = 0;
@@ -253,16 +266,72 @@ static float adsCountsToVolts(int16_t raw) {
   return static_cast<float>(raw) * 0.000125f;
 }
 
-static float phFromVoltage(float v) {
+static bool validDsTempC(float t) {
+  return isfinite(t) && t > -20.0f && t < 80.0f &&
+         t != DEVICE_DISCONNECTED_C;
+}
+static void loadWaterSensorRom() {
+  waterSensorRomSelected = false;
+  Preferences p;
+  if (!p.begin("waterds_v1", true)) return;
+  if (p.getBytesLength("rom") == 8) {
+    p.getBytes("rom", waterSensorRom, 8);
+    waterSensorRomSelected =
+        waterSensorRom[0] == 0x28 &&
+        OneWire::crc8(waterSensorRom, 7) == waterSensorRom[7];
+  }
+  p.end();
+}
+static void loadToCalibration() {
+  toCalibrated = false;
+  Preferences p;
+  if (!p.begin("toads_v1", true)) return;
+  const bool valid = p.getBool("valid", false);
+  toVoltage1 = p.getFloat("v1", NAN);
+  toVoltage2 = p.getFloat("v2", NAN);
+  toTemp1C = p.getFloat("c1", NAN);
+  toTemp2C = p.getFloat("c2", NAN);
+  p.end();
+  toCalibrated = valid && isfinite(toVoltage1) && isfinite(toVoltage2) &&
+      isfinite(toTemp1C) && isfinite(toTemp2C) &&
+      toVoltage1 > 0.05f && toVoltage1 < 3.25f &&
+      toVoltage2 > 0.05f && toVoltage2 < 3.25f &&
+      toTemp1C >= -5.0f && toTemp1C <= 60.0f &&
+      toTemp2C >= -5.0f && toTemp2C <= 60.0f &&
+      fabsf(toVoltage1 - toVoltage2) >= 0.025f &&
+      fabsf(toTemp1C - toTemp2C) >= 5.0f;
+}
+static float toCaseTemp(float v) {
+  if (!PH_TO_WIRED || !toCalibrated || !isfinite(v)) return NAN;
+  // Nur innerhalb der beiden Referenzpunkte interpolieren.
+  if (v < fminf(toVoltage1, toVoltage2) ||
+      v > fmaxf(toVoltage1, toVoltage2)) return NAN;
+  const float temp = toTemp1C + (v - toVoltage1) *
+      (toTemp2C - toTemp1C) / (toVoltage2 - toVoltage1);
+  return temp >= -5.0f && temp <= 60.0f ? temp : NAN;
+}
+static bool phTempCompAvailable(float waterTempC) {
+  return phCalibrated && validDsTempC(waterTempC) &&
+      validDsTempC(phCalTemp4C) && validDsTempC(phCalTemp7C) &&
+      fabsf(phCalTemp4C - phCalTemp7C) <= 3.0f;
+}
+
+static float phFromVoltage(float v, float waterTempC) {
   if (!phCalibrated || !isfinite(v) || v < 0.0f || v > 3.3f) return NAN;
-  return 7.0f + (v - phVolt7) * (-3.0f) / (phVolt4 - phVolt7);
+  float phDeltaFrom7 = (v - phVolt7) * (-3.0f) / (phVolt4 - phVolt7);
+  // Nernst-Abhaengigkeit der Elektrodensteilheit: proportional zur absoluten Temperatur.
+  // Nur wenn pH4/pH7 Kalibrier-Temperaturen gemessen und gueltig sind.
+  if (phTempCompAvailable(waterTempC)) {
+    const float calKelvin = 273.15f + (phCalTemp4C + phCalTemp7C) * 0.5f;
+    phDeltaFrom7 *= calKelvin / (273.15f + waterTempC);
+  }
+  return 7.0f + phDeltaFrom7;
 }
 
 static float cqrobotTdsPpm(float inputV, float temperatureC) {
-  if (isnan(inputV)) return NAN;
-  float temp = isnan(temperatureC) ? 25.0f : temperatureC;
-  float coefficient = 1.0f + 0.02f * (temp - 25.0f);
-  if (coefficient < 0.1f) coefficient = 0.1f;
+  if (!isfinite(inputV) || !validDsTempC(temperatureC)) return NAN;
+  const float coefficient = 1.0f + 0.02f * (temperatureC - 25.0f);
+  if (coefficient <= 0.1f) return NAN;
   const float compensatedV = inputV / coefficient;
   const float ppm =
       (133.42f * compensatedV * compensatedV * compensatedV
@@ -270,9 +339,9 @@ static float cqrobotTdsPpm(float inputV, float temperatureC) {
        + 857.39f * compensatedV) * 0.5f;
   return ppm < 0.0f ? 0.0f : ppm;
 }
-static float cqrobotEcMs(float inputV) {
-  if (!ecCalibrated) return NAN;
-  const float ppm = cqrobotTdsPpm(inputV, NAN);
+static float cqrobotEcMs(float inputV, float waterTempC) {
+  if (!ecCalibrated || !validDsTempC(waterTempC)) return NAN;
+  const float ppm = cqrobotTdsPpm(inputV, waterTempC);
   return isfinite(ppm) ? ppm * ecFactor / 500.0f : NAN;
 }
 /* CQRobot-Abtastung: 30 ADS1115-A1-Werte im Abstand von 40 ms.
@@ -422,8 +491,14 @@ static void readSensors() {
   sensors.dsCount = foundDs > 2 ? 2 : foundDs;
   sensors.ds1C = sensors.dsCount >= 1 ? ds18b20.getTempCByIndex(0) : NAN;
   sensors.ds2C = sensors.dsCount >= 2 ? ds18b20.getTempCByIndex(1) : NAN;
-  if (sensors.ds1C == DEVICE_DISCONNECTED_C) sensors.ds1C = NAN;
-  if (sensors.ds2C == DEVICE_DISCONNECTED_C) sensors.ds2C = NAN;
+  if (!validDsTempC(sensors.ds1C)) sensors.ds1C = NAN;
+  if (!validDsTempC(sensors.ds2C)) sensors.ds2C = NAN;
+  if (waterSensorRomSelected) {
+    const float selected = ds18b20.getTempC(waterSensorRom);
+    sensors.waterTempC = validDsTempC(selected) ? selected : NAN;
+  } else {
+    sensors.waterTempC = sensors.dsCount == 1 ? sensors.ds1C : NAN;
+  }
 
   if (sensors.adsOk) {
     const int16_t rawPh = ads.readADC_SingleEnded(0);
@@ -432,21 +507,17 @@ static void readSensors() {
     sensors.phInputV = adsCountsToVolts(rawPh);
     sensors.tdsInputV = sampledTdsV;
     sensors.phToInputV = PH_TO_WIRED ? adsCountsToVolts(rawTo) : NAN;
-    sensors.ph = phFromVoltage(sensors.phInputV);
-
-    /*
-     * DS18B20-Zuordnung wird nach dem physischen Test ueber die ROM-Adressen
-     * festgelegt. Bis dahin keine willkuerliche Index-Zuordnung fuer die
-     * Temperaturkompensation: bei zwei unzugeordneten Sensoren wird 25 C
-     * verwendet.
-     */
-    const float tdsTempC = sensors.dsCount == 1 ? sensors.ds1C : NAN;
-    sensors.tdsPpm = cqrobotTdsPpm(sensors.tdsInputV, NAN); // no assigned water temperature yet
-    sensors.ec = cqrobotEcMs(sensors.tdsInputV);
-    if (isfinite(sensors.ec)) sensors.tdsPpm = sensors.ec * 500.0f;
+    sensors.caseTempC = toCaseTemp(sensors.phToInputV);
+    sensors.phTempCompensated = phTempCompAvailable(sensors.waterTempC);
+    sensors.ph = phFromVoltage(sensors.phInputV, sensors.waterTempC);
+    // Ohne DS18B20 keine 25-C-Annahme und kein als kompensiert bezeichneter EC-Wert.
+    sensors.ec = cqrobotEcMs(sensors.tdsInputV, sensors.waterTempC);
+    sensors.tdsPpm = isfinite(sensors.ec) ? sensors.ec * 500.0f : NAN;
   } else {
     sensors.phInputV = NAN;
     sensors.phToInputV = NAN;
+    sensors.caseTempC = NAN;
+    sensors.phTempCompensated = false;
     sensors.tdsInputV = NAN;
     sensors.ph = NAN;
     sensors.tdsPpm = NAN;
@@ -514,6 +585,8 @@ static void handleSummary() {
   }
   setJsonFloat(reading, "vpd", sensors.vpd);
   setJsonFloat(reading, "ph", sensors.ph);
+  reading["ph_temperature_compensated"] = sensors.phTempCompensated;
+  setJsonFloat(reading, "case_temperature", sensors.caseTempC);
   setJsonFloat(reading, "ph_voltage", sensors.phInputV);
   setJsonFloat(reading, "ph_to_voltage", sensors.phToInputV);
   if (PH_DO_WIRED) reading["ph_do_high"] = sensors.phDoHigh;
@@ -523,13 +596,15 @@ static void handleSummary() {
   reading["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
   setJsonFloat(reading, "ec", sensors.ec); // mS/cm
   reading["ec_calibrated"] = ecCalibrated;
+  reading["ec_reference_temp_verified"] = validDsTempC(ecCalTempC);
   setJsonFloat(reading, "ec_reference_voltage", ecReferenceInputV);
   setJsonFloat(reading, "tds_ppm", sensors.tdsPpm);
   setJsonFloat(reading, "tds_voltage", sensors.tdsInputV);
   reading["light_level"] = sensors.lux;
   setJsonFloat(reading, "ds18b20_1_temperature", sensors.ds1C);
   setJsonFloat(reading, "ds18b20_2_temperature", sensors.ds2C);
-  reading["water_temperature"] = nullptr;
+  setJsonFloat(reading, "water_temperature", sensors.waterTempC);
+  reading["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
 
   for (int i = 0; i < 3; ++i) {
     String prefix = String("dht") + String(i + 1) + "_";
@@ -647,11 +722,14 @@ static bool sendTelemetry() {
 
   setJsonFloat(root, "air_temperature", sensors.dht[0].tempC);
   setJsonFloat(root, "humidity", sensors.dht[0].rh);
-  root["water_temperature"] = nullptr;
-  root["case_temperature"] = nullptr;
+  setJsonFloat(root, "water_temperature", sensors.waterTempC);
+  setJsonFloat(root, "case_temperature", sensors.caseTempC);
+  root["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
+  root["ph_temperature_compensated"] = sensors.phTempCompensated;
   root["light_level"] = sensors.lux;
   setJsonFloat(root, "ec", sensors.ec); // mS/cm
   root["ec_calibrated"] = ecCalibrated;
+  root["ec_reference_temp_verified"] = validDsTempC(ecCalTempC);
   setJsonFloat(root, "ec_reference_voltage", ecReferenceInputV);
   setJsonFloat(root, "ph", sensors.ph);
   setJsonFloat(root, "ph_to_voltage", sensors.phToInputV);
@@ -689,7 +767,9 @@ static bool sendTelemetry() {
   dev["ph_to_configured"] = PH_TO_WIRED;
   dev["ph_to_type"] = "raw_voltage_uncalibrated";
   dev["ec_reference_us_cm"] = 1413;
-  dev["ec_temp_compensation"] = "assumed_25C_until_water_sensor_assigned";
+  dev["ec_temp_compensation"] = "ds18b20_to_25C_or_null";
+  dev["water_ds_rom_selected"] = waterSensorRomSelected;
+  dev["to_case_calibrated"] = toCalibrated;
   dev["actuator_controller"] = "local_gpio";
 
   String body;
@@ -741,11 +821,12 @@ static void drawOled() {
   }
 
   display.setCursor(0, 16);
-  display.print("VPD ");
-  if (isnan(sensors.vpd)) display.print("--");
-  else display.printf("%.2f", sensors.vpd);
-  display.print("  Lux ");
-  display.print(sensors.lux);
+  display.print("Box ");
+  if (isfinite(sensors.caseTempC)) display.printf("%.1fC", sensors.caseTempC);
+  else display.print("--");
+  display.print(" H2O ");
+  if (isfinite(sensors.waterTempC)) display.printf("%.1fC", sensors.waterTempC);
+  else display.print("--");
 
   display.setCursor(0, 32);
   display.print("pH ");
@@ -773,6 +854,8 @@ void setup() {
   delay(300);
   loadPhCalibration();
   loadEcCalibration();
+  loadWaterSensorRom();
+  loadToCalibration();
   if (!ecCalibrated) Serial.println("EC unkalibriert: 'e' im Diagnose-Sketch verwenden.");
   if (!phCalibrated) Serial.println("WARNUNG: pH-Kalibrierung fehlt.");
   if (PH_DO_WIRED) pinMode(PIN_PH_DO, INPUT);
