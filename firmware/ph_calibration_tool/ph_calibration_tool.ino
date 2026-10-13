@@ -27,6 +27,9 @@
 #include <Adafruit_ADS1X15.h>
 #include <DHT.h>
 #include <math.h>
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
 
 static constexpr uint8_t PIN_DS18B20 = 23;
 static constexpr uint8_t PIN_PH_DO = 32;
@@ -300,6 +303,7 @@ static void loadEcCalibration() {
                  isfinite(ecReferenceInputV) && ecReferenceInputV > 0.05f &&
                  ecReferenceInputV <= 2.3f;
 }
+static void updateTemperature(bool force); // forward declaration for EC reference capture
 static bool captureEc1413() {
   if (!adsOk) { Serial.println(F("EC ABGELEHNT: ADS1115 fehlt.")); return false; }
   updateTemperature(true);
