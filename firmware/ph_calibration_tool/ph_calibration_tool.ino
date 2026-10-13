@@ -55,10 +55,11 @@ static constexpr float DIVIDER_RECONSTRUCT = 1.0f / DIVIDER_RATIO; // 1.5
 static constexpr uint16_t LIVE_SAMPLE_COUNT = 32;
 static constexpr uint16_t CAPTURE_SAMPLE_COUNT = 160;
 static constexpr uint16_t EC_LIVE_SAMPLE_COUNT = 17;
-static constexpr uint16_t EC_CAPTURE_SAMPLES = 120;
+static constexpr uint8_t EC_CAPTURE_WINDOWS = 8;
+static constexpr uint16_t EC_CAPTURE_WINDOW_GAP_MS = 200;
 static constexpr float EC_REFERENCE_MS_CM = 1.413f; // 1413 uS/cm bei 25 C
-static constexpr float EC_MAX_STD_V = 0.025f;
-static constexpr float EC_MAX_SPAN_V = 0.090f;
+static constexpr float EC_MAX_STD_V = 0.010f;  // Streuung der Median-Fenster
+static constexpr float EC_MAX_SPAN_V = 0.030f; // Spanne der Median-Fenster
 static constexpr uint16_t SAMPLE_DELAY_MS = 20;
 static constexpr unsigned long TEMP_INTERVAL_MS = 2000;
 static constexpr unsigned long OLED_INTERVAL_MS = 500;
@@ -129,6 +130,48 @@ struct SampleStats {
   uint32_t minMv;
   uint32_t maxMv;
 };
+
+/* Dieselbe Median-Ermittlung fuer LIVE und EC-Kalibrierung.
+ * Nur A1: pH auf ADS A0 bleibt beim bisherigen Mittelwertverfahren.
+ * Die Rohwertstreuung wird weiter ausgewiesen, statt verschwiegen.
+ */
+struct EcWindowStats {
+  float medianV;
+  float rawMinV;
+  float rawMaxV;
+  float rawStdV;
+};
+static EcWindowStats sampleEcWindow() {
+  const EcWindowStats invalid{NAN, NAN, NAN, NAN};
+  if (!adsOk) return invalid;
+  float points[EC_LIVE_SAMPLE_COUNT];
+  double sum = 0.0, sumSq = 0.0;
+  float minV = INFINITY, maxV = -INFINITY;
+  for (uint8_t i = 0; i < EC_LIVE_SAMPLE_COUNT; ++i) {
+    const float v = ads.computeVolts(ads.readADC_SingleEnded(1));
+    if (!isfinite(v) || v < 0.0f || v > 2.3f) return invalid;
+    points[i] = v;
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
+    sum += v;
+    sumSq += static_cast<double>(v) * v;
+    delay(5);
+  }
+  for (uint8_t i = 1; i < EC_LIVE_SAMPLE_COUNT; ++i) {
+    float key = points[i];
+    uint8_t j = i;
+    while (j > 0 && points[j - 1] > key) {
+      points[j] = points[j - 1];
+      --j;
+    }
+    points[j] = key;
+  }
+  double variance = sumSq / EC_LIVE_SAMPLE_COUNT -
+                    (sum / EC_LIVE_SAMPLE_COUNT) * (sum / EC_LIVE_SAMPLE_COUNT);
+  if (variance < 0.0) variance = 0.0;
+  return EcWindowStats{points[EC_LIVE_SAMPLE_COUNT / 2], minV, maxV,
+                       static_cast<float>(sqrt(variance))};
+}
 
 static bool validTemperature(float t) {
   return !isnan(t) && t > -20.0f && t < 80.0f && t != DEVICE_DISCONNECTED_C;
@@ -232,18 +275,47 @@ static void loadEcCalibration() {
 }
 static bool captureEc1413() {
   if (!adsOk) { Serial.println(F("EC ABGELEHNT: ADS1115 fehlt.")); return false; }
-  Serial.println(F("EC 1413 uS/cm @25 C: erfasse A1 ueber 3 s ..."));
-  const SampleStats stats = sampleChannel(1, EC_CAPTURE_SAMPLES, 25);
-  const float spanV = (static_cast<float>(stats.maxMv) -
-                       static_cast<float>(stats.minMv)) / 1000.0f;
-  Serial.printf("EC A1: Mittel %.5f V | Std %.3f mV | Spanne %.3f V\n",
-                stats.meanV, stats.stdV * 1000.0f, spanV);
-  if (!isfinite(stats.meanV) || !isfinite(stats.stdV) ||
-      stats.stdV > EC_MAX_STD_V || spanV > EC_MAX_SPAN_V) {
-    Serial.println(F("EC NICHT gespeichert: A1 schwankt zu stark (Std >25 mV oder Spanne >90 mV)."));
+  Serial.println(F("EC 1413 uS/cm @25 C: erfasse 8 gefilterte A1-Messfenster ..."));
+  double sum = 0.0, sumSq = 0.0;
+  float minMedianV = INFINITY, maxMedianV = -INFINITY;
+  float rawMinV = INFINITY, rawMaxV = -INFINITY;
+  for (uint8_t i = 0; i < EC_CAPTURE_WINDOWS; ++i) {
+    const EcWindowStats w = sampleEcWindow();
+    if (!isfinite(w.medianV)) {
+      Serial.println(F("EC NICHT gespeichert: ADC-Einzelmessung ungueltig."));
+      return false;
+    }
+    sum += w.medianV;
+    sumSq += static_cast<double>(w.medianV) * w.medianV;
+    if (w.medianV < minMedianV) minMedianV = w.medianV;
+    if (w.medianV > maxMedianV) maxMedianV = w.medianV;
+    if (w.rawMinV < rawMinV) rawMinV = w.rawMinV;
+    if (w.rawMaxV > rawMaxV) rawMaxV = w.rawMaxV;
+    Serial.printf("  Fenster %u/%u: Median %.5f V | Roh-Std %.1f mV\n",
+                  static_cast<unsigned>(i + 1),
+                  static_cast<unsigned>(EC_CAPTURE_WINDOWS),
+                  w.medianV, w.rawStdV * 1000.0f);
+    if (i + 1 < EC_CAPTURE_WINDOWS) delay(EC_CAPTURE_WINDOW_GAP_MS);
+  }
+  const float meanMedianV = static_cast<float>(sum / EC_CAPTURE_WINDOWS);
+  double var = sumSq / EC_CAPTURE_WINDOWS -
+      (sum / EC_CAPTURE_WINDOWS) * (sum / EC_CAPTURE_WINDOWS);
+  if (var < 0.0) var = 0.0;
+  const float medianStdV = static_cast<float>(sqrt(var));
+  const float medianSpanV = maxMedianV - minMedianV;
+  Serial.printf("EC A1 gefiltert: %.5f V | Std %.2f mV | Spanne %.3f V\n",
+                meanMedianV, medianStdV * 1000.0f, medianSpanV);
+  Serial.printf("EC A1 Rohbereich: %.3f-%.3f V (Spanne %.3f V)\n",
+                rawMinV, rawMaxV, rawMaxV - rawMinV);
+  if (rawMaxV - rawMinV > 0.090f) {
+    Serial.println(F("HINWEIS: grosse Rohwertschwankung; Versorgung, gemeinsame GND-Verbindung und Sondenlage ggf. pruefen."));
+  }
+  if (!isfinite(meanMedianV) || !isfinite(medianStdV) ||
+      medianStdV > EC_MAX_STD_V || medianSpanV > EC_MAX_SPAN_V) {
+    Serial.println(F("EC NICHT gespeichert: auch gefilterte Fenster sind instabil (Std >10 mV oder Spanne >30 mV)."));
     return false;
   }
-  const float ecRaw = ecUncalibratedMs(stats.meanV);
+  const float ecRaw = ecUncalibratedMs(meanMedianV);
   if (!isfinite(ecRaw) || ecRaw < 0.05f) {
     Serial.println(F("EC NICHT gespeichert: unplausibles A1-Signal."));
     return false;
@@ -259,7 +331,7 @@ static bool captureEc1413() {
     return false;
   }
   bool ok = ecPrefs.putFloat(EC_NVS_FACTOR, factor) == sizeof(float);
-  ok = (ecPrefs.putFloat(EC_NVS_REFERENCE_V, stats.meanV) == sizeof(float)) && ok;
+  ok = (ecPrefs.putFloat(EC_NVS_REFERENCE_V, meanMedianV) == sizeof(float)) && ok;
   ok = (ecPrefs.putBool("valid", true) == sizeof(bool)) && ok;
   ecPrefs.end();
   if (!ok) { Serial.println(F("EC NICHT gespeichert: NVS Schreibfehler.")); return false; }
@@ -572,9 +644,9 @@ static void updateLive() {
   liveInputV = s.meanV;
   livePoV = isfinite(liveInputV) ? liveInputV * DIVIDER_RECONSTRUCT : NAN;
   liveStdV = s.stdV;
-  const SampleStats tdsSample = sampleChannel(1, EC_LIVE_SAMPLE_COUNT, 5);
-  liveTdsV = tdsSample.meanV;
-  liveTdsStdV = tdsSample.stdV;
+  const EcWindowStats tdsSample = sampleEcWindow();
+  liveTdsV = tdsSample.medianV;
+  liveTdsStdV = tdsSample.rawStdV;
   liveToV = adsOk && PH_TO_WIRED ? ads.computeVolts(ads.readADC_SingleEnded(2)) : NAN;
   if (PH_DO_WIRED) liveDoHigh = digitalRead(PIN_PH_DO) == HIGH;
 }
@@ -732,7 +804,7 @@ void loop() {
     for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++n;
     if (ecCalibrated) Serial.printf(" | EC %.3f mS/cm (25C)", ecFromVoltage(liveTdsV));
     else Serial.print(F(" | EC -- (nicht kalibriert)"));
-    Serial.printf(" | TO A2 %.4f V | DO %s", liveToV, PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "--");
+    Serial.printf(" | A1 RohStd %.1f mV | TO A2 %.4f V | DO %s", liveTdsStdV * 1000.0f, liveToV, PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "--");
     Serial.printf(" | DHT %u/3 | BH %s",
                   static_cast<unsigned>(n),
                   bhOk && isfinite(bhLux) ? "OK" : "--");
