@@ -54,9 +54,10 @@ static constexpr float DIVIDER_RECONSTRUCT = 1.0f / DIVIDER_RATIO; // 1.5
 
 static constexpr uint16_t LIVE_SAMPLE_COUNT = 32;
 static constexpr uint16_t CAPTURE_SAMPLE_COUNT = 160;
-static constexpr uint16_t EC_LIVE_SAMPLE_COUNT = 17;
+static constexpr uint16_t EC_LIVE_SAMPLE_COUNT = 30; // CQRobot: 30 samples
 static constexpr uint8_t EC_CAPTURE_WINDOWS = 8;
 static constexpr uint16_t EC_CAPTURE_WINDOW_GAP_MS = 200;
+static constexpr unsigned long EC_SAMPLE_PERIOD_MS = 40; // CQRobot: sample once each 40 ms
 static constexpr float EC_REFERENCE_MS_CM = 1.413f; // 1413 uS/cm bei 25 C
 static constexpr float EC_MAX_STD_V = 0.010f;  // Streuung der Median-Fenster
 static constexpr float EC_MAX_SPAN_V = 0.030f; // Spanne der Median-Fenster
@@ -148,6 +149,7 @@ static EcWindowStats sampleEcWindow() {
   double sum = 0.0, sumSq = 0.0;
   float minV = INFINITY, maxV = -INFINITY;
   for (uint8_t i = 0; i < EC_LIVE_SAMPLE_COUNT; ++i) {
+    const unsigned long sampleStartMs = millis();
     const float v = ads.computeVolts(ads.readADC_SingleEnded(1));
     if (!isfinite(v) || v < 0.0f || v > 2.3f) return invalid;
     points[i] = v;
@@ -155,7 +157,8 @@ static EcWindowStats sampleEcWindow() {
     if (v > maxV) maxV = v;
     sum += v;
     sumSq += static_cast<double>(v) * v;
-    delay(5);
+    // Abtastperiode einschliesslich ADS1115-Wandlungszeit.
+    while (millis() - sampleStartMs < EC_SAMPLE_PERIOD_MS) delay(1);
   }
   for (uint8_t i = 1; i < EC_LIVE_SAMPLE_COUNT; ++i) {
     float key = points[i];
@@ -169,7 +172,9 @@ static EcWindowStats sampleEcWindow() {
   double variance = sumSq / EC_LIVE_SAMPLE_COUNT -
                     (sum / EC_LIVE_SAMPLE_COUNT) * (sum / EC_LIVE_SAMPLE_COUNT);
   if (variance < 0.0) variance = 0.0;
-  return EcWindowStats{points[EC_LIVE_SAMPLE_COUNT / 2], minV, maxV,
+  const float medianV = 0.5f * (points[EC_LIVE_SAMPLE_COUNT / 2 - 1] +
+                                  points[EC_LIVE_SAMPLE_COUNT / 2]);
+  return EcWindowStats{medianV, minV, maxV,
                        static_cast<float>(sqrt(variance))};
 }
 
@@ -275,7 +280,7 @@ static void loadEcCalibration() {
 }
 static bool captureEc1413() {
   if (!adsOk) { Serial.println(F("EC ABGELEHNT: ADS1115 fehlt.")); return false; }
-  Serial.println(F("EC 1413 uS/cm @25 C: erfasse 8 gefilterte A1-Messfenster ..."));
+  Serial.println(F("EC 1413 uS/cm @25 C: erfasse 8 Medianfenster, 30 Werte alle 40 ms ..."));
   double sum = 0.0, sumSq = 0.0;
   float minMedianV = INFINITY, maxMedianV = -INFINITY;
   float rawMinV = INFINITY, rawMaxV = -INFINITY;
