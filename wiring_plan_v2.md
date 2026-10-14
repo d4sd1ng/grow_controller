@@ -108,6 +108,21 @@ Die **Wärmebildkamera** benötigt freie Sicht auf die Blätter; nicht hinter ge
 
 **Software:** MLX90640 ist in Diagnose- und Produktionssketch bereits vorbereitet (`GROW_ENABLE_MLX90640=0` bis Einbau und Bibliotheksinstallation). Daten werden zunächst als thermische ROI und möglicher Blatt-VPD-Kandidat erhoben, **ohne automatische Aktorregelung**.
 
+## Festgelegte pH-/EC-Wochenprofile (Firmware, keine Zusatzverkabelung)
+
+pH-Alarm ist fest **unter 5,5** bzw. **über 6,2** (inklusive Grenzen als Normalbereich, bestehende Hysterese). EC steht für **elektrische Leitfähigkeit in mS/cm** und ist als Wochen-Sollwert vorgesehen, noch nicht als EC-Alarm.
+
+| Anbauwoche | pH-Soll | EC-Soll in mS/cm |
+|---|---:|---:|
+| 1 | 6,0 | 1,6 |
+| 2 | 5,8 | 1,8 |
+| 3–7 | 5,5 | 2,0 |
+| 8 | 5,5 | 2,5 |
+| 9–10 | 5,5 | 1,8 |
+| 11–12 | 5,5 | 0,2 |
+
+Die Wochenzahl wird auf dem Sensor-ESP32 getrennt von der Phasentaster-Auswahl gespeichert. Ohne festgelegtes Startdatum wird die Woche **nicht automatisch hochgezählt**. Manuell `k1` bis `k12` über seriell oder per `POST /api/local/control/week`. Für diese Werte sind **keine weiteren Pins oder Lötstellen** erforderlich.
+
 ## ESP32-C3 SuperMini — eigener Aufbau
 
 Der C3 liegt **im separaten Leistungsgehäuse**. Die Vier-Kanal-Zuordnung bleibt funktional **Licht / Umluft / Abluft / Heizstrahler**, aber sie ist **nicht** auf dem Sensor-ESP32 zu verlöten. Konkrete C3-GPIOs, Eingangsstrom-/Pegel-Kompatibilität der eingesetzten Relais und die vollständige Fail-safe-Strategie sind noch zu verifizieren; darum enthält dieser Plan absichtlich **keine erfundene C3-Pinbelegung oder Lastverdrahtung**.
