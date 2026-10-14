@@ -89,7 +89,7 @@ ADS1115, DS18B20, DHT22 und BH1750: geplante **3,3-V-Logik**. **MLX90640: Versor
 - Blau bleibt unbenutzt.
 - **Gemeinsame Kathode: gemeinsam an GND**, HIGH schaltet jeweilige Farbe ein.
 
-Die Firmware ist auf **Grün = WUCHS** und **Rot + Grün = Gelb = BLÜTE** umgestellt. **Gemeinsame Kathode steht fest** (`GROW_RGB_COMMON_ANODE=0`); RGB-Ausgänge bleiben bis zur Umverdrahtung und Flashen noch deaktiviert (`GROW_ENABLE_PHASE_RGB=0`). Anschließend `GROW_ENABLE_PHASE_RGB=1` setzen.
+Die Firmware ist auf **Grün = WUCHS** und **Rot + Grün = Gelb = BLÜTE** umgestellt. **Gemeinsame Kathode steht fest** (`GROW_RGB_COMMON_ANODE=0`); RGB-Ausgänge sind im jetzt aktualisierten Sketch aktiviert (`GROW_ENABLE_PHASE_RGB=1`). **Vor dem Flashen zuerst DS-DATA auf D23 und RGB-Grün auf D32 umverdrahten.**
 
 **Zweipoliger pH-Buzzer aus Sensor-Pack:** Auf der Platine **D19 als Buzzer-Steuersignal und Platz für einen 2-poligen Buzzer-Anschluss sowie einen geeigneten Transistortreiber** vorsehen. Bei unbekanntem Typ/Strom/Spannung ist **kein direkter GPIO-Anschluss freigegeben**. Auch ein 2-Pin-Bauteil kann aktiv (Gleichspannung) oder passiv (Tonerzeugung via PWM erforderlich) sein. Die Versorgung und der Treiber werden **erst nach Identifizierung** des Bauteils festgelegt; der aktuell implementierte Buzzer-Code ist für ein aktives, logikgesteuertes Modul und bleibt deaktiviert (`GROW_ENABLE_PH_BUZZER=0`). **D18 nicht verwenden:** am konkret vorhandenen ESP32-Board nicht herausgeführt.
 
