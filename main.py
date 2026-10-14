@@ -324,8 +324,30 @@ vpd_min, vpd_max, humidity_min, humidity_max = get_vpd_range(growth_stage_key)
 
 target_air_temp = st.sidebar.slider("Target Air Temperature (°C)", 20.0, 35.0, 27.5, 0.1)
 target_humidity = st.sidebar.slider("Target Humidity (%)", humidity_min, humidity_max, calculate_target_humidity(target_air_temp, growth_stage_key), 1)
-target_ec = st.sidebar.slider("Target EC (mS/cm)", 0.5, 3.0, 1.5, 0.1)
-target_ph = st.sidebar.slider("Target pH", 5.5, 7.5, 6.5, 0.1)
+# Wochen-pH/EC-Sollwerte stammen primaer vom Sensor-ESP32.
+# Wenn keine Anbauwoche ausgewaehlt ist, sind dies nur manuelle Dashboard-Ziele.
+sensor_week_summary = get_sensor_summary() or {}
+sensor_week_control = sensor_week_summary.get("control", {}) if isinstance(sensor_week_summary, dict) else {}
+if not isinstance(sensor_week_control, dict):
+    sensor_week_control = {}
+selected_grow_week = sensor_week_control.get("grow_week", 0)
+sensor_ph_target = sensor_week_control.get("ph_target")
+sensor_ec_target = sensor_week_control.get("ec_target_ms_cm")
+week_targets_present = (
+    isinstance(selected_grow_week, int) and 1 <= selected_grow_week <= 12
+    and isinstance(sensor_ph_target, (int, float))
+    and isinstance(sensor_ec_target, (int, float))
+)
+if week_targets_present:
+    target_ph = float(sensor_ph_target)
+    target_ec = float(sensor_ec_target)
+    st.sidebar.caption(
+        f"ESP32 Woche {selected_grow_week}: pH-Soll {target_ph:.2f}, EC-Soll {target_ec:.2f} mS/cm"
+    )
+else:
+    target_ec = st.sidebar.slider("Target EC (mS/cm) – manual display only", 0.2, 3.0, 1.6, 0.1)
+    target_ph = st.sidebar.slider("Target pH – manual display only", 5.5, 6.2, 6.0, 0.1)
+    st.sidebar.caption("Woche am ESP32 noch nicht gewählt; diese Werte werden nicht an den Sensor geschrieben.")
 
 logger.info(f"Target values - Air Temp: {target_air_temp}, Humidity: {target_humidity}, EC: {target_ec}, pH: {target_ph}")
 
@@ -467,7 +489,7 @@ def update_real_time_data():
             value=f"{current_data['ec']:.2f} mS/cm",
             delta=f"{current_data['ec'] - target_ec:.2f} mS/cm"
         )
-        _check_and_alert("EC", current_data["ec"], target_ec, 0.3)
+        # EC-Alarmtoleranz wurde noch nicht spezifiziert; keine fiktive +/-0.3-Alarmierung.
 
     with col5:
         custom_metric(
@@ -475,7 +497,12 @@ def update_real_time_data():
             value=f"{current_data['ph']:.2f}",
             delta=f"{current_data['ph'] - target_ph:.2f}"
         )
-        _check_and_alert("pH", current_data["ph"], target_ph, 0.5)
+        # Feste Nutzer-Grenzen, unabhaengig vom wochenabhaengigen Ziel-pH.
+        if current_data["ph"] < 5.5 or current_data["ph"] > 6.2:
+            _maybe_notify_alert(
+                "ph",
+                f"pH ausserhalb des erlaubten Bereichs 5.5-6.2: {current_data['ph']:.2f}"
+            )
 
     with col6:
         custom_metric(
