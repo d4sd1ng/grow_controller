@@ -90,7 +90,7 @@ static constexpr unsigned long WIFI_RECONNECT_MS = 5000;
 static constexpr float TEMP_HYST = 0.5f;
 static constexpr float HUM_HYST = 2.0f;
 static constexpr float PH_LOW = 5.5f;
-static constexpr float PH_HIGH = 6.5f;
+static constexpr float PH_HIGH = 6.2f;
 static constexpr float PH_HYST = 0.10f;
 static constexpr uint8_t PH_CONFIRM = 3;
 
@@ -299,6 +299,80 @@ static void setupGrowPhaseButtons() {
   loadGrowPhase();
 }
 
+
+/* Nutzersollwerte, getrennt von pH-Alarmgrenzen und Sensor-Kalibrierung.
+ * Kein Wochenstartdatum gegeben: keine automatische Fortschaltung.
+ * 0 = Woche nicht eingestellt; 1..12 = explizit ausgewaehlte Woche.
+ * EC in mS/cm, pH dimensionslos.
+ */
+struct NutrientTargets {
+  float ph;
+  float ecMsCm;
+};
+static constexpr NutrientTargets NUTRIENT_WEEK_TARGETS[12] = {
+    {6.0f, 1.6f}, // Woche 1
+    {5.8f, 1.8f}, // Woche 2
+    {5.5f, 2.0f}, // Woche 3
+    {5.5f, 2.0f}, // Woche 4
+    {5.5f, 2.0f}, // Woche 5
+    {5.5f, 2.0f}, // Woche 6
+    {5.5f, 2.0f}, // Woche 7
+    {5.5f, 2.5f}, // Woche 8
+    {5.5f, 1.8f}, // Woche 9
+    {5.5f, 1.8f}, // Woche 10
+    {5.5f, 0.2f}, // Woche 11
+    {5.5f, 0.2f}  // Woche 12
+};
+static constexpr char GROW_WEEK_NVS[] = "growweek_v1";
+static uint8_t growWeek = 0;
+static const NutrientTargets *activeNutrientTargets() {
+  return growWeek >= 1 && growWeek <= 12
+      ? &NUTRIENT_WEEK_TARGETS[growWeek - 1] : nullptr;
+}
+static void loadGrowWeek() {
+  Preferences prefs;
+  if (!prefs.begin(GROW_WEEK_NVS, true)) {
+    Serial.println(F("WOCHE: nicht gesetzt (NVS nicht lesbar)."));
+    return;
+  }
+  const uint8_t saved = prefs.getUChar("week", 0);
+  prefs.end();
+  growWeek = saved <= 12 ? saved : 0;
+  if (const NutrientTargets *t = activeNutrientTargets()) {
+    Serial.printf("WOCHE %u | Soll pH %.2f | Soll EC %.2f mS/cm\n",
+        growWeek, t->ph, t->ecMsCm);
+  } else {
+    Serial.println(F("WOCHE: nicht gesetzt; pH/EC-Sollwerte noch nicht aktiv."));
+  }
+}
+static bool setGrowWeek(int week) {
+  if (week < 1 || week > 12) return false;
+  if (growWeek == static_cast<uint8_t>(week)) return true;
+  Preferences prefs;
+  if (!prefs.begin(GROW_WEEK_NVS, false)) return false;
+  const bool saved = prefs.putUChar("week", static_cast<uint8_t>(week)) == sizeof(uint8_t);
+  prefs.end();
+  if (!saved) return false;
+  growWeek = static_cast<uint8_t>(week);
+  const NutrientTargets *t = activeNutrientTargets();
+  Serial.printf("WOCHE -> %u | pH-Soll %.2f | EC-Soll %.2f mS/cm (NVS gespeichert)\n",
+      growWeek, t->ph, t->ecMsCm);
+  return true;
+}
+static void writeNutrientTargets(JsonObject obj) {
+  const NutrientTargets *t = activeNutrientTargets();
+  obj["grow_week"] = growWeek == 0 ? 0 : growWeek;
+  if (t) {
+    obj["ph_target"] = t->ph;
+    obj["ec_target_ms_cm"] = t->ecMsCm;
+  } else {
+    obj["ph_target"] = nullptr;
+    obj["ec_target_ms_cm"] = nullptr;
+  }
+  obj["ph_alarm_min"] = PH_LOW;
+  obj["ph_alarm_max"] = PH_HIGH;
+}
+
 enum class PhAlarm : uint8_t { Normal, Low, High, Fault };
 PhAlarm phAlarm = PhAlarm::Fault, phPending = PhAlarm::Fault;
 uint8_t phSamples = 0;
@@ -314,9 +388,9 @@ static const char *phCode(PhAlarm status) {
 }
 static const char *phMessage(PhAlarm status) {
   switch (status) {
-    case PhAlarm::Normal: return "pH wieder im Bereich 5.5-6.5";
+    case PhAlarm::Normal: return "pH wieder im Bereich 5.5-6.2";
     case PhAlarm::Low: return "pH-Alarm: unter 5.5";
-    case PhAlarm::High: return "pH-Alarm: ueber 6.5";
+    case PhAlarm::High: return "pH-Alarm: ueber 6.2";
     default: return "pH-Sensoralarm: ungueltige Messung oder Kalibrierung";
   }
 }
@@ -377,7 +451,7 @@ static void setPhTestMode(char c) {
     return;
   }
   phTestActive = true;
-  phTestValue = c == '1' ? 5.40f : c == '2' ? 6.60f : 6.00f;
+  phTestValue = c == '1' ? 5.40f : c == '2' ? 6.30f : 6.00f;
   phTestAlarm = PhAlarm::Fault;
   phTestPending = PhAlarm::Fault;
   phTestSamples = 0;
@@ -392,8 +466,15 @@ static void handlePhTestSerial() {
   while (Serial.available()) {
     const char c = static_cast<char>(Serial.read());
     if (c >= '0' && c <= '3') setPhTestMode(c);
+    else if (c == 'k' || c == 'K') {
+      String arg = Serial.readStringUntil('\n');
+      arg.trim();
+      const int week = arg.toInt();
+      if (!setGrowWeek(week)) Serial.println(F("WOCHE ungueltig/nicht gespeichert: k1 bis k12"));
+    }
     else if (c == 'h' || c == 'H' || c == '?') {
-      Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.60 | 3=NORMAL 6.00 | 0=Test aus"));
+      Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
+      Serial.println(F("Woche per Serial: k1 bis k12 + Zeilenumbruch, im NVS gespeichert."));
     }
   }
 }
@@ -861,6 +942,7 @@ static void handleSummary() {
   JsonObject control = doc.createNestedObject("control");
   control["control_mode"] = controlMode;
   control["phase"] = phaseName(growPhase);
+  writeNutrientTargets(control);
   control["phase_profile_configured"] = phaseProfile().configured;
   if (phaseProfile().configured) {
     control["phase_air_target_c"] = phaseProfile().targetAirC;
@@ -873,6 +955,7 @@ static void handleSummary() {
   writeActuators(targetObj, targets);
 
   JsonObject reading = doc.createNestedObject("reading");
+  writeNutrientTargets(reading);
   if (sensors.dht[0].ok) {
     reading["air_temperature"] = sensors.dht[0].tempC;
     reading["humidity"] = sensors.dht[0].rh;
@@ -937,6 +1020,7 @@ static void handleActuatorTargets() {
   doc["power_controller_connected"] = false;
   doc["control_mode"] = controlMode;
   doc["phase"] = phaseName(growPhase);
+  writeNutrientTargets(doc.as<JsonObject>());
   doc["phase_profile_configured"] = phaseProfile().configured;
   doc["seq"] = commandSeq;
   doc["source_ms"] = millis();
@@ -978,12 +1062,38 @@ static void handleControlMode() {
   localServer.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handleGrowWeek() {
+  if (!localAuthorized()) return sendUnauthorized();
+  StaticJsonDocument<128> input;
+  if (deserializeJson(input, localServer.arg("plain"))) {
+    return localServer.send(400, "application/json",
+        "{\"ok\":false,\"error\":\"bad_json\"}");
+  }
+  const int selected = input["week"].as<int>();
+  if (selected < 1 || selected > 12) {
+    return localServer.send(400, "application/json",
+        "{\"ok\":false,\"error\":\"week_must_be_1_to_12\"}");
+  }
+  if (!setGrowWeek(selected)) {
+    return localServer.send(500, "application/json",
+        "{\"ok\":false,\"error\":\"week_nvs_not_saved\"}");
+  }
+  StaticJsonDocument<192> doc;
+  doc["ok"] = true;
+  JsonObject payload = doc.to<JsonObject>();
+  payload["ok"] = true;
+  writeNutrientTargets(payload);
+  String body;
+  serializeJson(doc, body);
+  localServer.send(200, "application/json", body);
+}
 static void setupLocalApi() {
   localServer.collectHeaders(LOCAL_HEADER_KEYS, 1);
   localServer.on("/api/local/summary", HTTP_GET, handleSummary);
   localServer.on("/api/local/actuators", HTTP_GET, handleActuatorTargets);
   localServer.on("/api/local/control/targets", HTTP_POST, handleControlTargets);
   localServer.on("/api/local/control/mode", HTTP_POST, handleControlMode);
+  localServer.on("/api/local/control/week", HTTP_POST, handleGrowWeek);
   localServer.begin();
 }
 
@@ -1001,6 +1111,7 @@ static bool sendTelemetry() {
   setJsonFloat(root, "case_temperature", sensors.caseTempC);
   root["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
   root["phase"] = phaseName(growPhase);
+  writeNutrientTargets(root);
   root["phase_profile_configured"] = phaseProfile().configured;
   root["ph_temperature_compensated"] = sensors.phTempCompensated;
   root["light_level"] = sensors.lux;
@@ -1045,6 +1156,7 @@ static bool sendTelemetry() {
   dev["device_id"] = "grow_sensor_01";
   dev["firmware_version"] = "5.1.0-sensor-esp";
   dev["phase"] = phaseName(growPhase);
+  dev["grow_week"] = growWeek;
   dev["control_mode"] = controlMode;
   dev["ads1115"] = sensors.adsOk;
   dev["bh1750"] = bh1750Present;
@@ -1128,7 +1240,9 @@ static void drawOled() {
   display.setTextColor(SSD1306_WHITE);
 
   display.setCursor(0, 0);
-  display.print(growPhase == GrowPhase::Wuchs ? F("PHASE: WUCHS") : F("PHASE: BLUETE"));
+  display.print(growPhase == GrowPhase::Wuchs ? F("WUCHS") : F("BLUETE"));
+  if (growWeek) display.printf(" W%u", growWeek);
+  else display.print(F(" W?"));
   if (!phaseProfile().configured) display.print(F(" !"));
 
   display.setCursor(0, 12);
@@ -1158,9 +1272,9 @@ static void drawOled() {
   const PhAlarm shown = phTestActive ? phTestAlarm : phAlarm;
   if (phTestActive) display.print("TEST ");
   if (shown == PhAlarm::Low) display.print("ALARM pH <5.5");
-  else if (shown == PhAlarm::High) display.print("ALARM pH >6.5");
+  else if (shown == PhAlarm::High) display.print("ALARM pH >6.2");
   else if (shown == PhAlarm::Fault) display.print("pH SENSORFEHLER");
-  else display.print("pH OK 5.5-6.5");
+  else display.print("pH OK 5.5-6.2");
 
   display.display();
 }
@@ -1173,8 +1287,9 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   setupGrowPhaseButtons();
+  loadGrowWeek();
   setupPhBuzzer();
-  Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.60 | 3=NORMAL 6.00 | 0=Test aus"));
+  Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
   loadPhCalibration();
   loadEcCalibration();
   loadWaterSensorRom();
