@@ -42,6 +42,16 @@
 #ifndef GROW_ENABLE_PH_BUZZER
 #define GROW_ENABLE_PH_BUZZER 0
 #endif
+/* RGB-Typ noch nicht bestaetigt: Leitungen bleiben standardmaessig Eingaenge.
+ * Nach Verifizierung: GROW_ENABLE_PHASE_RGB 1 setzen und Polaritaet waehlen.
+ * Common cathode = 0 (common -> GND), common anode = 1 (common -> 3V3).
+ */
+#ifndef GROW_ENABLE_PHASE_RGB
+#define GROW_ENABLE_PHASE_RGB 0
+#endif
+#ifndef GROW_RGB_COMMON_ANODE
+#define GROW_RGB_COMMON_ANODE 0
+#endif
 #ifndef GROW_PH_BUZZER_ACTIVE_HIGH
 #define GROW_PH_BUZZER_ACTIVE_HIGH 1
 #endif
@@ -64,11 +74,10 @@ const bool SERVER_TLS_INSECURE = false;
 static constexpr uint8_t PIN_DHT1 = 25;
 static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
-static constexpr uint8_t PIN_PHASE_WUCHS_BUTTON = 16;
-static constexpr uint8_t PIN_PHASE_BLUETE_BUTTON = 19;
-static constexpr uint8_t PIN_PHASE_WUCHS_LED = 23;
-static constexpr uint8_t PIN_PHASE_BLUETE_LED = 33;
-static constexpr uint8_t PIN_PH_BUZZER = 18; // reserviert, Anschluss erst nach Modulpruefung
+static constexpr uint8_t PIN_PHASE_BUTTON = 16;
+static constexpr uint8_t PIN_RGB_GREEN = 23;
+static constexpr uint8_t PIN_RGB_RED = 33;
+static constexpr uint8_t PIN_PH_BUZZER = 19; // frei gewordener Pin; nur Reserve
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 static constexpr uint8_t PIN_ONEWIRE = 32; // DS18B20 auf D32; PH4502C DO wird nicht genutzt
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
@@ -204,10 +213,11 @@ uint32_t commandSeq = 0;
 char controlMode[8] = "auto";
 
 
-/* Phasenwahl ueber 2 Schliesser gegen GND und 2 LEDs mit Vorwiderstand.
- * GPIO16/19 INPUT_PULLUP; GPIO23/33 LED-Ausgaenge HIGH=an.
- * Auswahl wird in eigenem Namespace gespeichert, unabhaengig von pH/EC.
- * Ohne voreingestellte Bluete-Sollwerte erfolgt KEINE Ersatzregelung.
+/* Ein rastfreier Schliesser D16-GND, eine 4-Pin-RGB-LED.
+ * Gruen (D23) = Wuchs, Rot+Gruen (D33+D23) = Bluete (Gelb).
+ * Jeder Farbkanal hat seinen eigenen 470-Ohm-Vorwiderstand.
+ * Pin-Polaritaet erst aktivieren, wenn Common-Anode/-Kathode geklaert ist.
+ * Auswahl wird in NVS gespeichert, unabhaengig von pH/EC.
  */
 enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
 struct PhaseProfile {
@@ -215,25 +225,26 @@ struct PhaseProfile {
   float targetHumidityPct;
   bool configured;
 };
-static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true}; // bisherige Sollwerte
-static constexpr PhaseProfile BLUETE_PROFILE = {NAN, NAN, false};  // noch nicht festgelegt
+static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true};
+static constexpr PhaseProfile BLUETE_PROFILE = {NAN, NAN, false};
 static constexpr char PHASE_NVS[] = "growphase_v1";
 GrowPhase growPhase = GrowPhase::Wuchs;
-static constexpr uint8_t PHASE_BUTTON_PINS[2] = {
-    PIN_PHASE_WUCHS_BUTTON, PIN_PHASE_BLUETE_BUTTON
-};
-static bool phaseRaw[2] = {false, false};
-static bool phaseStable[2] = {false, false};
-static unsigned long phaseChangedMs[2] = {0, 0};
+static bool phaseRaw = false;
+static bool phaseStable = false;
+static unsigned long phaseChangedMs = 0;
 static const char *phaseName(GrowPhase p) {
   return p == GrowPhase::Bluete ? "bluete" : "wuchs";
 }
 static const PhaseProfile &phaseProfile() {
   return growPhase == GrowPhase::Bluete ? BLUETE_PROFILE : WUCHS_PROFILE;
 }
-static void refreshPhaseLeds() {
-  digitalWrite(PIN_PHASE_WUCHS_LED, growPhase == GrowPhase::Wuchs ? HIGH : LOW);
-  digitalWrite(PIN_PHASE_BLUETE_LED, growPhase == GrowPhase::Bluete ? HIGH : LOW);
+static void refreshPhaseRgb() {
+#if GROW_ENABLE_PHASE_RGB
+  const bool redOn = growPhase == GrowPhase::Bluete;
+  const bool greenOn = true;
+  digitalWrite(PIN_RGB_RED, redOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
+  digitalWrite(PIN_RGB_GREEN, greenOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
+#endif
 }
 static void loadGrowPhase() {
   Preferences prefs;
@@ -243,21 +254,20 @@ static void loadGrowPhase() {
   } else {
     Serial.println(F("WARNUNG: Phasenspeicher nicht lesbar; starte mit WUCHS."));
   }
-  refreshPhaseLeds();
+  refreshPhaseRgb();
   Serial.printf("PHASE: %s | Sollwertprofil: %s\n",
       phaseName(growPhase), phaseProfile().configured ? "bereit" : "FEHLT");
 }
 static void setGrowPhase(GrowPhase next) {
   if (next == growPhase) return;
   growPhase = next;
-  refreshPhaseLeds();
+  refreshPhaseRgb();
   Preferences prefs;
   bool saved = false;
   if (prefs.begin(PHASE_NVS, false)) {
     saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) == sizeof(uint8_t);
     prefs.end();
   }
-  // Beim Wechsel keine veralteten Aktor-Sollwerte der anderen Phase uebernehmen.
   targets = ActuatorState{};
   ++commandSeq;
   Serial.printf("PHASE -> %s | Profil %s | Speicher %s\n",
@@ -265,40 +275,33 @@ static void setGrowPhase(GrowPhase next) {
       saved ? "OK" : "FEHLER");
 }
 static void pollGrowPhaseButtons(unsigned long nowMs) {
-  const bool bothPressed =
-      digitalRead(PIN_PHASE_WUCHS_BUTTON) == LOW &&
-      digitalRead(PIN_PHASE_BLUETE_BUTTON) == LOW;
-  for (uint8_t i = 0; i < 2; ++i) {
-    const bool pressed = digitalRead(PHASE_BUTTON_PINS[i]) == LOW;
-    if (pressed != phaseRaw[i]) {
-      phaseRaw[i] = pressed;
-      phaseChangedMs[i] = nowMs;
-    }
-    if (pressed != phaseStable[i] &&
-        nowMs - phaseChangedMs[i] >= PHASE_DEBOUNCE_MS) {
-      phaseStable[i] = pressed;
-      if (pressed && !bothPressed) {
-        setGrowPhase(i == 0 ? GrowPhase::Wuchs : GrowPhase::Bluete);
-      }
+  const bool pressed = digitalRead(PIN_PHASE_BUTTON) == LOW;
+  if (pressed != phaseRaw) {
+    phaseRaw = pressed;
+    phaseChangedMs = nowMs;
+  }
+  if (pressed != phaseStable &&
+      nowMs - phaseChangedMs >= PHASE_DEBOUNCE_MS) {
+    phaseStable = pressed;
+    if (pressed) {
+      setGrowPhase(growPhase == GrowPhase::Wuchs ? GrowPhase::Bluete : GrowPhase::Wuchs);
     }
   }
 }
 static void setupGrowPhaseButtons() {
-  // Anzeige nach dem Einschalten zunaechst aus, bis die Phase geladen wurde.
-  digitalWrite(PIN_PHASE_WUCHS_LED, LOW);
-  digitalWrite(PIN_PHASE_BLUETE_LED, LOW);
-  pinMode(PIN_PHASE_WUCHS_LED, OUTPUT);
-  pinMode(PIN_PHASE_BLUETE_LED, OUTPUT);
-  pinMode(PIN_PHASE_WUCHS_BUTTON, INPUT_PULLUP);
-  pinMode(PIN_PHASE_BLUETE_BUTTON, INPUT_PULLUP);
-  const unsigned long nowMs = millis();
-  for (uint8_t i = 0; i < 2; ++i) {
-    phaseRaw[i] = phaseStable[i] = digitalRead(PHASE_BUTTON_PINS[i]) == LOW;
-    phaseChangedMs[i] = nowMs;
-  }
+  pinMode(PIN_PHASE_BUTTON, INPUT_PULLUP);
+#if GROW_ENABLE_PHASE_RGB
+  // Logik: OFF bei Kathode LOW, OFF bei Anode HIGH.
+  const uint8_t off = GROW_RGB_COMMON_ANODE ? HIGH : LOW;
+  digitalWrite(PIN_RGB_RED, off);
+  digitalWrite(PIN_RGB_GREEN, off);
+  pinMode(PIN_RGB_RED, OUTPUT);
+  pinMode(PIN_RGB_GREEN, OUTPUT);
+#endif
+  phaseRaw = phaseStable = digitalRead(PIN_PHASE_BUTTON) == LOW;
+  phaseChangedMs = millis();
   loadGrowPhase();
 }
-
 
 /* Nutzersollwerte, getrennt von pH-Alarmgrenzen und Sensor-Kalibrierung.
  * Kein Wochenstartdatum gegeben: keine automatische Fortschaltung.
