@@ -11,7 +11,7 @@ class IoTSensor:
         self.case_temperature = 23.0
         self.humidity = 60
         self.ec = 1.5
-        self.ph = 6.5
+        self.ph = 6.0
         self.light_level = 1000
 
     def read_sensor_data(self) -> dict:
