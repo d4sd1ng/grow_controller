@@ -7,10 +7,11 @@ Grow-Controller fuer Indoor-Salat mit **zwei ESP32**: Sensor-ESP32 mit integrier
 ## Architektur
 
 ```text
-pH / EC / DHT22 / DS18B20 / BH1750
+pH / EC / DHT22 / DS18B20 / BH1750 / MLX90640
                    |
                    v
      Sensor-ESP32 mit OLED und ADS1115
+     OLED+MLX: D21/D22 | ADS+BH: D13/D14 | DS: D32
        (26 x 30 Lochraster, KEINE Relais)
                    |
              WLAN / API
@@ -20,6 +21,8 @@ pH / EC / DHT22 / DS18B20 / BH1750
 Raspberry Pi    CYD-Fernanzeige    ESP32-C3 SuperMini
                                   (getrennter Leistungscontroller)
 ```
+
+**Wiring-Status:** Auf der 26×30-Platine sind eigene Anschlüsse für BH1750 (5-polig, inkl. ADDR), MLX90640 (4-polig, VCC/VIN erst nach Modulprüfung) und DS18B20 (D32) vorgesehen. D13/D14 sind der ADS1115-/BH1750-I2C-Bus; D21/D22 bleiben OLED-/Kamera-Bus.
 
 **Wichtig:** Die Sensor-Firmware ist nun frei von direkter GPIO-Relaissteuerung. Die C3-Anbindung ist noch ausstehend; die Aktoren werden derzeit **nicht** angesteuert. Die 230-V-Seite gehoert in eine fachkundig gepruefte, separate Installation.
 
