@@ -160,6 +160,60 @@ unsigned long lastOtherSensorsMs = 0;
 unsigned long lastOledMs = 0;
 
 
+
+/* pH- und EC-Sollwerte nach Kalenderwoche im Anbauzyklus.
+ * Woche wird bewusst manuell gewaehlt; kein Startdatum vorhanden.
+ * Achtung: EC ist mS/cm (elektrische Leitfaehigkeit), NICHT ppm.
+ */
+struct NutrientTargets {
+  float ph;
+  float ecMsCm;
+};
+static constexpr NutrientTargets NUTRIENT_WEEK_TARGETS[12] = {
+    {6.0f, 1.6f},
+    {5.8f, 1.8f},
+    {5.5f, 2.0f},
+    {5.5f, 2.0f},
+    {5.5f, 2.0f},
+    {5.5f, 2.0f},
+    {5.5f, 2.0f},
+    {5.5f, 2.5f},
+    {5.5f, 1.8f},
+    {5.5f, 1.8f},
+    {5.5f, 0.2f},
+    {5.5f, 0.2f}
+};
+static uint8_t growWeek = 0; // 0 = unbekannt, nicht automatisch annehmen
+static constexpr char GROW_WEEK_NVS[] = "growweek_v1";
+static void loadGrowWeek() {
+  Preferences prefs;
+  if (!prefs.begin(GROW_WEEK_NVS, true)) return;
+  const uint8_t week = prefs.getUChar("week", 0);
+  prefs.end();
+  growWeek = week <= 12 ? week : 0;
+}
+static void printGrowWeek() {
+  if (!growWeek) {
+    Serial.println(F("WOCHE: nicht gewaehlt (k1..k12 zum Setzen)."));
+    return;
+  }
+  const NutrientTargets &t = NUTRIENT_WEEK_TARGETS[growWeek - 1];
+  Serial.printf("WOCHE %u | pH-Soll %.2f | EC-Soll %.2f mS/cm | pH-Alarm <5.5 / >6.2\n",
+                growWeek, t.ph, t.ecMsCm);
+}
+static bool setGrowWeek(int week) {
+  if (week < 1 || week > 12) return false;
+  if (growWeek == static_cast<uint8_t>(week)) return true;
+  Preferences prefs;
+  if (!prefs.begin(GROW_WEEK_NVS, false)) return false;
+  const bool saved = prefs.putUChar("week", static_cast<uint8_t>(week)) == sizeof(uint8_t);
+  prefs.end();
+  if (!saved) return false;
+  growWeek = static_cast<uint8_t>(week);
+  printGrowWeek();
+  return true;
+}
+
 /* Gleiche physische Phasen-Taster und LEDs wie in der Produktions-Firmware.
  * NVS Namespace getrennt von phads_v1/ecads_v1. Nur Auswahl wird gespeichert.
  */
@@ -892,6 +946,7 @@ static void printHelp() {
   Serial.println(F("DS18B20: D32 | DHT22: D25/26/27 | BH1750+ADS: D13/14"));
   Serial.println(F("WUCHS-Taster D16 -> GND, LED D23 -> Vorwiderstand -> GND"));
   Serial.println(F("BLUETE-Taster D19 -> GND, LED D33 -> Vorwiderstand -> GND"));
+  Serial.println(F("WOCHE: k1 bis k12 + Zeilenumbruch -> pH-/EC-Sollwerte im NVS speichern"));
   Serial.println(F("Buzzer-Signal D18 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
   Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
@@ -904,7 +959,7 @@ static void printHelp() {
   Serial.println(F("MLX90640 optional: I2C 0x33 an D21/D22; 10s-Bild-ROI; keine Kalibrierung"));
   Serial.println(F("p = automatischer Alarm-Selbsttest (PASS/FAIL)"));
   Serial.println(F("1 = TEST pH 5.40 -> Alarm UNTER 5.5 auf OLED/Serial"));
-  Serial.println(F("2 = TEST pH 6.60 -> Alarm UEBER 6.5 auf OLED/Serial"));
+  Serial.println(F("2 = TEST pH 6.30 -> Alarm UEBER 6.2 auf OLED/Serial"));
   Serial.println(F("3 = TEST pH 6.00 -> Normalstatus auf OLED/Serial"));
   Serial.println(F("0 = TEST beenden; echte pH-Messung/Alarmanzeige aktiv"));
   Serial.println(F("e = EC kalibrieren: A1 in 1413 uS/cm Referenzloesung, DS18B20 erforderlich"));
@@ -1064,7 +1119,7 @@ struct PhTestMachine {
     PhTestAlarm next = PhTestAlarm::Normal;
     if (ph < 5.5f || (alarm == PhTestAlarm::Low && ph < 5.6f))
       next = PhTestAlarm::Low;
-    else if (ph > 6.5f || (alarm == PhTestAlarm::High && ph > 6.4f))
+    else if (ph > 6.2f || (alarm == PhTestAlarm::High && ph > 6.1f))
       next = PhTestAlarm::High;
     if (next == alarm) { samples = 0; return; }
     if (next != pending) { pending = next; samples = 1; }
@@ -1085,7 +1140,7 @@ static const char *phAlarmLabel(PhTestAlarm a) {
   switch (a) {
     case PhTestAlarm::Normal: return "NORMAL";
     case PhTestAlarm::Low: return "LOW <5.5";
-    case PhTestAlarm::High: return "HIGH >6.5";
+    case PhTestAlarm::High: return "HIGH >6.2";
     default: return "SENSORFEHLER";
   }
 }
@@ -1112,7 +1167,7 @@ static void setPhSimulation(char command) {
     updateLivePhAlarm();
     return;
   }
-  phSimulatedValue = command == '1' ? 5.40f : command == '2' ? 6.60f : 6.00f;
+  phSimulatedValue = command == '1' ? 5.40f : command == '2' ? 6.30f : 6.00f;
   phSimulationActive = true;
   livePhAlarm = PhTestMachine{};
   Serial.printf("[TEST EIN] Simulierter pH %.2f; REALER A0-Wert bleibt unveraendert.\n",
@@ -1230,14 +1285,18 @@ static void runPhAlarmSelfTest() {
   check(sm.alarm == PhTestAlarm::Low, "pH 5.55: LOW bleibt (Hysterese)");
   sm.update(5.61f); sm.update(5.61f); sm.update(5.61f);
   check(sm.alarm == PhTestAlarm::Normal, "pH 5.61 nach 3 Messungen: Normal");
-  sm.update(6.6f); sm.update(6.6f);
-  check(sm.alarm == PhTestAlarm::Normal, "Obergrenze noch nicht nach 2 Messungen");
-  sm.update(6.6f);
-  check(sm.alarm == PhTestAlarm::High, "pH 6.6 nach 3 Messungen: HIGH");
-  sm.update(6.45f);
-  check(sm.alarm == PhTestAlarm::High, "pH 6.45: HIGH bleibt (Hysterese)");
-  sm.update(6.39f); sm.update(6.39f); sm.update(6.39f);
-  check(sm.alarm == PhTestAlarm::Normal, "pH 6.39 nach 3 Messungen: Normal");
+  sm.update(6.2f); sm.update(6.2f); sm.update(6.2f);
+  check(sm.alarm == PhTestAlarm::Normal, "pH 6.20: obere Grenze noch NORMAL");
+  sm.update(6.21f); sm.update(6.21f);
+  check(sm.alarm == PhTestAlarm::Normal, "pH 6.21: HIGH noch nicht nach 2 Messungen");
+  sm.update(6.21f);
+  check(sm.alarm == PhTestAlarm::High, "pH 6.21 nach 3 Messungen: HIGH");
+  sm.update(6.15f);
+  check(sm.alarm == PhTestAlarm::High, "pH 6.15: HIGH bleibt (Hysterese)");
+  sm.update(6.09f); sm.update(6.09f); sm.update(6.09f);
+  check(sm.alarm == PhTestAlarm::Normal, "pH 6.09 nach 3 Messungen: Normal");
+  sm.update(5.5f); sm.update(5.5f); sm.update(5.5f);
+  check(sm.alarm == PhTestAlarm::Normal, "pH 5.50: untere Grenze noch NORMAL");
   sm.update(NAN);
   check(sm.alarm == PhTestAlarm::Fault, "Fehler bei NAN sofort");
   sm.update(6.0f); sm.update(6.0f); sm.update(6.0f);
@@ -1272,6 +1331,10 @@ static void handleSerial() {
       } else {
         captureToPoint(c == 'a' ? 1 : 2, tempC);
       }
+    } else if (c == 'k' || c == 'K') {
+      String input = Serial.readStringUntil('\n');
+      input.trim();
+      if (!setGrowWeek(input.toInt())) Serial.println(F("UNGUELTIG: k1 bis k12."));
     } else if (c == 'p' || c == 'P') {
       runPhAlarmSelfTest();
     } else if (c >= '0' && c <= '3') {
@@ -1297,6 +1360,8 @@ void setup() {
   Serial.begin(115200);
   delay(400);
   setupGrowPhaseButtons();
+  loadGrowWeek();
+  printGrowWeek();
   setupPhBuzzer();
 
   Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL, 100000);
@@ -1367,7 +1432,7 @@ void loop() {
   static unsigned long lastPrint = 0;
   if (now - lastPrint >= 1000) {
     lastPrint = now;
-    Serial.printf("PHASE %s | ", phaseName());
+    Serial.printf("PHASE %s | WOCHE %u | ", phaseName(), growWeek);
     Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | std %.2f mV | A1 TDS %.5f V",
                   adsOk ? "OK" : "--", liveInputV, liveStdV * 1000.0f, liveTdsV);
     if (validTemperature(liveWaterTempC)) Serial.printf(" | DS-Wasser %.2f C", liveWaterTempC);
