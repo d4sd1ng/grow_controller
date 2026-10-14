@@ -468,13 +468,13 @@ static void setPhTestMode(char c) {
   Serial.printf("[pH TEST] Ergebnis: %s (3 simulierte Messungen)\n",
                 phMessage(phTestAlarm));
 }
-static void scanI2CAndBind(); // beide Busse / alle 7-Bit-Adressen
+static void scanI2CAndBind(bool forceFullScan = false); // fester Start; Scan bei Fehler/i
 
 static void handlePhTestSerial() {
   while (Serial.available()) {
     const char c = static_cast<char>(Serial.read());
     if (c >= '0' && c <= '3') setPhTestMode(c);
-    else if (c == 'i' || c == 'I') scanI2CAndBind();
+    else if (c == 'i' || c == 'I') scanI2CAndBind(true);
     else if (c == 'k' || c == 'K') {
       String arg = Serial.readStringUntil('\n');
       arg.trim();
@@ -733,35 +733,51 @@ static bool i2cResponds(TwoWire& bus, uint8_t addr) {
   return bus.endTransmission() == 0;
 }
 
-static void scanI2CAndBind() {
+static void scanI2CAndBind(bool forceFullScan) {
   TwoWire* buses[] = {&bhWire, &Wire};
   const char* names[] = {"D13(SDA)/D14(SCL)", "D21(SDA)/D22(SCL)"};
-  Serial.println(F("\n=== AUTOMATISCHER I2C-SCAN (BEIDE BUSSE, ALLE ADRESSEN) ==="));
-  for (uint8_t b = 0; b < 2; ++b) {
-    Serial.printf("I2C %s: ", names[b]);
-    uint8_t count = 0;
-    for (uint8_t addr = 0x03; addr <= 0x77; ++addr) {
-      if (i2cResponds(*buses[b], addr)) {
-        Serial.printf("0x%02X ", addr);
-        ++count;
-      }
-    }
-    if (!count) Serial.print("kein Geraet");
-    Serial.println();
-  }
+  ads.setGain(GAIN_ONE);
 
+  // Zuerst die frueher funktionierende feste Zuordnung probieren.
+  // Das spart den kompletten I2C-Suchlauf beim regulaeren Start.
   sensors.adsOk = false;
   adsFoundAddr = 0;
   adsFoundBus = "nicht gefunden";
-  ads.setGain(GAIN_ONE);
-  for (uint8_t b = 0; b < 2 && !sensors.adsOk; ++b) {
-    for (uint8_t addr = 0x48; addr <= 0x4B; ++addr) {
-      if (!i2cResponds(*buses[b], addr)) continue;
-      if (ads.begin(addr, buses[b])) {
-        sensors.adsOk = true;
-        adsFoundAddr = addr;
-        adsFoundBus = names[b];
-        break;
+  if (!forceFullScan && ads.begin(0x48, &bhWire)) {
+    sensors.adsOk = true;
+    adsFoundAddr = 0x48;
+    adsFoundBus = names[0];
+    Serial.println(F("ADS1115 Direktstart 0x48 auf D13/D14: OK"));
+  }
+
+  // Nur bei Fehler oder dem expliziten Diagnosebefehl 'i' beide Busse scannen.
+  if (forceFullScan || !sensors.adsOk) {
+    Serial.println(F("\n=== I2C-FEHLERSUCHE (BEIDE BUSSE, ALLE ADRESSEN) ==="));
+    for (uint8_t b = 0; b < 2; ++b) {
+      Serial.printf("I2C %s: ", names[b]);
+      uint8_t count = 0;
+      for (uint8_t addr = 0x03; addr <= 0x77; ++addr) {
+        if (i2cResponds(*buses[b], addr)) {
+          Serial.printf("0x%02X ", addr);
+          ++count;
+        }
+      }
+      if (!count) Serial.print("kein Geraet");
+      Serial.println();
+    }
+
+    sensors.adsOk = false;
+    adsFoundAddr = 0;
+    adsFoundBus = "nicht gefunden";
+    for (uint8_t b = 0; b < 2 && !sensors.adsOk; ++b) {
+      for (uint8_t addr = 0x48; addr <= 0x4B; ++addr) {
+        if (!i2cResponds(*buses[b], addr)) continue;
+        if (ads.begin(addr, buses[b])) {
+          sensors.adsOk = true;
+          adsFoundAddr = addr;
+          adsFoundBus = names[b];
+          break;
+        }
       }
     }
   }
