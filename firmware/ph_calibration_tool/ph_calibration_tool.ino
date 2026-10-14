@@ -1,6 +1,6 @@
 /**
  * Hardware-Diagnose und pH-Kalibrierung auf dem EINZELNEN ESP32.
- * Aufgebaut: OLED GPIO21/22, ADS1115+BH1750 GPIO13/14, DS18B20 GPIO32.
+ * Aufgebaut: OLED GPIO21/22, ADS1115+BH1750 GPIO13/14, DS18B20 GPIO23.
  * Noch nicht angeschlossene Sensoren (3x DHT22 GPIO25/26/27,
  * BH1750 GPIO13/14) werden als FEHLEND angezeigt, ohne die anderen
  * Tests und die pH-Kalibrierung zu blockieren.
@@ -58,9 +58,9 @@
 #include <Adafruit_MLX90640.h>
 #endif
 
-static constexpr uint8_t PIN_DS18B20 = 32; // D32 auf der gegenueberliegenden Stiftleiste
+static constexpr uint8_t PIN_DS18B20 = 23; // D23, 4.7 kOhm Pull-up nach 3V3
 static constexpr uint8_t PIN_PHASE_BUTTON = 16;
-static constexpr uint8_t PIN_RGB_GREEN = 23;
+static constexpr uint8_t PIN_RGB_GREEN = 32;
 static constexpr uint8_t PIN_RGB_RED = 33;
 static constexpr uint8_t PIN_PH_BUZZER = 19; // Buzzer nur reserviert, Typ noch unbekannt
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
@@ -223,7 +223,7 @@ static bool setGrowWeek(int week) {
 }
 
 /* Ein Taster: D16-GND, entprellt, jeder Druck wechselt den NVS-Modus.
- * Eine RGB-LED: D23 Gruen (WUCHS), D33 Rot+Gruen (BLUETE=Gelb).
+ * Eine RGB-LED: D32 Gruen (WUCHS), D33 Rot+Gruen (BLUETE=Gelb).
  * Aktivierung erst nach Pruefung der gemeinsamen RGB-Anode/-Kathode.
  */
 enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
@@ -715,7 +715,7 @@ static void printHardwareStatus() {
     }
     else Serial.println(F("ADS A2 TO: NOCH NICHT VERKABELT/GEPRUEFT"));
   }
-  Serial.printf("DS18B20 GPIO32: %u Geraet(e) | Wasser: %.2f C | ROM-Zuordnung: %s\n",
+  Serial.printf("DS18B20 GPIO23: %u Geraet(e) | Wasser: %.2f C | ROM-Zuordnung: %s\n",
                 static_cast<unsigned>(oneWireCount), liveWaterTempC,
                 waterSensorRomSelected ? "gespeichert" : (oneWireCount == 1 ? "ein Sensor" : "fehlt"));
   if (validTemperature(liveTempC)) Serial.printf(" DS #1: %.2f C\n", liveTempC);
@@ -955,9 +955,9 @@ static void printHelp() {
   Serial.println();
   Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
   Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D13, SCL=D14 (mit BH1750)"));
-  Serial.println(F("DS18B20: D32 | DHT22: D25/26/27 | BH1750+ADS: D13/14"));
+  Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | BH1750+ADS: D13/14"));
   Serial.println(F("PHASE-Taster D16 -> GND: pro Druck WUCHS/BLUETE umschalten"));
-  Serial.println(F("RGB: Gruen D23, Rot D33, je 470 Ohm; Common-Typ pruefen"));
+  Serial.println(F("RGB: Gruen D32, Rot D33, je 440 Ohm (2x220); gemeinsame Kathode GND"));
   Serial.println(F("WOCHE: k1 bis k12 + Zeilenumbruch -> pH-/EC-Sollwerte im NVS speichern"));
   Serial.println(F("Buzzer-Signal D19 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
   Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
@@ -1422,7 +1422,7 @@ void setup() {
   if (!nvsReadable) Serial.println(F("WARNUNG: ADS-Kalibrierspeicher nicht lesbar."));
   if (!adsOk) Serial.println(F("WARNUNG: ADS1115 auf 0x48 nicht erkannt."));
   if (!oledOk) Serial.println(F("WARNUNG: SSD1306-OLED auf 0x3C nicht erkannt."));
-  if (!tempSensorPresent) Serial.println(F("WARNUNG: DS18B20 auf D32 nicht erkannt."));
+  if (!tempSensorPresent) Serial.println(F("WARNUNG: DS18B20 auf D23 nicht erkannt."));
   if (!bhOk) Serial.println(F("BH1750 noch nicht angeschlossen oder nicht erkannt."));
   if (havePh7 || havePh4) printCalibration();
   printHardwareStatus();
