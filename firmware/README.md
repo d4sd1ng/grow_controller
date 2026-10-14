@@ -6,7 +6,7 @@
 |---|---|---|
 | `growroom_telemetry_client` | Sensor-ESP32 mit OLED, **26×30-Lochraster** | 3x DHT22, DS18B20, ADS1115 pH/EC, BH1750; **keine Relais-GPIOs**, HTTP-API, Telemetrie |
 | `ph_calibration_tool` | derselbe ESP32, temporär geflasht | Hardwarediagnose aller Sensortypen und pH-7-/pH-4-Kalibrierung ueber ADS1115 A0 |
-| `ds18b20_diagnostic` | derselbe ESP32, temporär geflasht | 1-Wire-Diagnose auf GPIO32 |
+| `ds18b20_diagnostic` | derselbe ESP32, temporär geflasht | 1-Wire-Diagnose auf GPIO23 |
 | `cyd_remote_control` | vorhandenes CYD | primaere Fernbedienung |
 | `cyd_grow_display` | dasselbe CYD, alternative Firmware | alternative LVGL-Oberflaeche |
 | `powerbox_actuator` | Legacy-Leistungscode | **nicht** als ESP32-C3-Firmware verwenden; C3-Programm und WLAN-Anbindung noch offen |
@@ -17,13 +17,13 @@
 |---:|---|
 | 21/22 | Internes OLED + MLX90640-Kamera (I2C A: 0x3C / 0x33) |
 | 13/14 | ADS1115 + BH1750 (I2C B: 0x48 / 0x23) |
-| 32 | DS18B20-Datenbus (4,7-kΩ-Pull-up nach 3,3 V) |
+| 23 | DS18B20-Datenbus (4,7-kΩ-Pull-up nach 3,3 V) |
 | ADS1115 A0 | PH4502C PO pH (kalibriert, unverändert) |
 | ADS1115 A1 | CQRobot TDS/EC-Signal |
 | 25/26/27 | DHT22 #1/#2/#3 |
 | 16 | **Ein 4-Pin-Taster**, zwischen D16 und GND (je einen Kontakt aus verschiedenen Schaltpaaren) |
-| 23 | **RGB-LED Grün**, eigener 470-Ω-Vorwiderstand |
-| 33 | **RGB-LED Rot**, eigener 470-Ω-Vorwiderstand |
+| 32 | **RGB-LED Grün**, 440 Ω Vorwiderstand (2×220 Ω in Reihe) |
+| 33 | **RGB-LED Rot**, 440 Ω Vorwiderstand (2×220 Ω in Reihe) |
 | 19 | **pH-Buzzer-Steuerpin reserviert**, optionaler Treiber, deaktiviert |
 | RGB-Blau | Nicht angeschlossen |
 | 18 | **Nicht herausgeführt** am vom Nutzer abgelesenen ESP32-Board |
@@ -33,7 +33,7 @@
 ### Bedienfeld: ein 4-Pin-Taster, eine 4-Pin-RGB-LED, ein 2-Pin-Buzzer
 
 - **Taster** zwischen GPIO16 und GND; bei einem vierbeinigen Taster dürfen die zwei gewählten Kontakte **ohne Tastendruck nicht verbunden** sein. Jeden Tastendruck als Moduswechsel WUCHS ↔ BLÜTE behandeln, 50 ms Entprellung; Auswahl bleibt im NVS (`growphase_v1`) gespeichert.
-- **RGB-LED:** Grün über 470 Ω an GPIO23, Rot über einen eigenen 470-Ω-Widerstand an GPIO33, Blau frei. **Gemeinsame Kathode:** gemeinsamer Anschluss nach GND, HIGH schaltet Farbe ein. **Gemeinsame Anode:** gemeinsamer Anschluss nach 3V3, LOW schaltet Farbe ein. Gemeinsamen LED-Anschluss und R/G-Pins erst am tatsächlichen Bauteil identifizieren. **Grün = WUCHS**, **Rot+Grün = Gelb = BLÜTE**. Feature bis zur Prüfung deaktiviert (`GROW_ENABLE_PHASE_RGB=0`, `GROW_RGB_COMMON_ANODE` nach Bauart einstellen).
+- **RGB-LED:** Grün über 440 Ω (2×220 Ω in Reihe) an GPIO32, Rot über eigene 440 Ω (2×220 Ω in Reihe) an GPIO33, Blau frei. **Gemeinsame Kathode an GND** (vom Nutzer bestätigt), HIGH schaltet Farbe ein. **Grün = WUCHS**, **Rot+Grün = Gelb = BLÜTE**. Nach Umverdrahtung `GROW_ENABLE_PHASE_RGB=1` setzen; `GROW_RGB_COMMON_ANODE=0` bleibt eingestellt. Bis zur Umverdrahtung ist RGB in den Sketches deaktiviert.
 - **Zweipoliger Buzzer aus Sensor-Kit:** **GPIO19** als Steuersignal, Platz für **zweipoligen Buzzer-Stecker und Transistortreiber** reservieren. Keine Annahme zur Spannung oder aktiv/passiv aus der Anschlusszahl ableiten, daher **noch nicht direkt an GPIO anschließen**. Das bislang für aktive Buzzer vorgesehene Alarmsignal ist deaktiviert (`GROW_ENABLE_PH_BUZZER=0`) und braucht ggf. Anpassung auf PWM bei passivem Piezo.
 - Im Produktionssketch stehen unter `control.phase` sowie `phase` in Telemetrie der gespeicherte Zustand; **BLÜTE** hat bislang kein definiertes Klimasollwertprofil, also bleibt die automatische Klimaregelung dafür gesperrt. Die wochenabhängigen pH-/EC-Sollwerte sind unabhängig vom Taster; die pH-Alarmgrenzen bleiben 5,5–6,2.
 
@@ -108,7 +108,7 @@ Der CQRobot-TDS-Sensor liegt am ADS1115 A1. Sein EC/TDS-Wert wird fuer die Bezug
 - Drei aufeinanderfolgende Abfragen zur Bestaetigung von Alarmzustaenden, 0,1 pH Hysterese.
 - OLED, beide CYD-Anzeigen, lokale Zusammenfassung (`reading.ph_alarm`) und Server-Telemetrie zeigen den Status; Statuswechsel werden an `/api/v1/alerts` gesendet.
 - Der Kalibriersketch speichert pH7/pH4 **und die jeweils gemessene DS18B20-Wassertemperatur** in `phads_v1`; die produktive Firmware liest beides. Der pH-Wert erhaelt eine Steilheitskorrektur nach Nernst mit der aktuell gemessenen DS18B20-Wassertemperatur, wenn beide Kalibriertemperaturen gueltig und nahe beieinander sind. Ansonsten wird der pH-Wert unkompensiert angezeigt (`ph_temperature_compensated=false`), keine 25-Grad-Substitution. Bei alter pH-Kalibrierung ohne DS: beide Pufferpunkte nach Anschluss des Wasser-DS erneut erfassen.
-- TO und DO der PH4502C werden **nicht** gebraucht. Wassertemperatur ausschliesslich ueber DS18B20, vorerst noch nicht lieferbar. `PH_DO_WIRED=false` und `PH_TO_WIRED=false` bleiben gesetzt. pH-Alarm beruht nur auf dem kalibrierten PO-Signal.
+- TO und DO der PH4502C werden **nicht** gebraucht. Wassertemperatur ausschliesslich ueber den einen DS18B20 auf GPIO23 (zuvor auf GPIO32 erfolgreich getestet). `PH_DO_WIRED=false` und `PH_TO_WIRED=false` bleiben gesetzt. pH-Alarm beruht nur auf dem kalibrierten PO-Signal.
 
 ## Lokale HTTP-API, Port 8081
 
