@@ -31,6 +31,16 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* Buzzer-Typ unbekannt. Kein GPIO-Signal, bis ein passendes aktives
+ * 3,3-V-kompatibles Modul verifiziert wurde. Passiv-Piezo erfordert PWM.
+ */
+#ifndef GROW_ENABLE_PH_BUZZER
+#define GROW_ENABLE_PH_BUZZER 0
+#endif
+#ifndef GROW_PH_BUZZER_ACTIVE_HIGH
+#define GROW_PH_BUZZER_ACTIVE_HIGH 1
+#endif
+
 // Optional: MLX90640 nach Lieferung + Adafruit_MLX90640-Library aktivieren.
 #ifndef GROW_ENABLE_MLX90640
 #define GROW_ENABLE_MLX90640 0
@@ -44,6 +54,7 @@ static constexpr uint8_t PIN_PHASE_WUCHS_BUTTON = 16;
 static constexpr uint8_t PIN_PHASE_BLUETE_BUTTON = 19;
 static constexpr uint8_t PIN_PHASE_WUCHS_LED = 23;
 static constexpr uint8_t PIN_PHASE_BLUETE_LED = 33;
+static constexpr uint8_t PIN_PH_BUZZER = 18; // reserviert, erst nach Modulpruefung anschliessen
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 // TO erst aktivieren, nachdem sein maximaler Ausgangspegel nachweislich <= ADS-VDD (3.3 V) ist.
 static constexpr bool PH_TO_WIRED = false;
@@ -881,6 +892,7 @@ static void printHelp() {
   Serial.println(F("DS18B20: D32 | DHT22: D25/26/27 | BH1750+ADS: D13/14"));
   Serial.println(F("WUCHS-Taster D16 -> GND, LED D23 -> Vorwiderstand -> GND"));
   Serial.println(F("BLUETE-Taster D19 -> GND, LED D33 -> Vorwiderstand -> GND"));
+  Serial.println(F("Buzzer-Signal D18 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
   Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
@@ -1110,6 +1122,44 @@ static void setPhSimulation(char command) {
                 phAlarmLabel(livePhAlarm.alarm));
 }
 
+
+/* Akustische pH-Alarmwarnung, nicht blockierend.
+ * LOW: 2 Impulse / 5s, HIGH: 3 Impulse / 5s, Fehler: 1 / 10s.
+ * Mit '1', '2', '3', '0' kann die Ansteuerlogik getestet werden,
+ * sobald ein kompatibles aktives Modul angeschlossen und freigegeben wurde.
+ */
+static void setupPhBuzzer() {
+#if GROW_ENABLE_PH_BUZZER
+  digitalWrite(PIN_PH_BUZZER, GROW_PH_BUZZER_ACTIVE_HIGH ? LOW : HIGH);
+  pinMode(PIN_PH_BUZZER, OUTPUT);
+#endif
+}
+static void updatePhBuzzer(unsigned long nowMs) {
+#if GROW_ENABLE_PH_BUZZER
+  const PhTestAlarm alarm = livePhAlarm.alarm;
+  static PhTestAlarm last = PhTestAlarm::Normal;
+  static unsigned long sinceMs = 0;
+  if (alarm != last) {
+    last = alarm;
+    sinceMs = nowMs;
+  }
+  const unsigned long slot = (nowMs - sinceMs) %
+                             (alarm == PhTestAlarm::Fault ? 10000UL : 5000UL);
+  bool sound = false;
+  if (alarm == PhTestAlarm::Low)
+    sound = slot < 180UL || (slot >= 330UL && slot < 510UL);
+  else if (alarm == PhTestAlarm::High)
+    sound = slot < 180UL || (slot >= 330UL && slot < 510UL) ||
+            (slot >= 660UL && slot < 840UL);
+  else if (alarm == PhTestAlarm::Fault)
+    sound = slot < 120UL;
+  digitalWrite(PIN_PH_BUZZER,
+               sound == (GROW_PH_BUZZER_ACTIVE_HIGH != 0) ? HIGH : LOW);
+#else
+  (void)nowMs;
+#endif
+}
+
 static void drawOled() {
   if (!oledOk) return;
   display.clearDisplay();
@@ -1247,6 +1297,7 @@ void setup() {
   Serial.begin(115200);
   delay(400);
   setupGrowPhaseButtons();
+  setupPhBuzzer();
 
   Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL, 100000);
   oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
@@ -1312,6 +1363,7 @@ void loop() {
   updateLivePhAlarm();
 
   const unsigned long now = millis();
+  updatePhBuzzer(now);
   static unsigned long lastPrint = 0;
   if (now - lastPrint >= 1000) {
     lastPrint = now;
