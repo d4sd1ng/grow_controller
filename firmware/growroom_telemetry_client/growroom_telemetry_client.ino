@@ -1,7 +1,7 @@
 /**
  * Grow Controller: Sensor-ESP32 mit OLED und ADS1115.
  *
- * - 3x DHT22, DS18B20 (D23), ADS1115 + BH1750 (D13/D14), OLED (D21/D22)
+ * - 3x DHT22, DS18B20 (D23), ADS1115 + OLED (D21/D22), BH1750 (D13/D14)
  * - Kamera MLX90640 (optional) am OLED-I2C D21/D22 (0x33)
  * - HTTP-API fuer CYD/Raspberry Pi, Telemetrie und pH-Alarm
  * - Zweites Geraet: ESP32-C3 SuperMini als eigenstaendiger Leistungscontroller.
@@ -154,7 +154,7 @@ Adafruit_SSD1306 display(128, 64, &Wire, OLED_RESET);
 bool oledOk = false;
 Adafruit_ADS1115 ads;
 
-/* ADS1115 + BH1750 gemeinsam am zweiten I2C-Controller D13/D14 */
+/* ADS1115 + OLED auf Wire D21/D22, BH1750 separat auf zweitem I2C-Controller D13/D14 */
 TwoWire bhWire = TwoWire(1);
 static uint8_t bh1750Addr = 0;
 static bool bh1750Present = false;
@@ -726,8 +726,8 @@ static void applyActuators() {
 
 /* ---------- BH1750 ---------- */
 
-// Beim Start beide physisch genutzten I2C-Busse und alle 7-Bit-Adressen abfragen.
-// Verfuegbare ADS1115-Adressen 0x48-0x4B werden auf beiden Bussen ausprobiert.
+// Feste Zuordnung wiederhergestellt: ADS1115 D21/D22, BH1750 D13/D14.
+// Bus-Adressscan dient nur zur Diagnose und bindet Module nicht um.
 static bool i2cResponds(TwoWire& bus, uint8_t addr) {
   bus.beginTransmission(addr);
   return bus.endTransmission() == 0;
@@ -760,7 +760,7 @@ static void scanI2CAndBind(bool forceFullScan) {
     break;
   }
   if (bh1750Present)
-    Serial.printf("BH1750 GEFUNDEN: 0x%02X auf D13/D14\\n", bh1750Addr);
+    Serial.printf("BH1750 GEFUNDEN: 0x%02X auf D13/D14\n", bh1750Addr);
   else
     Serial.println(F("BH1750 nicht gefunden: 0x23/0x5C auf D13/D14"));
 
