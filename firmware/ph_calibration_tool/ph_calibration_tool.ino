@@ -382,25 +382,41 @@ static bool i2cResponds(TwoWire& bus, uint8_t addr) {
 }
 
 static void scanI2CAndBind(bool forceFullScan = false) {
-  TwoWire* buses[] = {&bhWire, &Wire};
-  const char* names[] = {"D13(SDA)/D14(SCL)", "D21(SDA)/D22(SCL)"};
+  // Urspruengliche feste Zuordnung:
+  // ADS1115 mit OLED auf Wire / GPIO21 SDA + GPIO22 SCL, ADDR=GND (0x48).
+  // BH1750 getrennt auf bhWire / GPIO13 SDA + GPIO14 SCL.
+  // I2C-Scan ist reine Diagnose und darf ADS/BH nicht auf andere Busse umbinden.
   ads.setGain(GAIN_ONE);
+  adsOk = ads.begin(0x48, &Wire);
+  adsFoundAddr = adsOk ? 0x48 : 0;
+  adsFoundBus = adsOk ? "D21(SDA)/D22(SCL)" : "nicht gefunden";
+  if (adsOk)
+    Serial.println(F("ADS1115 GEFUNDEN: 0x48 auf D21/D22 (OLED-Bus)"));
+  else
+    Serial.println(F("ADS1115 NICHT GEFUNDEN: 0x48 auf D21/D22"));
 
-  // Zuerst die frueher funktionierende feste Zuordnung probieren.
-  // Das spart den kompletten I2C-Suchlauf beim regulaeren Start.
-  adsOk = false;
-  adsFoundAddr = 0;
-  adsFoundBus = "nicht gefunden";
-  if (!forceFullScan && ads.begin(0x48, &bhWire)) {
-    adsOk = true;
-    adsFoundAddr = 0x48;
-    adsFoundBus = names[0];
-    Serial.println(F("ADS1115 Direktstart 0x48 auf D13/D14: OK"));
+  bhOk = false;
+  bhAddress = 0;
+  bhFoundBus = "nicht gefunden";
+  bhSelectedWire = &bhWire;
+  const uint8_t bhAddresses[] = {0x23, 0x5C};
+  for (uint8_t addr : bhAddresses) {
+    if (!i2cResponds(bhWire, addr)) continue;
+    bhOk = true;
+    bhAddress = addr;
+    bhFoundBus = "D13(SDA)/D14(SCL)";
+    break;
   }
+  if (bhOk)
+    Serial.printf("BH1750 GEFUNDEN: 0x%02X auf D13/D14\\n", bhAddress);
+  else
+    Serial.println(F("BH1750 nicht gefunden: 0x23/0x5C auf D13/D14"));
 
-  // Nur bei Fehler oder dem expliziten Diagnosebefehl 'i' beide Busse scannen.
   if (forceFullScan || !adsOk) {
-    Serial.println(F("\n=== I2C-FEHLERSUCHE (BEIDE BUSSE, ALLE ADRESSEN) ==="));
+    // Nur anzeigen, keine automatische Neuzuordnung der Sensoren.
+    TwoWire* buses[] = {&Wire, &bhWire};
+    const char* names[] = {"D21(SDA)/D22(SCL)", "D13(SDA)/D14(SCL)"};
+    Serial.println(F("=== I2C-DIAGNOSE: ADDRESSEn AUF BEIDEN BUSSEN ==="));
     for (uint8_t b = 0; b < 2; ++b) {
       Serial.printf("I2C %s: ", names[b]);
       uint8_t count = 0;
@@ -413,45 +429,7 @@ static void scanI2CAndBind(bool forceFullScan = false) {
       if (!count) Serial.print("kein Geraet");
       Serial.println();
     }
-
-    adsOk = false;
-    adsFoundAddr = 0;
-    adsFoundBus = "nicht gefunden";
-    for (uint8_t b = 0; b < 2 && !adsOk; ++b) {
-      for (uint8_t addr = 0x48; addr <= 0x4B; ++addr) {
-        if (!i2cResponds(*buses[b], addr)) continue;
-        if (ads.begin(addr, buses[b])) {
-          adsOk = true;
-          adsFoundAddr = addr;
-          adsFoundBus = names[b];
-          break;
-        }
-      }
-    }
   }
-  if (adsOk)
-    Serial.printf("ADS1115 GEFUNDEN: 0x%02X auf %s\n", adsFoundAddr, adsFoundBus);
-  else
-    Serial.println(F("ADS1115 NICHT GEFUNDEN (0x48-0x4B auf beiden Bussen)"));
-
-  bhOk = false;
-  bhAddress = 0;
-  bhFoundBus = "nicht gefunden";
-  const uint8_t bhAddresses[] = {0x23, 0x5C};
-  for (uint8_t b = 0; b < 2 && !bhOk; ++b) {
-    for (uint8_t addr : bhAddresses) {
-      if (!i2cResponds(*buses[b], addr)) continue;
-      bhOk = true;
-      bhAddress = addr;
-      bhSelectedWire = buses[b];
-      bhFoundBus = names[b];
-      break;
-    }
-  }
-  if (bhOk)
-    Serial.printf("BH1750 GEFUNDEN: 0x%02X auf %s\n", bhAddress, bhFoundBus);
-  else
-    Serial.println(F("BH1750 nicht gefunden (0x23/0x5C auf beiden Bussen)"));
 }
 
 static float readBh1750() {
@@ -1024,14 +1002,14 @@ static bool clearCalibration() {
 static void printHelp() {
   Serial.println();
   Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
-  Serial.println(F("ADS1115: A0=PO pH, A1=TDS; I2C-Suche D13/14 + D21/22, 0x48-0x4B"));
-  Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | I2C automatisch auf beiden Bussen"));
+  Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D21, SCL=D22, 0x48"));
+  Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | ADS D21/22, BH D13/14"));
   Serial.println(F("PHASE-Taster D16 -> GND: pro Druck WUCHS/BLUETE umschalten"));
   Serial.println(F("RGB: Gruen D32, Rot D33, je 440 Ohm (2x220); gemeinsame Kathode GND"));
   Serial.println(F("WOCHE: k1 bis k12 + Zeilenumbruch -> pH-/EC-Sollwerte im NVS speichern"));
   Serial.println(F("Buzzer-Signal D19 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
   Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
-  Serial.println(F("i = beide I2C-Busse komplett neu scannen und Sensoren zuordnen"));
+  Serial.println(F("i = I2C-Adressen auf beiden Bussen anzeigen (ohne Neuzuordnung)"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
   Serial.printf("pH-Puffer-Temperatur: %.1f C | PH4502C PO-Soll bei pH7: %.2f V\n",
@@ -1495,7 +1473,7 @@ void setup() {
   const bool nvsReadable = loadCalibration();
   printHelp();
   if (!nvsReadable) Serial.println(F("WARNUNG: ADS-Kalibrierspeicher nicht lesbar."));
-  if (!adsOk) Serial.println(F("WARNUNG: ADS1115 auf keinem der beiden I2C-Busse (0x48-0x4B) erkannt."));
+  if (!adsOk) Serial.println(F("WARNUNG: ADS1115 auf D21/D22 (0x48) nicht erkannt."));
   if (!oledOk) Serial.println(F("WARNUNG: SSD1306-OLED auf 0x3C nicht erkannt."));
   if (!tempSensorPresent) Serial.println(F("WARNUNG: DS18B20 auf D23 nicht erkannt."));
   if (!bhOk) Serial.println(F("BH1750 noch nicht angeschlossen oder nicht erkannt."));
