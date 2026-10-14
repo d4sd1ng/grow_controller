@@ -834,6 +834,10 @@ static void updateTemperature(bool force = false) {
   if (!force && now - lastTempMs < TEMP_INTERVAL_MS) return;
   lastTempMs = now;
 
+  // DallasTemperature zaehlt Sensoren bei begin(). Nach 0 Treffern
+  // die Bus-Suche erneut ausfuehren, damit ein spaeter verbundener DS
+  // ohne erneutes Flashen erkannt wird.
+  if (temperatureSensors.getDeviceCount() == 0) temperatureSensors.begin();
   temperatureSensors.requestTemperatures();
   oneWireCount = temperatureSensors.getDeviceCount();
   const float t = oneWireCount > 0 ? temperatureSensors.getTempCByIndex(0) : NAN;
@@ -841,12 +845,15 @@ static void updateTemperature(bool force = false) {
   liveTempC = validTemperature(t) ? t : NAN;
   liveTemp2C = validTemperature(t2) ? t2 : NAN;
   tempSensorPresent = validTemperature(liveTempC);
-  // Nur eine vorhandene Sonde: automatisch Wasser. Bei mehreren eindeutige ROM erforderlich.
-  if (waterSensorRomSelected) {
+  // GENAU ein DS18B20 ist immer der Wassertemperatursensor.
+  // Eine veraltete ROM in NVS darf keinen neu eingesetzten Sensor blockieren.
+  if (oneWireCount == 1) {
+    liveWaterTempC = liveTempC;
+  } else if (oneWireCount > 1 && waterSensorRomSelected) {
     const float tWater = temperatureSensors.getTempC(waterSensorRom);
     liveWaterTempC = validTemperature(tWater) ? tWater : NAN;
   } else {
-    liveWaterTempC = oneWireCount == 1 ? liveTempC : NAN;
+    liveWaterTempC = NAN;
   }
 }
 
