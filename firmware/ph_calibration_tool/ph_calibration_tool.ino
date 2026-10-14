@@ -1,6 +1,6 @@
 /**
  * Hardware-Diagnose und pH-Kalibrierung auf dem EINZELNEN ESP32.
- * Aufgebaut: OLED GPIO21/22, ADS1115 A0 pH / A1 TDS, DS18B20 GPIO23.
+ * Aufgebaut: OLED GPIO21/22, ADS1115+BH1750 GPIO13/14, DS18B20 GPIO32.
  * Noch nicht angeschlossene Sensoren (3x DHT22 GPIO25/26/27,
  * BH1750 GPIO13/14) werden als FEHLEND angezeigt, ohne die anderen
  * Tests und die pH-Kalibrierung zu blockieren.
@@ -39,9 +39,7 @@
 #include <Adafruit_MLX90640.h>
 #endif
 
-static constexpr uint8_t PIN_DS18B20 = 23;
-static constexpr uint8_t PIN_PH_DO = 32;
-static constexpr bool PH_DO_WIRED = false; // erst nach 3.3-V-Pegelpruefung aktivieren
+static constexpr uint8_t PIN_DS18B20 = 32; // D32 auf der gegenueberliegenden Stiftleiste
 // TO erst aktivieren, nachdem sein maximaler Ausgangspegel nachweislich <= ADS-VDD (3.3 V) ist.
 static constexpr bool PH_TO_WIRED = false;
 static constexpr uint8_t PIN_OLED_SDA = 21;
@@ -122,7 +120,6 @@ float ecReferenceInputV = NAN;
 bool ecCalibrated = false;
 float liveToV = NAN;
 float liveToStdV = NAN;
-bool liveDoHigh = false;
 float toPointV[2] = {NAN, NAN};
 float toPointC[2] = {NAN, NAN};
 bool toPointSet[2] = {false, false};
@@ -574,8 +571,7 @@ static void printHardwareStatus() {
     }
     else Serial.println(F("ADS A2 TO: NOCH NICHT VERKABELT/GEPRUEFT"));
   }
-  Serial.printf("PH4502C DO GPIO32: %s\n", PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "NICHT VERKABELT/DEAKTIVIERT");
-  Serial.printf("DS18B20 GPIO23: %u Geraet(e) | Wasser: %.2f C | ROM-Zuordnung: %s\n",
+  Serial.printf("DS18B20 GPIO32: %u Geraet(e) | Wasser: %.2f C | ROM-Zuordnung: %s\n",
                 static_cast<unsigned>(oneWireCount), liveWaterTempC,
                 waterSensorRomSelected ? "gespeichert" : (oneWireCount == 1 ? "ein Sensor" : "fehlt"));
   if (validTemperature(liveTempC)) Serial.printf(" DS #1: %.2f C\n", liveTempC);
@@ -807,9 +803,8 @@ static bool clearCalibration() {
 static void printHelp() {
   Serial.println();
   Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
-  Serial.println(F("ADS1115: A0 = PO pH, A1 = TDS, A2 = TO (roh); SDA D21, SCL D22"));
-  Serial.println(F("PH4502C DO: GPIO32 (nur 3.3V-sicher, anfangs deaktiviert)"));
-  Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | BH1750: D13/14"));
+  Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D13, SCL=D14 (mit BH1750)"));
+  Serial.println(F("DS18B20: D32 | DHT22: D25/26/27 | BH1750+ADS: D13/14"));
   Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
@@ -960,7 +955,6 @@ static void updateLive() {
     liveToV = NAN;
     liveToStdV = NAN;
   }
-  if (PH_DO_WIRED) liveDoHigh = digitalRead(PIN_PH_DO) == HIGH;
 }
 
 /* Reiner pH-Alarm-Selbsttest: identische Schwellen/Hysterese/Bestaetigung
@@ -1188,13 +1182,11 @@ void setup() {
   }
 
   ads.setGain(GAIN_ONE);
-  adsOk = ads.begin(ADS_ADDR, &Wire);
-  initMlx90640();
-
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
+  adsOk = ads.begin(ADS_ADDR, &bhWire);
+  initMlx90640();
   scanBh1750();
   dht1.begin(); dht2.begin(); dht3.begin();
-  if (PH_DO_WIRED) pinMode(PIN_PH_DO, INPUT);
 
   temperatureSensors.begin();
   loadWaterSensorRom();
@@ -1223,7 +1215,7 @@ void setup() {
   if (!nvsReadable) Serial.println(F("WARNUNG: ADS-Kalibrierspeicher nicht lesbar."));
   if (!adsOk) Serial.println(F("WARNUNG: ADS1115 auf 0x48 nicht erkannt."));
   if (!oledOk) Serial.println(F("WARNUNG: SSD1306-OLED auf 0x3C nicht erkannt."));
-  if (!tempSensorPresent) Serial.println(F("WARNUNG: DS18B20 auf D23 nicht erkannt."));
+  if (!tempSensorPresent) Serial.println(F("WARNUNG: DS18B20 auf D32 nicht erkannt."));
   if (!bhOk) Serial.println(F("BH1750 noch nicht angeschlossen oder nicht erkannt."));
   if (havePh7 || havePh4) printCalibration();
   printHardwareStatus();
@@ -1255,10 +1247,9 @@ void loop() {
     if (ecCalibrated && validTemperature(liveWaterTempC))
       Serial.printf(" | EC %.3f mS/cm@25C (DS %.2fC)", ecFromVoltage(liveTdsV, liveWaterTempC), liveWaterTempC);
     else Serial.print(F(" | EC -- (Kalibrierung/DS fehlt)"));
-    Serial.printf(" | A1 RohStd %.1f mV | TO A2 %.4f V | Gehaeuse %.2f C | pH-TK %s | DO %s",
-      liveTdsStdV * 1000.0f, liveToV, toCaseTempC(liveToV),
-      phTemperatureCompensationReady() ? "DS" : "--",
-      PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "--");
+    Serial.printf(" | A1 RohStd %.1f mV | pH-TK %s",
+      liveTdsStdV * 1000.0f,
+      phTemperatureCompensationReady() ? "DS" : "--");
     if (mlx90640Ok) Serial.printf(" | MLX ROI %.1f C | BlattVPD-Kandidat %.3f kPa",
                                 thermalRoiTempC, leafVpdCandidate);
     else Serial.print(F(" | MLX --"));
