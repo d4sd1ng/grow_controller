@@ -36,7 +36,7 @@ Vollstaendig: [../wiring_plan_v2.md](../wiring_plan_v2.md).
 ### Bedienfeld: Wachstums-/Blütephase und akustische pH-Warnung
 
 - Die beiden Schließer `WUCHS` und `BLÜTE` werden separat eingelesen, mit 50 ms entprellt und als genau ein aktiver Modus behandelt. Die jeweilige LED zeigt dauerhaft die gespeicherte Phase; auch der OLED-Status wechselt. NVS-Speicher: `growphase_v1`.
-- Die Produktions-Firmware liefert die Phase unter `control.phase`, `phase` in der Telemetrie sowie den Status `phase_profile_configured`. Die bisherigen Wuchs-Klimasollwerte (24 °C und 60 % rF) bleiben zunächst als Wuchs-Profil vorhanden. Für **BLÜTE** liegen noch keine vereinbarten Sollwerte vor: Die Automatik verwendet **keinen** erfundenen Ersatz. pH-Schwellen bleiben bei 5,5/6,5 bis neue Grenzwerte ausdrücklich festgelegt wurden.
+- Die Produktions-Firmware liefert die Phase unter `control.phase`, `phase` in der Telemetrie sowie den Status `phase_profile_configured`. Die bisherigen Wuchs-Klimasollwerte (24 °C und 60 % rF) bleiben zunächst als Wuchs-Profil vorhanden. Für **BLÜTE** liegen noch keine vereinbarten Sollwerte vor: Die Automatik verwendet **keinen** erfundenen Ersatz. pH-Alarmgrenzen sind jetzt fest auf 5,5/6,2 eingestellt; Wochen-pH-Ziele sind eine separate Größe.
 - Der pH-Buzzer ist im Programm **vorbereitet, aber deaktiviert** (`GROW_ENABLE_PH_BUZZER=0`). `GPIO18` ist ausschließlich als optionaler Buzzer-Signalpin vorgemerkt. Bei aktivem, kompatiblem Buzzer: LOW zwei kurze Signale / 5 s; HIGH drei / 5 s; Sensorfehler ein kurzer Hinweis / 10 s. Bei NORMAL schweigt der Buzzer. Die Softwaretests `1/2/3` sollen dasselbe Muster auslösen.
 - **Noch kein Anschluss:** erst aktiven/passiven Typ, Betriebsspannung, erforderlichen Eingangsstrom und Ansteuerpolarität prüfen; ggf. Treiberschaltung. Unbekannte Buzzer nicht direkt an ESP32-GPIO anschließen. Die tatsächliche GPIO18-Stiftposition auf dem verwendeten OLED-ESP32 prüfen.
 
@@ -48,7 +48,7 @@ Arduino Serial Monitor **115200 Baud**:
 - `t`: vollstaendige Hardwarediagnose
 - `p`: automatischer pH-Alarm-Selbsttest (PASS/FAIL) im Kalibriersketch
 - `1`: pH **5,40** simulieren -> Alarm **LOW** (<5,5)
-- `2`: pH **6,60** simulieren -> Alarm **HIGH** (>6,5)
+- `2`: pH **6,30** simulieren -> Alarm **HIGH** (>6,2)
 - `3`: pH **6,00** simulieren -> **NORMAL**
 - `0`: Testmodus beenden, echte pH-Messung und Alarmanzeige fortsetzen
 - Die Befehle `0`–`3` funktionieren **im Kalibrier- und im Produktionssketch** ueber den seriellen Monitor mit 115200 Baud. Testwerte bleiben von den realen pH-/ADS-Messwerten, der NVS-Kalibrierung und den SSR-Ausgaengen getrennt. Auf dem OLED steht `TEST`, solange ein Wert simuliert wird. Die Produktions-Firmware uebermittelt simulierte Zustandswechsel mit dem Prefix `[TEST, SIMULIERT]` als *Info*-Event an `/api/v1/alerts` und kennzeichnet Testmodus und Teststatus in den JSON-Daten separat (`ph_alarm_test`, `ph_alarm_test_status`, `ph_alarm_test_value`). Der reale Alarm wird weiterhin gesondert geprueft und uebermittelt.
@@ -80,12 +80,33 @@ Nach Eintreffen und Pruefung des konkreten Moduls:
 
 Bei Bildlesefehlern werden die Kamera- und Blatt-VPD-Werte verworfen (`null`). Die Diagnose zeigt MLX-Status im Befehl `t` und bei vorhandenem Modul alle zehn Sekunden im seriellen Monitor. Kamera-Bildrohdaten werden derzeit **nicht** an den Pi uebertragen; nur die abgeleiteten Messwerte. Die alte Kalibrierung wird weder geloescht noch erneut benoetigt.
 
+## Nährstoff-Sollwerte nach Woche (pH / EC)
+
+**EC = elektrische Leitfähigkeit in mS/cm**, nicht TDS in ppm. Die Benutzer-Sollwerte sind:
+
+| Woche | pH-Ziel | EC-Ziel (mS/cm) |
+|---|---:|---:|
+| 1 | 6,0 | 1,6 |
+| 2 | 5,8 | 1,8 |
+| 3–7 | 5,5 | 2,0 |
+| 8 | 5,5 | 2,5 |
+| 9–10 | 5,5 | 1,8 |
+| 11–12 | 5,5 | 0,2 |
+
+**Feste pH-Alarme:** bei **pH <5,5** LOW bzw. **pH >6,2** HIGH. Die Werte **5,5 und 6,2** sind inklusive innerhalb der erlaubten Spanne; bestehende **0,1-pH-Hysterese** und Bestätigung nach **3 Messungen** bleiben bestehen. Das neue HIGH-Testsignal ist **pH 6,30**; `p` im Diagnosesketch prüft die neuen Grenzen inklusive 5,50/6,20. Alle Anzeigen (OLED und beide CYD-Sketches) sind aktualisiert.
+
+Diese Wochenwerte sind **Sollwerte, keine EC-Alarmgrenzen**; eine zulässige Abweichung für EC wurde noch nicht definiert. Es gibt **keine automatische Dosierung oder EC-Regelung**, nur Messung, Anzeige und dokumentierten Sollwert. Die unveränderte EC-Messkette liefert weiterhin einen temperaturkompensierten Wert erst nach DS18B20-Prüfung und Kalibrierung.
+
+Die aktuelle **Woche ist nicht automatisch 1**, da ein Startdatum fehlt. Es wird kein Datum angenommen und nicht täglich/woechentlich selbstständig weitergezählt. Vor der ersten Auswahl gilt Woche `0` (unbekannt). Manuelle Wahl ist über **Serial** `k1` bis `k12` (mit Zeilenumbruch) in beiden Sensor-Sketches möglich oder in der Produktions-Firmware per **POST** `/api/local/control/week` mit JSON `{"week":3}` (HTTP-Header `X-Telemetry-Key` falls konfiguriert). Die Woche wird in `growweek_v1` auf dem Sensor-ESP32 gespeichert und beim Neustart wieder geladen. Die Phasentaster `WUCHS/BLÜTE` bleiben eine **separate** Einstellung.
+
+Die API `/api/local/summary` liefert `control.grow_week`, `control.ph_target`, `control.ec_target_ms_cm`, `control.ph_alarm_min` und `control.ph_alarm_max`; die entsprechenden Felder stehen ebenfalls unter `reading` und in der Telemetrie. Ohne gewählte Woche sind die Sollwerte `null`, die festen pH-Alarme funktionieren dennoch.
+
 ## TDS/EC-Kalibrierung
 Der CQRobot-TDS-Sensor liegt am ADS1115 A1. Sein EC/TDS-Wert wird fuer die Bezugstemperatur 25 °C mit der **tatsaechlich gemessenen Wassertemperatur des DS18B20** kompensiert (Hersteller-Näherung 2 %/°C). Fehlt diese Messung, bleibt `ec=null`, es gibt keinen Ersatzwert von 25 °C. Die bisherige EC-Kalibrierung im NVS bleibt beim Umlegen der I2C-Datenleitung gespeichert, Messwerte danach aber prüfen. Die bisherige EC-Kalibrierung bleibt gespeichert; wurde sie ohne Wasser-DS erstellt, wird `ec_reference_temp_verified=false` gemeldet und eine erneute Kalibrierung mit DS empfohlen. Der Kalibriersketch erfasst mit Befehl `e` die Referenzloesung mit 1413 uS/cm (1,413 mS/cm bei 25 C), prueft die Signalstreuung und schreibt einen Kalibrierfaktor nach NVS `ecads_v1`. Die Kalibrierung prueft acht unabhaengige Median-Messfenster (je 30 ADS-A1-Werte, Abtastperiode 40 ms gemaess CQRobot-Dokumentation), die denselben Filter wie die Live-Anzeige nutzen. Liegt die Standardabweichung dieser gefilterten Fenster ueber 10 mV oder die Spanne ueber 30 mV, wird KEINE Kalibrierung gespeichert. Grosse Schwankungen der Rohmesswerte werden gesondert protokolliert und als Hinweis auf moegliche elektrische Stoerungen ausgegeben. Die Produktions-Firmware verwendet einen nicht blockierenden 30-Werte-Ringpuffer mit 40 ms Abtastperiode (Median), liest `ecads_v1` beim Start, zeigt EC in mS/cm auf OLED und CYD und liefert `ec` in Telemetrie und lokaler API. Ohne gespeicherte Kalibrierung bleibt `ec=null`, statt einen scheinbar genauen Wert zu melden. Bei einem einzelnen DS18B20 wird dessen Temperatur verwendet. Bei zwei oder mehr Sensoren ist eine eindeutige ROM-Zuordnung ueber `w <ROM>` noetig; die Index-Reihenfolge wird nicht als Wasser-Zuordnung angenommen.
 
 ## pH-Ueberwachung
 
-- Unter pH 5,5: Alarm `low`; ueber pH 6,5: Alarm `high`; 5,5–6,5: `normal`.
+- Unter pH 5,5: Alarm `low`; ueber pH 6,2: Alarm `high`; 5,5–6,2: `normal` (mit bestehender Hysterese bei Wechseln).
 - Fehlender ADS1115, unplausibler pH oder fehlende echte pH-4/pH-7-Kalibrierung: `sensor_fault` statt erfundenem Messwert.
 - Drei aufeinanderfolgende Abfragen zur Bestaetigung von Alarmzustaenden, 0,1 pH Hysterese.
 - OLED, beide CYD-Anzeigen, lokale Zusammenfassung (`reading.ph_alarm`) und Server-Telemetrie zeigen den Status; Statuswechsel werden an `/api/v1/alerts` gesendet.
