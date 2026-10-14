@@ -1020,7 +1020,7 @@ static void updateLivePhAlarm() {
     livePhAlarm.update(measured, calibrationReady(), adsOk && isfinite(liveInputV));
   }
   if (old != livePhAlarm.alarm) {
-    Serial.printf("%s pH-ALARM: %s\\n",
+    Serial.printf("%s pH-ALARM: %s\n",
                   phSimulationActive ? "[TEST]" : "[LIVE]",
                   phAlarmLabel(livePhAlarm.alarm));
   }
@@ -1037,10 +1037,10 @@ static void setPhSimulation(char command) {
   phSimulatedValue = command == '1' ? 5.40f : command == '2' ? 6.60f : 6.00f;
   phSimulationActive = true;
   livePhAlarm = PhTestMachine{};
-  Serial.printf("[TEST EIN] Simulierter pH %.2f; REALER A0-Wert bleibt unveraendert.\\n",
+  Serial.printf("[TEST EIN] Simulierter pH %.2f; REALER A0-Wert bleibt unveraendert.\n",
                 phSimulatedValue);
   for (uint8_t sample = 0; sample < 3; ++sample) updateLivePhAlarm();
-  Serial.printf("[TEST] Alarmanzeige: %s (nach 3 simulierten Messungen)\\n",
+  Serial.printf("[TEST] Alarmanzeige: %s (nach 3 simulierten Messungen)\n",
                 phAlarmLabel(livePhAlarm.alarm));
 }
 
