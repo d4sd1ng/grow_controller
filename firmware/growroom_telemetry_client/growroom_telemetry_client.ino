@@ -1,7 +1,7 @@
 /**
  * Grow Controller: Sensor-ESP32 mit OLED und ADS1115.
  *
- * - 3x DHT22, DS18B20 (D32), ADS1115 + BH1750 (D13/D14), OLED (D21/D22)
+ * - 3x DHT22, DS18B20 (D23), ADS1115 + BH1750 (D13/D14), OLED (D21/D22)
  * - Kamera MLX90640 (optional) am OLED-I2C D21/D22 (0x33)
  * - HTTP-API fuer CYD/Raspberry Pi, Telemetrie und pH-Alarm
  * - Zweites Geraet: ESP32-C3 SuperMini als eigenstaendiger Leistungscontroller.
@@ -75,11 +75,11 @@ static constexpr uint8_t PIN_DHT1 = 25;
 static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
 static constexpr uint8_t PIN_PHASE_BUTTON = 16;
-static constexpr uint8_t PIN_RGB_GREEN = 23;
+static constexpr uint8_t PIN_RGB_GREEN = 32;
 static constexpr uint8_t PIN_RGB_RED = 33;
 static constexpr uint8_t PIN_PH_BUZZER = 19; // frei gewordener Pin; nur Reserve
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
-static constexpr uint8_t PIN_ONEWIRE = 32; // DS18B20 auf D32; PH4502C DO wird nicht genutzt
+static constexpr uint8_t PIN_ONEWIRE = 23; // DS18B20 auf D23; PH4502C DO wird nicht genutzt
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
 static constexpr bool PH_TO_WIRED = false;
 static constexpr bool PH_DO_WIRED = false; // PH4502C DO bleibt ungenutzt
@@ -214,7 +214,7 @@ char controlMode[8] = "auto";
 
 
 /* Ein rastfreier Schliesser D16-GND, eine 4-Pin-RGB-LED.
- * Gruen (D23) = Wuchs, Rot+Gruen (D33+D23) = Bluete (Gelb).
+ * Gruen (D32) = Wuchs, Rot+Gruen (D33+D32) = Bluete (Gelb).
  * Jeder Farbkanal hat seinen eigenen 470-Ohm-Vorwiderstand.
  * Pin-Polaritaet erst aktivieren, wenn Common-Anode/-Kathode geklaert ist.
  * Auswahl wird in NVS gespeichert, unabhaengig von pH/EC.
@@ -1333,7 +1333,7 @@ void setup() {
 
   Serial.printf("ADS1115: %s (I2C D13/D14, 0x48)\n", sensors.adsOk ? "OK" : "NICHT GEFUNDEN");
   Serial.printf("BH1750: %s 0x%02X\n", bh1750Present ? "OK" : "NICHT GEFUNDEN", bh1750Addr);
-  Serial.printf("DS18B20 auf D32 gefunden: %u\n", ds18b20.getDeviceCount());
+  Serial.printf("DS18B20 auf D23 gefunden: %u\n", ds18b20.getDeviceCount());
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
