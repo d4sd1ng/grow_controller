@@ -1,33 +1,37 @@
 # Grow Controller
 
-Grow-Controller fuer Indoor-Salat auf **einem ESP32 mit integriertem OLED**, mit Cheap Yellow Display (CYD) als Fernbedienung und Raspberry Pi als Telemetrie-/Dashboard-Server.
+Grow-Controller fuer Indoor-Salat mit **zwei ESP32**: Sensor-ESP32 mit integriertem OLED auf **26×30-Lochraster** und separater **ESP32-C3 SuperMini** als geplanter Leistungscontroller. Das Cheap Yellow Display (CYD) dient als Fernbedienung, Raspberry Pi als Telemetrie-/Dashboard-Server.
 
-**Aktuelle Anschluesse:** [wiring_plan_v2.md](wiring_plan_v2.md) (Ein-ESP32-Plan V3) · **Firmware:** [firmware/README.md](firmware/README.md) · **Status:** [current_state.md](current_state.md)
+**Aktuelle Anschluesse:** [wiring_plan_v2.md](wiring_plan_v2.md) (**Zwei-ESP32-Plan V4, Sensorplatine 26×30**) · **Firmware:** [firmware/README.md](firmware/README.md) · **Status:** [current_state.md](current_state.md)
 
 ## Architektur
 
 ```text
-DHT22 / DS18B20 / PH4502C / CQRobot TDS / BH1750
+pH / EC / DHT22 / DS18B20 / BH1750
                    |
                    v
-     Ein ESP32 mit OLED + ADS1115
-         |                 |
-         |                 +--> SSR1..4 (Licht/Umluft/Abluft/Heizung)
-         |
-         +---- WLAN <----> CYD (Anzeige und Bedienung)
-         +---- WLAN -----> Raspberry Pi (FastAPI, Dashboard, Historie)
+     Sensor-ESP32 mit OLED und ADS1115
+       (26 x 30 Lochraster, KEINE Relais)
+                   |
+             WLAN / API
+                   |
+    +--------------+---------------+
+    |              |               |
+Raspberry Pi    CYD-Fernanzeige    ESP32-C3 SuperMini
+                                  (getrennter Leistungscontroller)
 ```
 
-Kein zweiter ESP32 und kein ATmega2560. Keine Wasserpumpe als Lastkanal. Die 230-V-Seite ist nicht Teil der Mikrocontrollerverdrahtung.
+**Wichtig:** Die Sensor-Firmware ist nun frei von direkter GPIO-Relaissteuerung. Die C3-Anbindung ist noch ausstehend; die Aktoren werden derzeit **nicht** angesteuert. Die 230-V-Seite gehoert in eine fachkundig gepruefte, separate Installation.
+
 
 ## Firmware
 
-- `firmware/growroom_telemetry_client/` — aktive Sensor- und SSR-Steuerung fuer den **einen ESP32**.
+- `firmware/growroom_telemetry_client/` — Sensor-ESP32; pH/EC/Klima, OLED, API/Telemetrie, **keine SSR-GPIO-Ausgaenge**. C3-Anbindung steht noch aus.
 - `firmware/ph_calibration_tool/` — temporaerer Hardware-/pH-Kalibriersketch auf demselben ESP32 (SSR AUS).
 - `firmware/ds18b20_diagnostic/` — optionaler 1-Wire-Testscketch.
 - `firmware/cyd_remote_control/` — CYD-Fernbedienung.
 - `firmware/cyd_grow_display/` — alternative CYD-Firmware.
-- `firmware/powerbox_actuator/` — alter Zwei-ESP32-Sketch, **nicht mehr verwenden**.
+- `firmware/powerbox_actuator/` — alter Powerbox-Sketch, **nicht als getestete ESP32-C3-Firmware verwenden**.
 
 ## Server
 
