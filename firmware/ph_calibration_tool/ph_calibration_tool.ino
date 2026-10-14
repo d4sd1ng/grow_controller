@@ -37,11 +37,11 @@
 #ifndef GROW_ENABLE_PH_BUZZER
 #define GROW_ENABLE_PH_BUZZER 0
 #endif
-/* RGB-LED Common-Anode/-Kathode noch ungeklaert: Ansteuerung bis Pruefung AUS.
- * GROW_RGB_COMMON_ANODE = 1 fuer gemeinsame Anode, sonst = 0 fuer Kathode.
+/* RGB: gemeinsame Kathode laut Nutzer bestaetigt, gruen D32 / rot D33.
+ * GROW_RGB_COMMON_ANODE = 0, gemeinsamer Kontakt an GND.
  */
 #ifndef GROW_ENABLE_PHASE_RGB
-#define GROW_ENABLE_PHASE_RGB 0
+#define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode bestaetigt; erst nach Umverdrahtung auf D23/D32 flashen
 #endif
 #ifndef GROW_RGB_COMMON_ANODE
 #define GROW_RGB_COMMON_ANODE 0
@@ -224,7 +224,7 @@ static bool setGrowWeek(int week) {
 
 /* Ein Taster: D16-GND, entprellt, jeder Druck wechselt den NVS-Modus.
  * Eine RGB-LED: D32 Gruen (WUCHS), D33 Rot+Gruen (BLUETE=Gelb).
- * Aktivierung erst nach Pruefung der gemeinsamen RGB-Anode/-Kathode.
+ * Gemeinsame Kathode GND bestaetigt, aktiv nach physischer Umverdrahtung.
  */
 enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
 static GrowPhase growPhase = GrowPhase::Wuchs;
