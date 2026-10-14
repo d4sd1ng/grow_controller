@@ -15,8 +15,8 @@
 
 | GPIO | Funktion |
 |---:|---|
-| 21/22 | Internes OLED + MLX90640-Kamera (I2C A: 0x3C / 0x33) |
-| 13/14 | I2C Bus B: ADS1115 und BH1750 nach aktueller Verdrahtung |
+| 21/22 | ADS1115 (0x48) + internes OLED (0x3C) + optionale MLX90640 (0x33); I²C Bus A |
+| 13/14 | I²C Bus B: BH1750 (0x23) separat |
 | 23 | DS18B20-Datenbus (4,7-kΩ-Pull-up nach 3,3 V) |
 | ADS1115 A0 | PH4502C PO pH (kalibriert, unverändert) |
 | ADS1115 A1 | CQRobot TDS/EC-Signal |
@@ -28,7 +28,7 @@
 | RGB-Blau | Nicht angeschlossen |
 | 18 | **Nicht herausgeführt** am vom Nutzer abgelesenen ESP32-Board |
 
-**I2C-Autodiagnose:** Beide Sensor-Sketches scannen beim Start alle 7-Bit-Adressen von **0x03 bis 0x77** auf **D13/D14 und D21/D22** und geben alle gefundenen Adressen im seriellen Monitor aus. ADS1115 wird auf beiden Bussen mit den Adressen **0x48–0x4B** erkannt und automatisch dem gefundenen Bus zugeordnet; BH1750 ebenso mit **0x23/0x5C**. **`i`** startet eine erneute Suche, ohne die Kalibrierwerte zu loeschen. Die Produktions-Firmware sucht bei fehlendem ADS1115 nach 30 Sekunden erneut. Ein anderes GPIO-Paar als diese beiden kann damit nicht erkannt werden.
+**I²C-Initialisierung:** ADS1115 fest auf **D21/D22, 0x48**, gemeinsam mit dem OLED. BH1750 fest auf **D13/D14**, Adresse **0x23** oder **0x5C**. **Keine automatische Umzuordnung.** Bei fehlendem ADS1115 und auf seriellen Befehl **`i`** werden beide Busse nur zur Diagnose nach Adressen durchsucht. Die Produktions-Firmware versucht einen fehlenden ADS1115 alle 30 Sekunden erneut zu initialisieren; die Kalibrierwerte bleiben erhalten.
 
 **Nicht verdrahten:** PH4502C TO und DO. Die eigentliche Leistungsschaltung liegt auf dem separaten ESP32-C3 SuperMini, nicht auf der Sensorplatine.
 
@@ -60,7 +60,7 @@ Arduino Serial Monitor **115200 Baud**:
 - `a <C>`, `b <C>`: zwei bekannte Gehaeusetemperaturen zur TO-Kalibrierung erfassen (je mindestens 5 °C Abstand); nur nach Freigabe von A2
 - `h`: Hilfe
 
-ADS1115 A0=PO pH, A1=TDS/EC. PH4502C TO und DO sind dauerhaft nicht vorgesehen (`PH_TO_WIRED=false`, `PH_DO_WIRED=false`). Das OLED liegt mit der geplanten MLX90640-Kamera auf I2C **GPIO21/22**; ADS1115 und BH1750 auf dem zweiten Bus **GPIO13/14**. Das alte Kalibrierschema ueber VP bleibt in einem **getrennten NVS-Namespace** unberuehrt; die alte VP-Kalibrierung wird nicht unbemerkt fuer ADS-Werte verwendet. Kalibrierpunkte koennen auch ohne DS18B20 gespeichert werden; die fehlende Temperatur wird als unbekannt behandelt und der Pufferwert ist anhand seiner Referenztemperatur zu bewerten. Bei fehlendem ADS1115 oder unruhiger Messung wird die Erfassung abgelehnt.
+ADS1115 A0=PO pH, A1=TDS/EC. PH4502C TO und DO sind dauerhaft nicht vorgesehen (`PH_TO_WIRED=false`, `PH_DO_WIRED=false`). Das OLED, der ADS1115 und die geplante MLX90640-Kamera liegen auf I²C **GPIO21/22**; der BH1750 liegt separat auf **GPIO13/14**. Das alte Kalibrierschema ueber VP bleibt in einem **getrennten NVS-Namespace** unberuehrt; die alte VP-Kalibrierung wird nicht unbemerkt fuer ADS-Werte verwendet. Kalibrierpunkte koennen auch ohne DS18B20 gespeichert werden; die fehlende Temperatur wird als unbekannt behandelt und der Pufferwert ist anhand seiner Referenztemperatur zu bewerten. Bei fehlendem ADS1115 oder unruhiger Messung wird die Erfassung abgelehnt.
 
 Die drei DHT22 und der BH1750 sind bisher nicht verkabelt. Sie duerfen in der Diagnose als nicht erkannt angezeigt werden, ohne die anderen Tests zu blockieren. Der Sensor-Diagnosesketch konfiguriert keine Relais-Ausgaenge mehr.
 
@@ -69,7 +69,7 @@ Die drei DHT22 und der BH1750 sind bisher nicht verkabelt. Sie duerfen in der Di
 In `growroom_telemetry_client.ino` **und** `ph_calibration_tool.ino` ist die 32x24-Waermebildkamera MLX90640 vorbereitet. Auslieferungszustand: `#define GROW_ENABLE_MLX90640 0`. Der Code laeuft daher ohne Kamera und ohne zusaetzliche Bibliothek weiter. pH/EC/NVS und bestehende Regelung bleiben unveraendert.
 
 Nach Eintreffen und Pruefung des konkreten Moduls:
-1. Auf der **26×30-Lochrasterplatine** einen 4-poligen Kamerastecker vorsehen: **SDA D21, SCL D22, GND, VIN/VCC**. I2C-Adresse **0x33**, OLED am selben Bus **0x3C**. Die Versorgung **erst nach Prüfung der konkreten Kameraplatine** festlegen; bis dahin VCC/VIN nicht anschließen. ADS1115 (0x48) und BH1750 (0x23) teilen jetzt den zweiten Bus **D13/D14**. Für BH1750 einen **5-poligen** Anschluss inkl. **ADDR an GND** reservieren.
+1. Auf der **26×30-Lochrasterplatine** einen 4-poligen Kamerastecker vorsehen: **SDA D21, SCL D22, GND, VIN/VCC**. I2C-Adresse **0x33**, OLED am selben Bus **0x3C**. Die Versorgung **erst nach Prüfung der konkreten Kameraplatine** festlegen; bis dahin VCC/VIN nicht anschließen. Der ADS1115 (0x48) liegt mit OLED und Kamera auf **D21/D22**; der BH1750 (0x23) bleibt auf dem getrennten Bus **D13/D14**. Für BH1750 einen **5-poligen** Anschluss inkl. **ADDR an GND** reservieren.
 2. Wärmebildkamera außerhalb des Gehäuses mit freiem Blick auf das Pflanzenblatt montieren; gewöhnliches Glas/Acryl vor der Linse vermeiden. I2C-Kabel möglichst kurz halten und Bus-Takt bei längeren Leitungen prüfen. In der Arduino-Bibliotheksverwaltung `Adafruit MLX90640` samt Abhaengigkeiten installieren.
 3. `GROW_ENABLE_MLX90640` auf `1` setzen, uebersetzen und Sensor erkennen lassen.
 4. Alle 10 Sekunden ein 32x24-Temperaturbild auslesen. Der Median der zentralen ROI (x=8..23, y=6..17, maximal 192 Pixel) wird als `thermal_roi_temperature` ausgegeben. Die Kamera erkennt **nicht automatisch**, ob die Bildregion wirklich nur Blaetter enthaelt.
