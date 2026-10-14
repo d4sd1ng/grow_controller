@@ -158,6 +158,10 @@ Adafruit_ADS1115 ads;
 TwoWire bhWire = TwoWire(1);
 static uint8_t bh1750Addr = 0;
 static bool bh1750Present = false;
+static TwoWire* bhSelectedWire = &bhWire;
+static uint8_t adsFoundAddr = 0;
+static const char* adsFoundBus = "nicht gefunden";
+static const char* bhFoundBus = "nicht gefunden";
 
 /* ---------- Sensoren ---------- */
 DHT dht1(PIN_DHT1, DHT22);
@@ -464,10 +468,13 @@ static void setPhTestMode(char c) {
   Serial.printf("[pH TEST] Ergebnis: %s (3 simulierte Messungen)\n",
                 phMessage(phTestAlarm));
 }
+static void scanI2CAndBind(); // beide Busse / alle 7-Bit-Adressen
+
 static void handlePhTestSerial() {
   while (Serial.available()) {
     const char c = static_cast<char>(Serial.read());
     if (c >= '0' && c <= '3') setPhTestMode(c);
+    else if (c == 'i' || c == 'I') scanI2CAndBind();
     else if (c == 'k' || c == 'K') {
       String arg = Serial.readStringUntil('\n');
       arg.trim();
@@ -477,6 +484,7 @@ static void handlePhTestSerial() {
     else if (c == 'h' || c == 'H' || c == '?') {
       Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
       Serial.println(F("Woche per Serial: k1 bis k12 + Zeilenumbruch, im NVS gespeichert."));
+      Serial.println(F("i = alle I2C-Adressen auf D13/D14 und D21/D22 scannen"));
     }
   }
 }
@@ -718,38 +726,84 @@ static void applyActuators() {
 
 /* ---------- BH1750 ---------- */
 
-static void scanBh1750Bus() {
+// Beim Start beide physisch genutzten I2C-Busse und alle 7-Bit-Adressen abfragen.
+// Verfuegbare ADS1115-Adressen 0x48-0x4B werden auf beiden Bussen ausprobiert.
+static bool i2cResponds(TwoWire& bus, uint8_t addr) {
+  bus.beginTransmission(addr);
+  return bus.endTransmission() == 0;
+}
+
+static void scanI2CAndBind() {
+  TwoWire* buses[] = {&bhWire, &Wire};
+  const char* names[] = {"D13(SDA)/D14(SCL)", "D21(SDA)/D22(SCL)"};
+  Serial.println(F("\n=== AUTOMATISCHER I2C-SCAN (BEIDE BUSSE, ALLE ADRESSEN) ==="));
+  for (uint8_t b = 0; b < 2; ++b) {
+    Serial.printf("I2C %s: ", names[b]);
+    uint8_t count = 0;
+    for (uint8_t addr = 0x03; addr <= 0x77; ++addr) {
+      if (i2cResponds(*buses[b], addr)) {
+        Serial.printf("0x%02X ", addr);
+        ++count;
+      }
+    }
+    if (!count) Serial.print("kein Geraet");
+    Serial.println();
+  }
+
+  sensors.adsOk = false;
+  adsFoundAddr = 0;
+  adsFoundBus = "nicht gefunden";
+  ads.setGain(GAIN_ONE);
+  for (uint8_t b = 0; b < 2 && !sensors.adsOk; ++b) {
+    for (uint8_t addr = 0x48; addr <= 0x4B; ++addr) {
+      if (!i2cResponds(*buses[b], addr)) continue;
+      if (ads.begin(addr, buses[b])) {
+        sensors.adsOk = true;
+        adsFoundAddr = addr;
+        adsFoundBus = names[b];
+        break;
+      }
+    }
+  }
+  if (sensors.adsOk)
+    Serial.printf("ADS1115 GEFUNDEN: 0x%02X auf %s\n", adsFoundAddr, adsFoundBus);
+  else
+    Serial.println(F("ADS1115 NICHT GEFUNDEN (0x48-0x4B auf beiden Bussen)"));
+
   bh1750Present = false;
   bh1750Addr = 0;
-  const uint8_t candidates[] = {0x23, 0x5C};
-  for (uint8_t addr : candidates) {
-    bhWire.beginTransmission(addr);
-    if (bhWire.endTransmission() == 0) {
+  bhFoundBus = "nicht gefunden";
+  const uint8_t bhAddresses[] = {0x23, 0x5C};
+  for (uint8_t b = 0; b < 2 && !bh1750Present; ++b) {
+    for (uint8_t addr : bhAddresses) {
+      if (!i2cResponds(*buses[b], addr)) continue;
       bh1750Present = true;
       bh1750Addr = addr;
+      bhSelectedWire = buses[b];
+      bhFoundBus = names[b];
       break;
     }
   }
+  if (bh1750Present)
+    Serial.printf("BH1750 GEFUNDEN: 0x%02X auf %s\n", bh1750Addr, bhFoundBus);
+  else
+    Serial.println(F("BH1750 nicht gefunden (0x23/0x5C auf beiden Bussen)"));
 }
 
 static uint32_t readBh1750() {
   if (!bh1750Present) return 0;
-
-  bhWire.beginTransmission(bh1750Addr);
-  bhWire.write(0x01);  // power on
-  if (bhWire.endTransmission() != 0) return 0;
+  bhSelectedWire->beginTransmission(bh1750Addr);
+  bhSelectedWire->write(0x01);  // power on
+  if (bhSelectedWire->endTransmission() != 0) return 0;
   delay(10);
-
-  bhWire.beginTransmission(bh1750Addr);
-  bhWire.write(0x10);  // continuously H-resolution mode
-  if (bhWire.endTransmission() != 0) return 0;
+  bhSelectedWire->beginTransmission(bh1750Addr);
+  bhSelectedWire->write(0x10);  // continuously H-resolution mode
+  if (bhSelectedWire->endTransmission() != 0) return 0;
   delay(180);
-
-  if (bhWire.requestFrom(static_cast<int>(bh1750Addr), 2) != 2) return 0;
-  uint16_t raw = (static_cast<uint16_t>(bhWire.read()) << 8) | bhWire.read();
+  if (bhSelectedWire->requestFrom(static_cast<int>(bh1750Addr), 2) != 2) return 0;
+  uint16_t raw = (static_cast<uint16_t>(bhSelectedWire->read()) << 8) | bhSelectedWire->read();
   return static_cast<uint32_t>(raw / 1.2f);
 }
-
 
 /* MLX90640 32x24, I2C 0x33 auf bestehendem Bus GPIO21/22.
  * Bis zur Montage/Validierung NICHT fuer die automatische Regelung nutzen.
@@ -1307,7 +1361,9 @@ void setup() {
   if (!phCalibrated) Serial.println("WARNUNG: pH-Kalibrierung fehlt.");
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
+  Wire.setTimeOut(30);
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
+  bhWire.setTimeOut(30);
 
   oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   if (oledOk) {
@@ -1319,19 +1375,16 @@ void setup() {
     display.display();
   }
 
-  ads.setGain(GAIN_ONE);
-  sensors.adsOk = ads.begin(0x48, &bhWire);
+  scanI2CAndBind();
   setupMlx90640();
-
-  scanBh1750Bus();
 
   dht1.begin();
   dht2.begin();
   dht3.begin();
   ds18b20.begin();
 
-  Serial.printf("ADS1115: %s (I2C D13/D14, 0x48)\n", sensors.adsOk ? "OK" : "NICHT GEFUNDEN");
-  Serial.printf("BH1750: %s 0x%02X\n", bh1750Present ? "OK" : "NICHT GEFUNDEN", bh1750Addr);
+  Serial.printf("ADS1115: %s | 0x%02X auf %s\n", sensors.adsOk ? "OK" : "NICHT GEFUNDEN", adsFoundAddr, adsFoundBus);
+  Serial.printf("BH1750: %s | 0x%02X auf %s\n", bh1750Present ? "OK" : "NICHT GEFUNDEN", bh1750Addr, bhFoundBus);
   Serial.printf("DS18B20 auf D23 gefunden: %u\n", ds18b20.getDeviceCount());
 
   WiFi.mode(WIFI_STA);
@@ -1358,6 +1411,11 @@ void setup() {
 
 void loop() {
   const unsigned long now = millis();
+  static unsigned long lastI2cRetryMs = millis();
+  if (!sensors.adsOk && now - lastI2cRetryMs >= 30000UL) {
+    lastI2cRetryMs = now;
+    scanI2CAndBind();
+  }
 
   localServer.handleClient();
   pollGrowPhaseButtons(now);
