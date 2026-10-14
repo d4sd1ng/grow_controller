@@ -823,7 +823,11 @@ static void printHelp() {
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
   Serial.println(F("MLX90640 optional: I2C 0x33 an D21/D22; 10s-Bild-ROI; keine Kalibrierung"));
-  Serial.println(F("p = pH-Alarmschwellen, Hysterese und Sensorfehler simulieren (nur Serial; kein Server)"));
+  Serial.println(F("p = automatischer Alarm-Selbsttest (PASS/FAIL)"));
+  Serial.println(F("1 = TEST pH 5.40 -> Alarm UNTER 5.5 auf OLED/Serial"));
+  Serial.println(F("2 = TEST pH 6.60 -> Alarm UEBER 6.5 auf OLED/Serial"));
+  Serial.println(F("3 = TEST pH 6.00 -> Normalstatus auf OLED/Serial"));
+  Serial.println(F("0 = TEST beenden; echte pH-Messung/Alarmanzeige aktiv"));
   Serial.println(F("e = EC kalibrieren: A1 in 1413 uS/cm Referenzloesung, DS18B20 erforderlich"));
   Serial.println(F("w <ROM> = Wasser-DS18B20 aus mehreren Sensoren anhand 16-stelliger ROM festlegen"));
   Serial.println(F("a <C> = TO/Gehaeuse Referenzpunkt 1 bei C Grad Celsius"));
@@ -963,6 +967,83 @@ static void updateLive() {
   if (PH_DO_WIRED) liveDoHigh = digitalRead(PIN_PH_DO) == HIGH;
 }
 
+/* Reiner pH-Alarm-Selbsttest: identische Schwellen/Hysterese/Bestaetigung
+ * wie growroom_telemetry_client; keine Aenderung an Sensoren, NVS oder Ausgaengen.
+ * Testet nur die lokale Zustandslogik, nicht WLAN/CYD/Server-Zustellung.
+ */
+enum class PhTestAlarm : uint8_t { Normal, Low, High, Fault };
+struct PhTestMachine {
+  PhTestAlarm alarm = PhTestAlarm::Fault;
+  PhTestAlarm pending = PhTestAlarm::Fault;
+  uint8_t samples = 0;
+
+  void update(float ph, bool calibrated = true, bool adcOk = true) {
+    if (!calibrated || !adcOk || !isfinite(ph) || ph < 0.0f || ph > 14.0f) {
+      samples = 0;
+      alarm = PhTestAlarm::Fault;
+      return;
+    }
+    PhTestAlarm next = PhTestAlarm::Normal;
+    if (ph < 5.5f || (alarm == PhTestAlarm::Low && ph < 5.6f))
+      next = PhTestAlarm::Low;
+    else if (ph > 6.5f || (alarm == PhTestAlarm::High && ph > 6.4f))
+      next = PhTestAlarm::High;
+    if (next == alarm) { samples = 0; return; }
+    if (next != pending) { pending = next; samples = 1; }
+    else if (samples < 3) ++samples;
+    if (samples >= 3) { samples = 0; alarm = next; }
+  }
+};
+
+/* Live-Alarm und manuell ausloesbarer Test verwenden dieselbe Zustandslogik
+ * wie der automatisierte p-Selbsttest. Testwerte ersetzen keine Sensorwerte,
+ * werden nicht in NVS geschrieben und loesen keine Aktoren aus.
+ */
+static PhTestMachine livePhAlarm;
+static bool phSimulationActive = false;
+static float phSimulatedValue = NAN;
+
+static const char *phAlarmLabel(PhTestAlarm a) {
+  switch (a) {
+    case PhTestAlarm::Normal: return "NORMAL";
+    case PhTestAlarm::Low: return "LOW <5.5";
+    case PhTestAlarm::High: return "HIGH >6.5";
+    default: return "SENSORFEHLER";
+  }
+}
+static void updateLivePhAlarm() {
+  const PhTestAlarm old = livePhAlarm.alarm;
+  if (phSimulationActive) {
+    livePhAlarm.update(phSimulatedValue, true, true);
+  } else {
+    const float measured = phFromInputVoltage(liveInputV);
+    livePhAlarm.update(measured, calibrationReady(), adsOk && isfinite(liveInputV));
+  }
+  if (old != livePhAlarm.alarm) {
+    Serial.printf("%s pH-ALARM: %s\\n",
+                  phSimulationActive ? "[TEST]" : "[LIVE]",
+                  phAlarmLabel(livePhAlarm.alarm));
+  }
+}
+static void setPhSimulation(char command) {
+  if (command == '0') {
+    phSimulationActive = false;
+    phSimulatedValue = NAN;
+    livePhAlarm = PhTestMachine{};
+    Serial.println(F("[TEST AUS] Reale pH-Messung wieder aktiv; Alarmstatus wird neu ermittelt."));
+    updateLivePhAlarm();
+    return;
+  }
+  phSimulatedValue = command == '1' ? 5.40f : command == '2' ? 6.60f : 6.00f;
+  phSimulationActive = true;
+  livePhAlarm = PhTestMachine{};
+  Serial.printf("[TEST EIN] Simulierter pH %.2f; REALER A0-Wert bleibt unveraendert.\\n",
+                phSimulatedValue);
+  for (uint8_t sample = 0; sample < 3; ++sample) updateLivePhAlarm();
+  Serial.printf("[TEST] Alarmanzeige: %s (nach 3 simulierten Messungen)\\n",
+                phAlarmLabel(livePhAlarm.alarm));
+}
+
 static void drawOled() {
   if (!oledOk) return;
   display.clearDisplay();
@@ -1001,41 +1082,18 @@ static void drawOled() {
   display.print(F("/3 BH:"));
   display.print(bhOk && isfinite(bhLux) ? F("OK") : F("--"));
   display.setCursor(0, 52);
-  display.print(F("pH7:"));
-  display.print(havePh7 ? F("OK") : F("--"));
-  display.print(F(" pH4:"));
-  display.print(havePh4 ? F("OK") : F("--"));
+  display.print(phSimulationActive ? F("TEST ") : F("pH "));
+  display.print(F("ALARM:"));
+  switch (livePhAlarm.alarm) {
+    case PhTestAlarm::Normal: display.print(F("OK")); break;
+    case PhTestAlarm::Low: display.print(F("LOW")); break;
+    case PhTestAlarm::High: display.print(F("HIGH")); break;
+    default: display.print(F("SENSOR")); break;
+  }
   display.display();
 }
 
 
-/* Reiner pH-Alarm-Selbsttest: identische Schwellen/Hysterese/Bestaetigung
- * wie growroom_telemetry_client; keine Aenderung an Sensoren, NVS oder Ausgaengen.
- * Testet nur die lokale Zustandslogik, nicht WLAN/CYD/Server-Zustellung.
- */
-enum class PhTestAlarm : uint8_t { Normal, Low, High, Fault };
-struct PhTestMachine {
-  PhTestAlarm alarm = PhTestAlarm::Fault;
-  PhTestAlarm pending = PhTestAlarm::Fault;
-  uint8_t samples = 0;
-
-  void update(float ph, bool calibrated = true, bool adcOk = true) {
-    if (!calibrated || !adcOk || !isfinite(ph) || ph < 0.0f || ph > 14.0f) {
-      samples = 0;
-      alarm = PhTestAlarm::Fault;
-      return;
-    }
-    PhTestAlarm next = PhTestAlarm::Normal;
-    if (ph < 5.5f || (alarm == PhTestAlarm::Low && ph < 5.6f))
-      next = PhTestAlarm::Low;
-    else if (ph > 6.5f || (alarm == PhTestAlarm::High && ph > 6.4f))
-      next = PhTestAlarm::High;
-    if (next == alarm) { samples = 0; return; }
-    if (next != pending) { pending = next; samples = 1; }
-    else if (samples < 3) ++samples;
-    if (samples >= 3) { samples = 0; alarm = next; }
-  }
-};
 static void runPhAlarmSelfTest() {
   Serial.println(F("\n=== pH-ALARM SOFTWARETEST (KEIN REALER ALARM) ==="));
   PhTestMachine sm;
@@ -1098,6 +1156,8 @@ static void handleSerial() {
       }
     } else if (c == 'p' || c == 'P') {
       runPhAlarmSelfTest();
+    } else if (c >= '0' && c <= '3') {
+      setPhSimulation(c);
     } else if (c == 's' || c == 'S') {
       printCalibration();
     } else if (c == 't' || c == 'T') {
@@ -1187,6 +1247,7 @@ void loop() {
   computeLeafVpdCandidate();
   sampleMlx90640(millis());
   updateLive();
+  updateLivePhAlarm();
 
   const unsigned long now = millis();
   static unsigned long lastPrint = 0;
@@ -1214,6 +1275,9 @@ void loop() {
     Serial.printf(" | DHT %u/3 | BH %s",
                   static_cast<unsigned>(n),
                   bhOk && isfinite(bhLux) ? "OK" : "--");
+    Serial.printf(" | %s pH-ALARM %s",
+                  phSimulationActive ? "TEST" : "LIVE", phAlarmLabel(livePhAlarm.alarm));
+    if (phSimulationActive) Serial.printf(" | TEST pH %.2f", phSimulatedValue);
     Serial.println();
   }
   if (now - lastOledMs >= OLED_INTERVAL_MS) {
