@@ -15,32 +15,29 @@
 
 | GPIO | Funktion |
 |---:|---|
-| 21/22 | Internes OLED und **MLX90640-Kamera** (I2C-Bus A: 0x3C / 0x33) |
-| 13/14 | ADS1115 und BH1750 gemeinsam (I2C-Bus B: 0x48 / 0x23) |
-| 32 | DS18B20-Datenbus (4,7 kOhm Pull-up nach 3,3 V) |
-| ADS1115 A0 | PH4502C PO (vorhandene kalibrierte Analog-Messkette) |
-| ADS1115 A1 | CQRobot TDS/EC (vorhandene Analog-Messkette) |
+| 21/22 | Internes OLED + MLX90640-Kamera (I2C A: 0x3C / 0x33) |
+| 13/14 | ADS1115 + BH1750 (I2C B: 0x48 / 0x23) |
+| 32 | DS18B20-Datenbus (4,7-kΩ-Pull-up nach 3,3 V) |
+| ADS1115 A0 | PH4502C PO pH (kalibriert, unverändert) |
+| ADS1115 A1 | CQRobot TDS/EC-Signal |
 | 25/26/27 | DHT22 #1/#2/#3 |
-| 33 | Reserve: keine DO- oder Relaisfunktion |
+| 16 | **Ein 4-Pin-Taster**, zwischen D16 und GND (je einen Kontakt aus verschiedenen Schaltpaaren) |
+| 23 | **RGB-LED Grün**, eigener 470-Ω-Vorwiderstand |
+| 33 | **RGB-LED Rot**, eigener 470-Ω-Vorwiderstand |
+| 19 | **pH-Buzzer-Steuerpin reserviert**, optionaler Treiber, deaktiviert |
+| RGB-Blau | Nicht angeschlossen |
+| 18 | **Nicht herausgeführt** am vom Nutzer abgelesenen ESP32-Board |
 
-**Nicht bestuecken:** PH4502C TO/DO; TO hat am vorhandenen Exemplar 3,3–3,4 V geliefert und ist nicht direkt ADS-A2-tauglich. **Keine Relaisleitungen auf dem Sensor-ESP32.** Separater ESP32-C3 SuperMini im Leistungsgehäuse.
+**Nicht verdrahten:** PH4502C TO und DO. Die eigentliche Leistungsschaltung liegt auf dem separaten ESP32-C3 SuperMini, nicht auf der Sensorplatine.
 
-| 16 | WUCHS-Taster gegen GND (`INPUT_PULLUP`) |
-| 19 | BLÜTE-Taster gegen GND (`INPUT_PULLUP`) |
-| 23 | WUCHS-LED, mit eigenem 470-Ohm-Vorwiderstand nach GND |
-| 33 | BLÜTE-LED, mit eigenem 470-Ohm-Vorwiderstand nach GND |
-| 18 | **Reserve:** optionaler pH-Buzzer-Signalausgang, zunächst **deaktiviert** |
+### Bedienfeld: ein 4-Pin-Taster, eine 4-Pin-RGB-LED, ein 2-Pin-Buzzer
 
-Vollstaendig: [../wiring_plan_v2.md](../wiring_plan_v2.md).
+- **Taster** zwischen GPIO16 und GND; bei einem vierbeinigen Taster dürfen die zwei gewählten Kontakte **ohne Tastendruck nicht verbunden** sein. Jeden Tastendruck als Moduswechsel WUCHS ↔ BLÜTE behandeln, 50 ms Entprellung; Auswahl bleibt im NVS (`growphase_v1`) gespeichert.
+- **RGB-LED:** Grün über 470 Ω an GPIO23, Rot über einen eigenen 470-Ω-Widerstand an GPIO33, Blau frei. **Gemeinsame Kathode:** gemeinsamer Anschluss nach GND, HIGH schaltet Farbe ein. **Gemeinsame Anode:** gemeinsamer Anschluss nach 3V3, LOW schaltet Farbe ein. Gemeinsamen LED-Anschluss und R/G-Pins erst am tatsächlichen Bauteil identifizieren. **Grün = WUCHS**, **Rot+Grün = Gelb = BLÜTE**. Feature bis zur Prüfung deaktiviert (`GROW_ENABLE_PHASE_RGB=0`, `GROW_RGB_COMMON_ANODE` nach Bauart einstellen).
+- **Zweipoliger Buzzer aus Sensor-Kit:** **GPIO19** als Steuersignal, Platz für **zweipoligen Buzzer-Stecker und Transistortreiber** reservieren. Keine Annahme zur Spannung oder aktiv/passiv aus der Anschlusszahl ableiten, daher **noch nicht direkt an GPIO anschließen**. Das bislang für aktive Buzzer vorgesehene Alarmsignal ist deaktiviert (`GROW_ENABLE_PH_BUZZER=0`) und braucht ggf. Anpassung auf PWM bei passivem Piezo.
+- Im Produktionssketch stehen unter `control.phase` sowie `phase` in Telemetrie der gespeicherte Zustand; **BLÜTE** hat bislang kein definiertes Klimasollwertprofil, also bleibt die automatische Klimaregelung dafür gesperrt. Die wochenabhängigen pH-/EC-Sollwerte sind unabhängig vom Taster; die pH-Alarmgrenzen bleiben 5,5–6,2.
 
-### Bedienfeld: Wachstums-/Blütephase und akustische pH-Warnung
-
-- Die beiden Schließer `WUCHS` und `BLÜTE` werden separat eingelesen, mit 50 ms entprellt und als genau ein aktiver Modus behandelt. Die jeweilige LED zeigt dauerhaft die gespeicherte Phase; auch der OLED-Status wechselt. NVS-Speicher: `growphase_v1`.
-- Die Produktions-Firmware liefert die Phase unter `control.phase`, `phase` in der Telemetrie sowie den Status `phase_profile_configured`. Die bisherigen Wuchs-Klimasollwerte (24 °C und 60 % rF) bleiben zunächst als Wuchs-Profil vorhanden. Für **BLÜTE** liegen noch keine vereinbarten Sollwerte vor: Die Automatik verwendet **keinen** erfundenen Ersatz. pH-Alarmgrenzen sind jetzt fest auf 5,5/6,2 eingestellt; Wochen-pH-Ziele sind eine separate Größe.
-- Der pH-Buzzer ist im Programm **vorbereitet, aber deaktiviert** (`GROW_ENABLE_PH_BUZZER=0`). `GPIO18` ist ausschließlich als optionaler Buzzer-Signalpin vorgemerkt. Bei aktivem, kompatiblem Buzzer: LOW zwei kurze Signale / 5 s; HIGH drei / 5 s; Sensorfehler ein kurzer Hinweis / 10 s. Bei NORMAL schweigt der Buzzer. Die Softwaretests `1/2/3` sollen dasselbe Muster auslösen.
-- **Noch kein Anschluss:** erst aktiven/passiven Typ, Betriebsspannung, erforderlichen Eingangsstrom und Ansteuerpolarität prüfen; ggf. Treiberschaltung. Unbekannte Buzzer nicht direkt an ESP32-GPIO anschließen. Die tatsächliche GPIO18-Stiftposition auf dem verwendeten OLED-ESP32 prüfen.
-
-
+**Vollständiger Anschluss-/Bestückungsplan:** [../wiring_plan_v2.md](../wiring_plan_v2.md).
 
 ## Kalibrier-/Diagnosesketch
 
