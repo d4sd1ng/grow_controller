@@ -26,6 +26,23 @@
 
 **Phasenauswahl:** In beiden Sensor-Sketches sind zwei entprellte physische Taster mit LED-Rückmeldung und Speicherung in NVS `growphase_v1` umgesetzt. WUCHS-Profil nutzt vorläufig die bisherigen Klimawerte 24 °C und 60 % relative Feuchte. BLÜTE-Sollwerte sind noch offen; bis zur Konfiguration ist die Phasenautomatik gesperrt. Der pH-Buzzer ist nur vorbereitet (`GROW_ENABLE_PH_BUZZER=0`), GPIO18 wird noch nicht angesteuert, solange Buzzer-Bauart und Pegel unklar sind.
 
+## pH-Alarm und 12-Wochen-Nährstoffprofil
+
+**pH-Alarm:** LOW <5,5; HIGH >6,2; 5,5–6,2 inklusive im Regelbereich (3 Messungen zur Bestätigung, 0,1 pH Hysterese bei Zustandswechseln). Die bisherigen 6,5-Grenzen sind im Sensor- und CYD-Code durch 6,2 ersetzt.
+
+**EC bedeutet elektrische Leitfähigkeit (mS/cm), nicht ppm.** Die neuen Nutzer-Sollwerte sind:
+
+| Woche | pH-Soll | EC-Soll (mS/cm) |
+|---|---:|---:|
+| 1 | 6,0 | 1,6 |
+| 2 | 5,8 | 1,8 |
+| 3–7 | 5,5 | 2,0 |
+| 8 | 5,5 | 2,5 |
+| 9–10 | 5,5 | 1,8 |
+| 11–12 | 5,5 | 0,2 |
+
+Die Wochenzahl ist im separaten ESP32-NVS `growweek_v1` manuell wählbar (`k1` bis `k12` über seriellen Monitor oder API `POST /api/local/control/week` mit JSON `{"week":3}`); kein Datum zur automatischen Wochenfortschaltung festgelegt. `0` heißt unbekannt. Die Wochenziele sind **nicht** als Dosierung oder EC-Alarm implementiert: EC-Toleranzen und automatische Regelung sind offen. Phasentaster WUCHS/BLÜTE unabhängig davon.
+
 ## Zweites Gerät — ESP32-C3 SuperMini
 
 Separate Installation im Leistungsgehäuse für die späteren vier Funktionskanäle Licht, Umluft, Abluft und Heizstrahler. **Die C3-Pinbelegung und Steuerungsfirmware sind noch nicht freigegeben, keine Relaisansteuerung funktionsfähig.** Kommunikationsausfall und Rückmeldungen müssen sicher behandelt werden. Keine 230-V-Anschlussanleitung in diesem Repository.
