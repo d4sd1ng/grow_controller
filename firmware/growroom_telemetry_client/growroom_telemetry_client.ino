@@ -42,12 +42,11 @@
 #ifndef GROW_ENABLE_PH_BUZZER
 #define GROW_ENABLE_PH_BUZZER 0
 #endif
-/* RGB-Typ noch nicht bestaetigt: Leitungen bleiben standardmaessig Eingaenge.
- * Nach Verifizierung: GROW_ENABLE_PHASE_RGB 1 setzen und Polaritaet waehlen.
- * Common cathode = 0 (common -> GND), common anode = 1 (common -> 3V3).
+/* RGB: gemeinsame Kathode vom Nutzer bestaetigt, GND gemeinsam.
+ * R D33 und G D32 jeweils ueber 440 Ohm; nach Umverdrahtung aktiv.
  */
 #ifndef GROW_ENABLE_PHASE_RGB
-#define GROW_ENABLE_PHASE_RGB 0
+#define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode bestaetigt; erst nach Umverdrahtung auf D23/D32 flashen
 #endif
 #ifndef GROW_RGB_COMMON_ANODE
 #define GROW_RGB_COMMON_ANODE 0
