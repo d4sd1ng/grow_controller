@@ -1,16 +1,14 @@
 /**
- * Grow Controller V5: Sensorik und vier SSR-Steuerausgaenge auf einem ESP32.
+ * Grow Controller: Sensor-ESP32 mit OLED und ADS1115.
  *
- * - 3x DHT22, 2x DS18B20, ADS1115 (pH/TDS), BH1750, OLED
- * - lokale AUTO/MANUAL-Steuerung; SSR werden direkt geschaltet
- * - lokale HTTP-API fuer CYD und Raspberry Pi, Telemetrie zum Homeserver
+ * - 3x DHT22, DS18B20, ADS1115 (pH/EC), BH1750, OLED
+ * - HTTP-API fuer CYD/Raspberry Pi, Telemetrie und pH-Alarm
+ * - Zweites Geraet: ESP32-C3 SuperMini als eigenstaendiger Leistungscontroller.
  *
- * Kleinspannungs-Pinplan: siehe wiring_plan_v2.md (Ein-ESP32-Ausbau).
- *   I2C OLED/ADS1115 21/22; BH1750 13/14; DHT22 25/26/27
- *   DS18B20 23; SSR Licht 17, Umluft 18, Abluft 19, Heizung 33
- *
- * Die Netzspannungsseite ist nicht Bestandteil dieser Firmware.
- * Heizung benoetigt eine unabhaengige, fachgerecht ausgelegte Temperaturbegrenzung.
+ * Sensorplatine: 26x30-Lochraster; dieser Sketch bedient KEINE Relaispins.
+ * Alte lokale AUTO/MANUAL-Sollwertberechnung bleibt fuer API-Kompatibilitaet,
+ * sendet aber NOCH NICHT an das C3-Geraet. Aktorzustaende = NICHT VERBUNDEN.
+ * Kein netzspannungsseitiger Aufbau in diesem Firmwareprojekt.
  */
 #include <Arduino.h>
 #include <WiFi.h>
@@ -58,10 +56,6 @@ static constexpr uint8_t PIN_PH_DO = 32;
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
 static constexpr bool PH_TO_WIRED = false;
 static constexpr bool PH_DO_WIRED = false; // erst nach sicherer Pegelpruefung aktivieren
-static constexpr uint8_t PIN_SSR_LIGHT = 17;
-static constexpr uint8_t PIN_SSR_CIRC = 18;
-static constexpr uint8_t PIN_SSR_EXHAUST = 19;
-static constexpr uint8_t PIN_SSR_HEATER = 33;
 
 static constexpr int PIN_I2C_SDA = 21;
 static constexpr int PIN_I2C_SCL = 22;
@@ -189,7 +183,7 @@ struct ActuatorState {
 };
 
 ActuatorState targets;
-ActuatorState actual;  // GPIO-Ausgabezustand; keine Rueckmeldung vom SSR-/Lastkreis
+ActuatorState actual;  // C3-Rueckmeldung fehlt noch: alle Aktoren als AUS / unbekannt
 uint32_t commandSeq = 0;
 char controlMode[8] = "auto";
 
@@ -471,39 +465,20 @@ static void writeActuators(JsonObject obj, const ActuatorState &s) {
   obj["exhaust_vent"] = s.exhaust;
 }
 
-/* Die GPIOs werden im Setup zuerst auf AUS gesetzt.
- * Das Auslesen von actual beschreibt nur den ausgegebenen Pegel,
- * keine elektrische Rueckmeldung von einem SSR.
- */
-static void initActuatorPins() {
-  const uint8_t pins[] = {
-      PIN_SSR_LIGHT, PIN_SSR_CIRC, PIN_SSR_EXHAUST, PIN_SSR_HEATER
-  };
-  for (uint8_t pin : pins) {
-    digitalWrite(pin, LOW);
-    pinMode(pin, OUTPUT);
-  }
-  actual = ActuatorState{};
-}
-
+/* Sensor-ESP32 hat keine SSR-Ausgaenge. Keine GPIO-Initialisierung. */
 static bool sameState(const ActuatorState &a, const ActuatorState &b) {
   return a.light == b.light && a.heater == b.heater &&
          a.circulation == b.circulation && a.exhaust == b.exhaust;
 }
 
 static void applyActuators() {
-  // Hardware-Schutzbedingung fuer beide Betriebsarten: ohne gueltigen
-  // DHT22-#1-Wert wird keine Heizfreigabe gehalten oder wiederhergestellt.
+  // C3-Kommunikation ist noch nicht implementiert. Sollwerte nur speichern,
+  // NIEMALS einen Pin des Sensor-ESP32 fuer einen Aktor schalten.
   if (!sensors.dht[0].ok && targets.heater) {
     targets.heater = false;
     ++commandSeq;
   }
-  if (sameState(actual, targets)) return;
-  digitalWrite(PIN_SSR_LIGHT, targets.light ? HIGH : LOW);
-  digitalWrite(PIN_SSR_CIRC, targets.circulation ? HIGH : LOW);
-  digitalWrite(PIN_SSR_EXHAUST, targets.exhaust ? HIGH : LOW);
-  digitalWrite(PIN_SSR_HEATER, targets.heater ? HIGH : LOW);
-  actual = targets;
+  actual = ActuatorState{}; // kein bestaetigter Leistungscontroller
 }
 
 /* ---------- BH1750 ---------- */
@@ -775,7 +750,8 @@ static void handleSummary() {
   }
 
   JsonObject outputs = doc.createNestedObject("actuators");
-  outputs["source"] = "local_gpio";
+  outputs["source"] = "esp32_c3_not_connected";
+  outputs["connected"] = false;
   JsonObject actualObj = outputs.createNestedObject("actual");
   writeActuators(actualObj, actual);
 
@@ -789,6 +765,7 @@ static void handleActuatorTargets() {
 
   StaticJsonDocument<512> doc;
   doc["ok"] = true;
+  doc["power_controller_connected"] = false;
   doc["control_mode"] = controlMode;
   doc["seq"] = commandSeq;
   doc["source_ms"] = millis();
@@ -1047,8 +1024,8 @@ static void drawOled() {
 /* ---------- Setup / Loop ---------- */
 
 void setup() {
-  // Noch vor WLAN, I2C und Sensormessung alle SSR-Ausgaenge deaktivieren.
-  initActuatorPins();
+  // Kein SSR-Pin auf dem Sensor-ESP32, Aktoren werden hier nicht geschaltet.
+  actual = ActuatorState{};
   Serial.begin(115200);
   delay(300);
   Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.60 | 3=NORMAL 6.00 | 0=Test aus"));
