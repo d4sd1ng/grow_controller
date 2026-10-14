@@ -782,7 +782,7 @@ def train_ml_model():
         for _, row in historical_data.iterrows():
             current_temp = row['air_temperature']
             current_ec = row.get('ec', 1.5)
-            current_ph = row.get('ph', 6.5)
+            current_ph = row.get('ph', 6.0)
             
             y_data.append({
                 'optimal_temp': current_temp,  # Learn stable temp
