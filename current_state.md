@@ -1,46 +1,50 @@
 # Current State — Grow Controller
 
-**Stand:** 2026-10-12
-**Arbeitsbranch:** `feature/ph-calibration-service-esp`
-**Architektur:** ein ESP32 mit OLED, vier lokale SSR-Steuerausgaenge
+**Stand:** 2026-10-14  
+**Arbeitsbranch:** `feature/ph-calibration-service-esp`  
+**Architektur:** **zwei ESP32**: (1) Sensor-ESP32 mit OLED auf **26×30-Lochraster**, (2) **ESP32-C3 SuperMini** als separater Leistungscontroller.
 
-## Hardware
+## Sensorplatine 26 × 30
 
-| Pin | Funktion |
+| Sensorpin | Zweck |
 |---|---|
-| GPIO21/22 | OLED und ADS1115 |
-| GPIO23 | DS18B20 1-Wire |
-| GPIO25/26/27 | 3x DHT22 — noch nicht verkabelt |
-| GPIO13/14 | BH1750 — noch nicht verkabelt |
-| GPIO17 | SSR1 Licht |
-| GPIO18 | SSR2 Umluft |
-| GPIO19 | SSR3 Abluft |
-| GPIO33 | SSR4 Heizung |
+| GPIO21/22 | I2C OLED (integriert) + ADS1115, MLX90640 optional |
+| ADS1115 A0 | PH4502C PO; kalibrierte, vorhandene Messkette beibehalten |
+| ADS1115 A1 | TDS-/EC-Signaleingang; vorhandene Messkette beibehalten |
+| GPIO23 | DS18B20, 1-Wire mit 4,7-kOhm-Pull-up gegen 3V3; Ersatzfühler ausstehend |
+| GPIO25/26/27 | 3× DHT22 |
+| GPIO13/14 | BH1750 (zweiter I2C-Bus) |
+| GPIO32/33 | Reserve, nicht als Relaisleitungen verwenden |
 
-ADS1115: A0 PH4502C ueber Spannungsteiler 10k/20k, A1 CQRobot TDS. Das vorhandene OLED wird gemeinsam mit dem ADS1115 am I2C-Bus betrieben.
+**Nicht verwenden:** PH4502C TO und DO. Gemessene TO-Ausgangsspannung 3,3–3,4 V bei ADS-VDD 3,3 V. Wassertemperatur zukünftig über DS18B20.
 
-Der einzelne ESP32 und die Sensorplatinen ziehen in das gemeinsame Controller-/Relaisgehaeuse. Netzein- und -ausgaenge bleiben in einer getrennten, fachgerecht installierten und geprueften Leistungssektion. Klimasensoren muessen ausserhalb des Gehaeuses in den Messzonen positioniert werden.
+**Bestückung:** ESP32 über passende, vorab mechanisch geprüfte 2×15-polige Buchsenleisten; ADS1115 steckbar; DS18B20 (3-polig), 3× DHT22 (je 3-polig), BH1750 (4-polig); separate 3V3-/GND-Verteilung. Nur Sensor-/Kleinspannungsschaltungen auf dieser Lochrasterplatine. Vollständiger Plan: [wiring_plan_v2.md](wiring_plan_v2.md).
 
-## Firmware-Stand
+## Zweites Gerät — ESP32-C3 SuperMini
 
-- `firmware/growroom_telemetry_client` schaltet die vier Kleinspannungs-SSR-GPIOs lokal, ohne Powerbox-ESP32 ueber WLAN abzufragen.
-- Die CYD- und Server-API bleibt weitgehend kompatibel; der alte `power_node`-Status und dessen POST-Endpunkt sind entfallen.
-- Bei ungueltiger DHT22-#1-Messung wird die Heizung gesperrt; unabhaengiger Uebertemperaturschutz ist weiterhin erforderlich.
-- `firmware/ph_calibration_tool` dient als temporaerer Hardwaretest und pH-Kalibrierung **ueber ADS1115 A0**, mit TDS-Auslesung auf A1. OLED, DS18B20, DHT22 und BH1750 werden diagnostiziert.
-- DHT22/BH1750 duerfen vor dem Anschluss als fehlend erscheinen. Vier SSR-Steuerausgaenge bleiben waehrend des Diagnosesketchs auf AUS.
-- Die alte pH-Kalibrierung des ESP32-internen ADC bleibt in einem getrennten NVS-Namespace erhalten und wird nicht automatisch auf ADS1115-Werte angewendet.
-- Alter `firmware/powerbox_actuator`-Sketch bleibt als Legacy im Repo und darf fuer den Einzel-ESP32-Aufbau nicht verwendet werden.
+Separate Installation im Leistungsgehäuse für die späteren vier Funktionskanäle Licht, Umluft, Abluft und Heizstrahler. **Die C3-Pinbelegung und Steuerungsfirmware sind noch nicht freigegeben, keine Relaisansteuerung funktionsfähig.** Kommunikationsausfall und Rückmeldungen müssen sicher behandelt werden. Keine 230-V-Anschlussanleitung in diesem Repository.
 
-## Serverstand
+## Firmware
 
-FastAPI/Streamlit/SQLite-Zwischenstand unveraendert. PostgreSQL-Migration ist nach dem Hardware-Funktionstest als separater Schritt geplant. Die Sensordaten- und Aktor-Keys bleiben kompatibel, nur die Powerbox-Node-Meldung entfällt.
+- `firmware/ph_calibration_tool`: Kalibrierung/Diagnose/pH-Alarmtests, **keine Relais-GPIO-Ausgänge**.
+- `firmware/growroom_telemetry_client`: Messwerte, pH-Alarm, OLED, HTTP-API und Sollwertverwaltung; **alte direkte Relais-GPIO-Schaltung entfernt**. Aktorstatus ist `esp32_c3_not_connected`. WLAN-Verbindung zum C3 und tatsächliche Umsetzung von Steuerbefehlen stehen aus.
+- `firmware/ds18b20_diagnostic`: 1-Wire-Test GPIO23, sobald Ersatzfühler da.
+- `firmware/powerbox_actuator`: alte Firmware, **nicht** als fertige C3-Version verwenden.
+- CYD und Raspberry Pi kommunizieren bislang weiterhin mit dem Sensor-ESP32.
 
-## Noch offen
+## Verifizierter Stand
 
-1. Kalibriersketch und Hauptfirmware mit der lokalen Arduino-ESP32-Toolchain kompilieren.
-2. Zuerst ADS1115 A0/A1, OLED und DS18B20 ueber den Hardware-Diagnosesketch pruefen.
-3. Drei DHT22 und BH1750 verkabeln und dann die Diagnose erneut ausfuehren.
-4. Spannungsgrenzen am ADS1115 und SSR-Steuereingangsstroeme elektrisch pruefen.
-5. pH-7-/pH-4-Pufferkalibrierung der realen ADS1115-Messkette.
-6. Steuerungs- und Sicherheitspruefungen vor jeder Inbetriebnahme mit Lasten.
-7. PostgreSQL-Migration.
+- PH4502C PO pH-4-/pH-7-Kalibrierung laut Nutzer erfolgt.
+- pH-Alarmtests LOW / HIGH / NORMAL laut Nutzer funktionsfähig.
+- PH4502C TO nicht verwendet. DS18B20 Ersatzsensoren noch nicht geliefert.
+- Sonstige Sensor-Stecker, Steckleisten und Lochrasteraufbau noch zu montieren.
+- Die aktuell geänderten Sketche wurden hier **nicht** mit einer realen Arduino-ESP32-Toolchain kompiliert und nicht erneut auf Hardware getestet.
+
+## Nächste Aufgaben
+
+1. Lochrasterplatine 26×30 anhand echter Modulmaße trocken bestücken, USB/OLED und Sensoranschlüsse ausrichten.
+2. Buchsenleisten, 3V3/GND-Verteilung und Sensorsteckverbinder auf der **Sensorplatine** löten; Durchgang und Versorgung prüfen.
+3. DS18B20 nach Lieferung an GPIO23 prüfen und Wasserfühler per ROM zuordnen.
+4. DHT22/BH1750 prüfen.
+5. Getrennten C3-Controller softwareseitig entwickeln, kommunikative und elektrische Sicherheitsprüfung vor jeder Leistungsfreigabe.
+6. PostgreSQL-Migration von bisherigen Serverdaten separat durchführen.
