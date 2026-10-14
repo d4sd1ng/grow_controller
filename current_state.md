@@ -8,17 +8,17 @@
 
 | Sensorpin | Zweck |
 |---|---|
-| GPIO21/22 | I2C OLED (integriert) + ADS1115, MLX90640 optional |
+| GPIO21/22 | I2C Bus A: OLED (0x3C) + MLX90640-Kamera (0x33) |
 | ADS1115 A0 | PH4502C PO; kalibrierte, vorhandene Messkette beibehalten |
 | ADS1115 A1 | TDS-/EC-Signaleingang; vorhandene Messkette beibehalten |
-| GPIO23 | DS18B20, 1-Wire mit 4,7-kOhm-Pull-up gegen 3V3; Ersatzfühler ausstehend |
+| GPIO32 | DS18B20, 1-Wire mit 4,7-kOhm-Pull-up gegen 3V3; Ersatzfühler ausstehend |
 | GPIO25/26/27 | 3× DHT22 |
-| GPIO13/14 | BH1750 (zweiter I2C-Bus) |
-| GPIO32/33 | Reserve, nicht als Relaisleitungen verwenden |
+| GPIO13/14 | I2C Bus B: ADS1115 (0x48) + BH1750 (0x23; ADDR an GND) |
+| GPIO33 | Reserve, nicht als Relaisleitung verwenden |
 
 **Nicht verwenden:** PH4502C TO und DO. Gemessene TO-Ausgangsspannung 3,3–3,4 V bei ADS-VDD 3,3 V. Wassertemperatur zukünftig über DS18B20.
 
-**Bestückung:** ESP32 über passende, vorab mechanisch geprüfte 2×15-polige Buchsenleisten; ADS1115 steckbar; DS18B20 (3-polig), 3× DHT22 (je 3-polig), BH1750 (4-polig); separate 3V3-/GND-Verteilung. Nur Sensor-/Kleinspannungsschaltungen auf dieser Lochrasterplatine. Vollständiger Plan: [wiring_plan_v2.md](wiring_plan_v2.md).
+**Bestückung:** ESP32 über passende, vorab mechanisch geprüfte 2×15-polige Buchsenleisten; ADS1115 steckbar; DS18B20 (3-polig), 3× DHT22 (je 3-polig), BH1750 (**5-polig inklusive ADDR**), MLX90640-Kamera (**4-poliger Stecker: SDA D21, SCL D22, GND, Versorgung vorerst offen**); separate 3V3-/GND-Verteilung. Nur Sensor-/Kleinspannungsschaltungen auf dieser Lochrasterplatine. Vollständiger Plan: [wiring_plan_v2.md](wiring_plan_v2.md).
 
 ## Zweites Gerät — ESP32-C3 SuperMini
 
@@ -28,7 +28,7 @@ Separate Installation im Leistungsgehäuse für die späteren vier Funktionskan�
 
 - `firmware/ph_calibration_tool`: Kalibrierung/Diagnose/pH-Alarmtests, **keine Relais-GPIO-Ausgänge**.
 - `firmware/growroom_telemetry_client`: Messwerte, pH-Alarm, OLED, HTTP-API und Sollwertverwaltung; **alte direkte Relais-GPIO-Schaltung entfernt**. Aktorstatus ist `esp32_c3_not_connected`. WLAN-Verbindung zum C3 und tatsächliche Umsetzung von Steuerbefehlen stehen aus.
-- `firmware/ds18b20_diagnostic`: 1-Wire-Test GPIO23, sobald Ersatzfühler da.
+- `firmware/ds18b20_diagnostic`: 1-Wire-Test GPIO32, sobald Ersatzfühler da.
 - `firmware/powerbox_actuator`: alte Firmware, **nicht** als fertige C3-Version verwenden.
 - CYD und Raspberry Pi kommunizieren bislang weiterhin mit dem Sensor-ESP32.
 
@@ -44,7 +44,7 @@ Separate Installation im Leistungsgehäuse für die späteren vier Funktionskan�
 
 1. Lochrasterplatine 26×30 anhand echter Modulmaße trocken bestücken, USB/OLED und Sensoranschlüsse ausrichten.
 2. Buchsenleisten, 3V3/GND-Verteilung und Sensorsteckverbinder auf der **Sensorplatine** löten; Durchgang und Versorgung prüfen.
-3. DS18B20 nach Lieferung an GPIO23 prüfen und Wasserfühler per ROM zuordnen.
-4. DHT22/BH1750 prüfen.
+3. DS18B20 nach Lieferung an GPIO32 prüfen und Wasserfühler per ROM zuordnen.
+4. DHT22/BH1750 prüfen und die MLX90640 über den auf D21/D22 reservierten Anschluss mit der tatsächlichen Breakout-Versorgung verbinden, sobald ihr Datenblatt vorliegt.
 5. Getrennten C3-Controller softwareseitig entwickeln, kommunikative und elektrische Sicherheitsprüfung vor jeder Leistungsfreigabe.
 6. PostgreSQL-Migration von bisherigen Serverdaten separat durchführen.
