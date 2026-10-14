@@ -1,6 +1,6 @@
 /**
  * Hardware-Diagnose und pH-Kalibrierung auf dem EINZELNEN ESP32.
- * Aufgebaut: OLED GPIO21/22, ADS1115+BH1750 GPIO13/14, DS18B20 GPIO23.
+ * Aufgebaut: OLED+ADS1115 GPIO21/22, BH1750 GPIO13/14, DS18B20 GPIO23.
  * Noch nicht angeschlossene Sensoren (3x DHT22 GPIO25/26/27,
  * BH1750 GPIO13/14) werden als FEHLEND angezeigt, ohne die anderen
  * Tests und die pH-Kalibrierung zu blockieren.
@@ -374,8 +374,8 @@ static SampleStats sampleChannel(uint8_t channel, uint16_t count, uint16_t delay
                      static_cast<float>(sqrt(variance)), minMv, maxMv};
 }
 
-// Vollstaendiger I2C-Adressscan auf BEIDEN tatsaechlich verdrahteten ESP32-Bussen.
-// ADS1115: alle vier moeglichen Adressen auf beiden Bussen automatisch binden.
+// Urspruengliche feste I2C-Zuordnung: ADS1115 + OLED an D21/D22,
+// BH1750 getrennt an D13/D14. Optionaler Adressscan ist nur Diagnose.
 static bool i2cResponds(TwoWire& bus, uint8_t addr) {
   bus.beginTransmission(addr);
   return bus.endTransmission() == 0;
@@ -408,7 +408,7 @@ static void scanI2CAndBind(bool forceFullScan = false) {
     break;
   }
   if (bhOk)
-    Serial.printf("BH1750 GEFUNDEN: 0x%02X auf D13/D14\\n", bhAddress);
+    Serial.printf("BH1750 GEFUNDEN: 0x%02X auf D13/D14\n", bhAddress);
   else
     Serial.println(F("BH1750 nicht gefunden: 0x23/0x5C auf D13/D14"));
 
