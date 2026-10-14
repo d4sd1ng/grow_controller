@@ -2,7 +2,7 @@
 
 Grow-Controller fuer Indoor-Salat mit **zwei ESP32**: Sensor-ESP32 mit integriertem OLED auf **26×30-Lochraster** und separater **ESP32-C3 SuperMini** als geplanter Leistungscontroller. Das Cheap Yellow Display (CYD) dient als Fernbedienung, Raspberry Pi als Telemetrie-/Dashboard-Server.
 
-**Aktuelle Anschluesse:** [wiring_plan_v2.md](wiring_plan_v2.md) (**Zwei-ESP32-Plan V4, Sensorplatine 26×30**) · **Firmware:** [firmware/README.md](firmware/README.md) · **Status:** [current_state.md](current_state.md)
+**Aktuelle Anschluesse:** [wiring_plan_v2.md](wiring_plan_v2.md) (**Zwei-ESP32-Plan V8, Sensorplatine 26×30**) · **Firmware:** [firmware/README.md](firmware/README.md) · **Status:** [current_state.md](current_state.md)
 
 ## Architektur
 
@@ -11,7 +11,7 @@ pH / EC / DHT22 / DS18B20 / BH1750 / MLX90640
                    |
                    v
      Sensor-ESP32 mit OLED und ADS1115
-     OLED+MLX: D21/D22 | ADS+BH: D13/D14 | DS: D32
+     OLED+MLX: D21/D22 | ADS+BH: D13/D14 | DS: D23
        (26 x 30 Lochraster, KEINE Relais)
                    |
              WLAN / API
@@ -22,7 +22,7 @@ Raspberry Pi    CYD-Fernanzeige    ESP32-C3 SuperMini
                                   (getrennter Leistungscontroller)
 ```
 
-**Wiring-Status:** Auf der 26×30-Platine sind eigene Anschlüsse für BH1750 (5-polig, inkl. ADDR), MLX90640 (4-polig, VCC/VIN erst nach Modulprüfung) und DS18B20 (D32) vorgesehen. D13/D14 sind der ADS1115-/BH1750-I2C-Bus; D21/D22 bleiben OLED-/Kamera-Bus.
+**Wiring-Status:** Auf der 26×30-Platine sind eigene Anschlüsse für BH1750 (5-polig, inkl. ADDR), MLX90640 (4-polig, VCC/VIN erst nach Modulprüfung) und DS18B20 (D23 mit 4,7-kΩ-Pull-up nach 3V3) vorgesehen. D13/D14 sind der ADS1115-/BH1750-I2C-Bus; D21/D22 bleiben OLED-/Kamera-Bus. RGB-Grün auf D32 (440 Ω), RGB-Rot auf D33 (440 Ω), ein Phasentaster auf D16 und Buzzer-Steuerreserve auf D19.
 
 **Wichtig:** Die Sensor-Firmware ist nun frei von direkter GPIO-Relaissteuerung. Die C3-Anbindung ist noch ausstehend; die Aktoren werden derzeit **nicht** angesteuert. Die 230-V-Seite gehoert in eine fachkundig gepruefte, separate Installation.
 
