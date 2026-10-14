@@ -782,6 +782,10 @@ static void handleActuatorTargets() {
 static void handleControlTargets() {
   if (!localAuthorized()) return sendUnauthorized();
 
+  // Kein realer Aktoranschluss am Sensor-ESP, C3 fehlt.
+  return localServer.send(503, "application/json",
+      "{\"ok\":false,\"error\":\"esp32_c3_not_connected\"}");
+
   StaticJsonDocument<512> in;
   if (deserializeJson(in, localServer.arg("plain"))) {
     return localServer.send(400, "application/json", "{\"ok\":false,\"error\":\"bad_json\"}");
