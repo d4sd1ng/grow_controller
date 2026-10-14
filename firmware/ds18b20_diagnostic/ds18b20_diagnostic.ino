@@ -1,13 +1,13 @@
 /*
  * Separater DS18B20 1-Wire Diagnosesketch
- * ESP32: DATA = GPIO32 (D32), 4.7 kOhm Pull-up DATA -> 3.3 V
+ * ESP32: DATA = GPIO23 (D23), 4.7 kOhm Pull-up DATA -> 3.3 V
  * Nur OneWire-Library, keine DallasTemperature-Library erforderlich.
  * Serial Monitor: 115200 Baud.
  */
 #include <Arduino.h>
 #include <OneWire.h>
 
-static constexpr uint8_t PIN_ONEWIRE = 32;
+static constexpr uint8_t PIN_ONEWIRE = 23;
 OneWire bus(PIN_ONEWIRE);
 
 void printAddress(const uint8_t *addr) {
@@ -21,7 +21,7 @@ void printAddress(const uint8_t *addr) {
 void setup() {
   Serial.begin(115200);
   delay(1200);
-  Serial.println("\n=== DS18B20 / 1-Wire Diagnose auf GPIO32 ===");
+  Serial.println("\n=== DS18B20 / 1-Wire Diagnose auf GPIO23 ===");
 }
 
 void loop() {
