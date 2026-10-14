@@ -34,6 +34,18 @@
 #include <Adafruit_MLX90640.h>
 #endif
 
+/* Die Buzzer-Bauart ist noch unbekannt. Daher standardmaessig AUS.
+ * Bei einem bestaetigten 3.3-V-kompatiblen aktiven Modul mit Logikeingang
+ * spaeter auf 1 setzen; GPIO18 ist kein Versorgungspin.
+ * Passive Piezoelemente benoetigen eine separate PWM-Anpassung.
+ */
+#ifndef GROW_ENABLE_PH_BUZZER
+#define GROW_ENABLE_PH_BUZZER 0
+#endif
+#ifndef GROW_PH_BUZZER_ACTIVE_HIGH
+#define GROW_PH_BUZZER_ACTIVE_HIGH 1
+#endif
+
 #if __has_include("device_secrets.h")
 #include "device_secrets.h"
 #else
@@ -56,6 +68,7 @@ static constexpr uint8_t PIN_PHASE_WUCHS_BUTTON = 16;
 static constexpr uint8_t PIN_PHASE_BLUETE_BUTTON = 19;
 static constexpr uint8_t PIN_PHASE_WUCHS_LED = 23;
 static constexpr uint8_t PIN_PHASE_BLUETE_LED = 33;
+static constexpr uint8_t PIN_PH_BUZZER = 18; // reserviert, Anschluss erst nach Modulpruefung
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 static constexpr uint8_t PIN_ONEWIRE = 32; // DS18B20 auf D32; PH4502C DO wird nicht genutzt
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
@@ -385,6 +398,46 @@ static void handlePhTestSerial() {
   }
 }
 
+
+
+/* Nicht blockierende akustische Warnung: LOW/HIGH in 5-Sekunden-Abstand,
+ * Sensorfehler alle 10 Sekunden. Gleiches Muster im pH-Softwaretest.
+ * Kein Dauerton. Der Pin bleibt deaktiviert, solange die Buzzerart unklar ist.
+ */
+static void setupPhBuzzer() {
+#if GROW_ENABLE_PH_BUZZER
+  digitalWrite(PIN_PH_BUZZER, GROW_PH_BUZZER_ACTIVE_HIGH ? LOW : HIGH);
+  pinMode(PIN_PH_BUZZER, OUTPUT);
+#endif
+}
+static void updatePhBuzzer(unsigned long nowMs) {
+#if GROW_ENABLE_PH_BUZZER
+  const PhAlarm shown = phTestActive ? phTestAlarm : phAlarm;
+  static PhAlarm last = PhAlarm::Normal;
+  static bool lastTest = false;
+  static unsigned long sinceMs = 0;
+  if (shown != last || lastTest != phTestActive) {
+    last = shown;
+    lastTest = phTestActive;
+    sinceMs = nowMs;
+  }
+  const unsigned long slot = (nowMs - sinceMs) %
+                             (shown == PhAlarm::Fault ? 10000UL : 5000UL);
+  bool sound = false;
+  if (shown == PhAlarm::Low) {
+    sound = slot < 180UL || (slot >= 330UL && slot < 510UL);
+  } else if (shown == PhAlarm::High) {
+    sound = slot < 180UL || (slot >= 330UL && slot < 510UL) ||
+            (slot >= 660UL && slot < 840UL);
+  } else if (shown == PhAlarm::Fault) {
+    sound = slot < 120UL;
+  }
+  digitalWrite(PIN_PH_BUZZER,
+               sound == (GROW_PH_BUZZER_ACTIVE_HIGH != 0) ? HIGH : LOW);
+#else
+  (void)nowMs;
+#endif
+}
 
 /* ---------- Lokale API ---------- */
 static constexpr uint16_t LOCAL_HTTP_PORT = 8081;
@@ -841,6 +894,7 @@ static void handleSummary() {
   reading["ph_calibrated"] = phCalibrated;
   reading["ph_alarm"] = phCode(phAlarm);
   reading["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
+  reading["ph_buzzer_configured"] = (GROW_ENABLE_PH_BUZZER != 0);
   reading["ph_alarm_test"] = phTestActive;
   if (phTestActive) {
     reading["ph_alarm_test_status"] = phCode(phTestAlarm);
@@ -961,6 +1015,7 @@ static bool sendTelemetry() {
   root["ph_calibrated"] = phCalibrated;
   root["ph_alarm"] = phCode(phAlarm);
   root["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
+  root["ph_buzzer_configured"] = (GROW_ENABLE_PH_BUZZER != 0);
   root["ph_alarm_test"] = phTestActive;
   if (phTestActive) {
     root["ph_alarm_test_status"] = phCode(phTestAlarm);
@@ -1118,6 +1173,7 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   setupGrowPhaseButtons();
+  setupPhBuzzer();
   Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.60 | 3=NORMAL 6.00 | 0=Test aus"));
   loadPhCalibration();
   loadEcCalibration();
@@ -1182,6 +1238,7 @@ void loop() {
   localServer.handleClient();
   pollGrowPhaseButtons(now);
   handlePhTestSerial();
+  updatePhBuzzer(now);
   sampleTdsBackground(now);
   pollMlx90640(now);
 
