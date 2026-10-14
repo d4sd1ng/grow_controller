@@ -220,24 +220,78 @@ static void setPhAlarm(PhAlarm next) {
   phAlertPending = true;
   Serial.printf("pH-STATUS: %s\n", phMessage(next));
 }
-static void updatePhAlarm() {
-  if (!phCalibrated || !sensors.adsOk || !isfinite(sensors.ph) ||
-      sensors.ph < 0.0f || sensors.ph > 14.0f) {
-    phSamples = 0;
-    setPhAlarm(PhAlarm::Fault);
-    return;
+
+/* Eine Zustandsfunktion fuer echte Messwerte UND gekennzeichnete Testwerte. */
+static PhAlarm evaluatePhAlarm(float v, bool measurementValid,
+                              PhAlarm current, PhAlarm &pending, uint8_t &samples) {
+  if (!measurementValid || !isfinite(v) || v < 0.0f || v > 14.0f) {
+    samples = 0;
+    pending = PhAlarm::Fault;
+    return PhAlarm::Fault;
   }
   PhAlarm next = PhAlarm::Normal;
-  const float v = sensors.ph;
-  if (v < PH_LOW || (phAlarm == PhAlarm::Low && v < PH_LOW + PH_HYST))
+  if (v < PH_LOW || (current == PhAlarm::Low && v < PH_LOW + PH_HYST))
     next = PhAlarm::Low;
-  else if (v > PH_HIGH || (phAlarm == PhAlarm::High && v > PH_HIGH - PH_HYST))
+  else if (v > PH_HIGH || (current == PhAlarm::High && v > PH_HIGH - PH_HYST))
     next = PhAlarm::High;
-  if (next == phAlarm) { phSamples = 0; return; }
-  if (next != phPending) { phPending = next; phSamples = 1; }
-  else if (phSamples < PH_CONFIRM) ++phSamples;
-  if (phSamples >= PH_CONFIRM) { phSamples = 0; setPhAlarm(next); }
+  if (next == current) { samples = 0; return current; }
+  if (next != pending) { pending = next; samples = 1; }
+  else if (samples < PH_CONFIRM) ++samples;
+  if (samples >= PH_CONFIRM) { samples = 0; return next; }
+  return current;
 }
+static void updatePhAlarm() {
+  setPhAlarm(evaluatePhAlarm(
+      sensors.ph, phCalibrated && sensors.adsOk,
+      phAlarm, phPending, phSamples));
+}
+
+static bool phTestActive = false;
+static float phTestValue = NAN;
+static PhAlarm phTestAlarm = PhAlarm::Fault, phTestPending = PhAlarm::Fault;
+static uint8_t phTestSamples = 0;
+static bool phTestAlertPending = false;
+static unsigned long lastPhTestAlertAttempt = 0;
+
+static void updatePhTestAlarm() {
+  if (!phTestActive) return;
+  const PhAlarm next = evaluatePhAlarm(phTestValue, true, phTestAlarm,
+                                       phTestPending, phTestSamples);
+  if (next == phTestAlarm) return;
+  phTestAlarm = next;
+  phTestAlertPending = true;
+  Serial.printf("[pH TEST] %s\\n", phMessage(phTestAlarm));
+}
+static void setPhTestMode(char c) {
+  if (c == '0') {
+    phTestActive = false;
+    phTestValue = NAN;
+    phTestAlertPending = false;
+    Serial.printf("[pH TEST AUS] Echtes Sensor-Alarmsignal: %s\\n", phMessage(phAlarm));
+    return;
+  }
+  phTestActive = true;
+  phTestValue = c == '1' ? 5.40f : c == '2' ? 6.60f : 6.00f;
+  phTestAlarm = PhAlarm::Fault;
+  phTestPending = PhAlarm::Fault;
+  phTestSamples = 0;
+  phTestAlertPending = false;
+  Serial.printf("[pH TEST EIN] pH %.2f simuliert; Sensor/NVS/SSR unveraendert.\\n",
+                phTestValue);
+  for (uint8_t i = 0; i < PH_CONFIRM; ++i) updatePhTestAlarm();
+  Serial.printf("[pH TEST] Ergebnis: %s (3 simulierte Messungen)\\n",
+                phMessage(phTestAlarm));
+}
+static void handlePhTestSerial() {
+  while (Serial.available()) {
+    const char c = static_cast<char>(Serial.read());
+    if (c >= '0' && c <= '3') setPhTestMode(c);
+    else if (c == 'h' || c == 'H' || c == '?') {
+      Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.60 | 3=NORMAL 6.00 | 0=Test aus"));
+    }
+  }
+}
+
 
 /* ---------- Lokale API ---------- */
 static constexpr uint16_t LOCAL_HTTP_PORT = 8081;
@@ -697,6 +751,11 @@ static void handleSummary() {
   reading["ph_calibrated"] = phCalibrated;
   reading["ph_alarm"] = phCode(phAlarm);
   reading["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
+  reading["ph_alarm_test"] = phTestActive;
+  if (phTestActive) {
+    reading["ph_alarm_test_status"] = phCode(phTestAlarm);
+    reading["ph_alarm_test_value"] = phTestValue;
+  }
   setJsonFloat(reading, "ec", sensors.ec); // mS/cm
   reading["ec_calibrated"] = ecCalibrated;
   reading["ec_reference_temp_verified"] = validDsTempC(ecCalTempC);
@@ -841,6 +900,11 @@ static bool sendTelemetry() {
   root["ph_calibrated"] = phCalibrated;
   root["ph_alarm"] = phCode(phAlarm);
   root["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
+  root["ph_alarm_test"] = phTestActive;
+  if (phTestActive) {
+    root["ph_alarm_test_status"] = phCode(phTestAlarm);
+    root["ph_alarm_test_value"] = phTestValue;
+  }
 
   setJsonFloat(root, "vpd", sensors.vpd);
   root["mlx90640_ok"] = sensors.mlx90640Ok;
@@ -911,6 +975,33 @@ static void sendPhAlertEvent() {
   if (response == 200) phAlertPending = false;
 }
 
+/* Der TEST-Alarm wird getrennt von echten Alarmen mit "TEST" an den Server
+ * gesendet. Er veraendert niemals den realen ph_alarm-/ph-Messwert.
+ */
+static void sendPhTestAlertEvent() {
+  if (!phTestActive || !phTestAlertPending || WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.setTimeout(5000);
+  if (!growHttpBegin(http, "/api/v1/alerts")) return;
+  http.addHeader("Content-Type", "application/json");
+  if (strlen(TELEMETRY_API_KEY) > 0)
+    http.addHeader("X-Telemetry-Key", TELEMETRY_API_KEY);
+  StaticJsonDocument<256> doc;
+  doc["severity"] = "info";
+  doc["source"] = "grow_sensor_01";
+  doc["message"] = String("[TEST, SIMULIERT] ") + phMessage(phTestAlarm);
+  String body;
+  serializeJson(doc, body);
+  const int response = http.POST(body);
+  http.end();
+  if (response == 200) {
+    phTestAlertPending = false;
+    Serial.println(F("[pH TEST] Server hat das gekennzeichnete Test-Event angenommen."));
+  } else {
+    Serial.printf("[pH TEST] Alarm-HTTP %d (nicht bestaetigt).\\n", response);
+  }
+}
+
 /* ---------- OLED ---------- */
 
 static void drawOled() {
@@ -943,9 +1034,11 @@ static void drawOled() {
   else display.printf("%.2f", sensors.ec);
 
   display.setCursor(0, 48);
-  if (phAlarm == PhAlarm::Low) display.print("ALARM pH <5.5");
-  else if (phAlarm == PhAlarm::High) display.print("ALARM pH >6.5");
-  else if (phAlarm == PhAlarm::Fault) display.print("pH SENSOR/KAL FEHLER");
+  const PhAlarm shown = phTestActive ? phTestAlarm : phAlarm;
+  if (phTestActive) display.print("TEST ");
+  if (shown == PhAlarm::Low) display.print("ALARM pH <5.5");
+  else if (shown == PhAlarm::High) display.print("ALARM pH >6.5");
+  else if (shown == PhAlarm::Fault) display.print("pH SENSORFEHLER");
   else display.print("pH OK 5.5-6.5");
 
   display.display();
@@ -958,6 +1051,7 @@ void setup() {
   initActuatorPins();
   Serial.begin(115200);
   delay(300);
+  Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.60 | 3=NORMAL 6.00 | 0=Test aus"));
   loadPhCalibration();
   loadEcCalibration();
   loadWaterSensorRom();
@@ -1020,6 +1114,7 @@ void loop() {
   const unsigned long now = millis();
 
   localServer.handleClient();
+  handlePhTestSerial();
   sampleTdsBackground(now);
   pollMlx90640(now);
 
@@ -1031,6 +1126,7 @@ void loop() {
   if (now - lastSensorRead >= SENSOR_READ_MS) {
     lastSensorRead = now;
     readSensors();
+    if (phTestActive) updatePhTestAlarm();
   }
 
   autoControl();
@@ -1049,6 +1145,11 @@ void loop() {
       now - lastPhAlertAttempt >= 10000UL) {
     lastPhAlertAttempt = now;
     sendPhAlertEvent();
+  }
+  if (phTestAlertPending && phTestActive && WiFi.status() == WL_CONNECTED &&
+      now - lastPhTestAlertAttempt >= 10000UL) {
+    lastPhTestAlertAttempt = now;
+    sendPhTestAlertEvent();
   }
 
   delay(2);
