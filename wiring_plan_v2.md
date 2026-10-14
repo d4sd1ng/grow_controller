@@ -49,7 +49,7 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 
 ## 26 × 30 Lochraster — konkreter Bestückungsplan (Kleinspannung)
 
-**Achtung:** 26×30 bezeichnet 26 × 30 **Bohrungen**, nicht Millimeter. Auf normalem 2,54-mm-Lochraster entspricht das ungefähr 66 × 76 mm im Raster; die Leiterplatte selbst kann etwas größer sein. Bestueckung erst trocken auflegen, da genaue OLED-ESP32-/ADS1115-Modulabmessungen und Reihenabstände nicht zuverlässig vorliegen.
+**Achtung:** 26×30 bezeichnet 26 × 30 **Bohrungen**, nicht Millimeter. Bei 2,54-mm-Raster beträgt der **Abstand zwischen den äußersten Lochmittelpunkten** 63,50 × 73,66 mm; die Außenmaße der Leiterplatte können davon abweichen. Bestueckung erst trocken auflegen, da genaue OLED-ESP32-/ADS1115-Modulabmessungen und Reihenabstände nicht zuverlässig vorliegen.
 
 | Bauteil / Anschluss | Auf der Sensorplatine vorbereiten | Bemerkung |
 |---|---|---|
