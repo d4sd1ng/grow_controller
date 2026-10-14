@@ -391,7 +391,7 @@ static void drawCenterPanel() {
       !strcmp(state.phStatus, "sensor_fault")) {
     tft.setTextColor(TFT_RED, 0x2965);
     const char *alarmText = !strcmp(state.phStatus, "low") ? "pH ALARM <5.5" :
-                            !strcmp(state.phStatus, "high") ? "pH ALARM >6.5" :
+                            !strcmp(state.phStatus, "high") ? "pH ALARM >6.2" :
                             "pH SENSOR/KAL FEHLER";
     tft.drawString(alarmText, x0, y);
     y += 11;
