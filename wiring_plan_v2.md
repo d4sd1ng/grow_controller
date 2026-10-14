@@ -36,14 +36,14 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 | Sensor/Modul | Anschluss am Sensor-ESP32 | Zweck | Bauzustand |
 |---|---|---|---|
 | Internes OLED | **GPIO21 SDA / GPIO22 SCL** | I2C-Bus A, Adresse 0x3C | vorhanden |
-| ADS1115 | **GPIO13 SDA / GPIO14 SCL**, 3V3, GND | I2C-Bus B mit BH1750; Adresse 0x48 (ADDR=GND) | Buswechsel per Firmware vorgesehen |
+| ADS1115 | **GPIO21 (D21) SDA / GPIO22 (D22) SCL**, 3V3, GND | I²C-Bus A gemeinsam mit internem OLED, Adresse 0x48 (ADDR=GND) | ursprüngliche Zuordnung wiederhergestellt |
 | PH4502C PO | ADS1115 **A0** | pH-Messung, vorhandene kalibrierte Signalkette **nicht umbauen** | kalibriert |
 | CQRobot TDS/EC analog | ADS1115 **A1** | EC-Spannung, vorhandene Signalkette erhalten | bereits angeschlossen |
 | DS18B20 | **GPIO23 (D23)** | Wasser-Temperatur, 1-Wire, ein Sensor | Erkennung vom Nutzer bestätigt (vor Pinrückverlegung) |
 | DHT22 #1 | **GPIO25 (D25)** | Pflanzenzone | vorgesehen |
 | DHT22 #2 | **GPIO26 (D26)** | Zuluft-/Unterzone | vorgesehen |
 | DHT22 #3 | **GPIO27 (D27)** | obere Zone | vorgesehen |
-| BH1750 | **GPIO13 (D13) SDA**, **GPIO14 (D14) SCL**, ADDR an GND | Bus B mit ADS1115, Adresse 0x23 | vorgesehen |
+| BH1750 | **GPIO13 (D13) SDA**, **GPIO14 (D14) SCL**, ADDR an GND | separater I²C-Bus B, Adresse 0x23 | vorgesehen |
 | MLX90640 Infrarotkamera | **GPIO21 (D21) SDA**, **GPIO22 (D22) SCL** | Bus A mit OLED, Adresse 0x33, Kamerastecker vorbereiten | Anschluss einplanen, Modul noch nicht geprüft |
 | Ein 4-Pin-Phasentaster | **GPIO16 (D16)** nach GND, `INPUT_PULLUP` | Je ein Pin aus den beiden Schaltpaaren; 50 ms Entprellung, jeder Tastendruck wechselt den Modus | vorgesehen |
 | Eine 4-Pin-RGB-LED: Grün | **GPIO32 (D32)** über **440 Ω (2×220 Ω in Reihe)** | WUCHS = Grün, BLÜTE = Rot und Grün gleichzeitig | gemeinsame Kathode bestätigt |
@@ -108,7 +108,7 @@ Die Firmware ist auf **Grün = WUCHS** und **Rot + Grün = Gelb = BLÜTE** umges
 | GND | Signalmasse | gemeinsame Kleinspannungsmasse |
 | VCC/VIN | **noch offen – Modulversorgung prüfen** | nicht ohne Modulprüfung mit 3,3 V oder 5 V verbinden |
 
-Die MLX90640 hat standardmäßig die I²C-Adresse **0x33**; das OLED **0x3C**. ADS1115 **0x48** und BH1750 **0x23** bleiben gemeinsam auf **Bus B D13/D14**, daher sind keine weiteren ESP32-GPIOs nötig. Falls das Kameramodul I²C-Pull-ups hat, deren Spannung und Gesamtwirkung mit dem OLED-Modul prüfen; alle Datenleitungen müssen **3,3-V-kompatibel** bleiben.
+Die MLX90640 hat standardmäßig die I²C-Adresse **0x33**; das OLED **0x3C**. Der ADS1115 (**0x48**) teilt sich den Bus A auf **D21/D22** mit OLED und geplanter Kamera. Der BH1750 (**0x23**) bleibt allein auf **Bus B D13/D14**. Dafür sind keine weiteren ESP32-GPIOs nötig. Falls das Kameramodul I²C-Pull-ups hat, deren Spannung und Gesamtwirkung mit dem OLED-Modul prüfen; alle Datenleitungen müssen **3,3-V-kompatibel** bleiben.
 
 Die **Wärmebildkamera** benötigt freie Sicht auf die Blätter; nicht hinter gewöhnliches Glas/Acryl oder in das geschlossene Sensorgehäuse montieren. Kamera-Bildfeld und Ausrichtung erst am aufgebauten Salatbeet festlegen. Eine längere I²C-Leitung muss elektrisch validiert werden, bevor die Firmware mit 400 kHz arbeitet.
 
