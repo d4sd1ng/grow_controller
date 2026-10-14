@@ -781,48 +781,9 @@ static void handleActuatorTargets() {
 
 static void handleControlTargets() {
   if (!localAuthorized()) return sendUnauthorized();
-
-  // Kein realer Aktoranschluss am Sensor-ESP, C3 fehlt.
-  return localServer.send(503, "application/json",
-      "{\"ok\":false,\"error\":\"esp32_c3_not_connected\"}");
-
-  StaticJsonDocument<512> in;
-  if (deserializeJson(in, localServer.arg("plain"))) {
-    return localServer.send(400, "application/json", "{\"ok\":false,\"error\":\"bad_json\"}");
-  }
-
-  if (in.containsKey("heater") && in["heater"].as<bool>() &&
-      !sensors.dht[0].ok) {
-    return localServer.send(409, "application/json",
-                            "{\"ok\":false,\"error\":\"air_sensor_invalid\"}");
-  }
-
-  bool changed = false;
-  if (in.containsKey("light")) {
-    targets.light = in["light"].as<bool>();
-    changed = true;
-  }
-  if (in.containsKey("heater")) {
-    targets.heater = in["heater"].as<bool>();
-    changed = true;
-  }
-  if (in.containsKey("circulation_vent")) {
-    targets.circulation = in["circulation_vent"].as<bool>();
-    changed = true;
-  }
-  if (in.containsKey("exhaust_vent")) {
-    targets.exhaust = in["exhaust_vent"].as<bool>();
-    changed = true;
-  }
-
-  if (changed) {
-    strncpy(controlMode, "manual", sizeof(controlMode) - 1);
-    controlMode[sizeof(controlMode) - 1] = '\0';
-    ++commandSeq;
-    applyActuators();
-  }
-
-  localServer.send(200, "application/json", "{\"ok\":true}");
+  // Aktorbefehle nicht als angewendet ausgeben, solange C3 fehlt.
+  localServer.send(503, "application/json",
+                   "{\"ok\":false,\"error\":\"esp32_c3_not_connected\"}");
 }
 
 static void handleControlMode() {
