@@ -40,6 +40,11 @@
 #endif
 
 static constexpr uint8_t PIN_DS18B20 = 32; // D32 auf der gegenueberliegenden Stiftleiste
+static constexpr uint8_t PIN_PHASE_WUCHS_BUTTON = 16;
+static constexpr uint8_t PIN_PHASE_BLUETE_BUTTON = 19;
+static constexpr uint8_t PIN_PHASE_WUCHS_LED = 23;
+static constexpr uint8_t PIN_PHASE_BLUETE_LED = 33;
+static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 // TO erst aktivieren, nachdem sein maximaler Ausgangspegel nachweislich <= ADS-VDD (3.3 V) ist.
 static constexpr bool PH_TO_WIRED = false;
 static constexpr uint8_t PIN_OLED_SDA = 21;
@@ -142,6 +147,75 @@ float ph4TempC = NAN;
 unsigned long lastTempMs = 0;
 unsigned long lastOtherSensorsMs = 0;
 unsigned long lastOledMs = 0;
+
+
+/* Gleiche physische Phasen-Taster und LEDs wie in der Produktions-Firmware.
+ * NVS Namespace getrennt von phads_v1/ecads_v1. Nur Auswahl wird gespeichert.
+ */
+enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
+static GrowPhase growPhase = GrowPhase::Wuchs;
+static constexpr char PHASE_NVS[] = "growphase_v1";
+static constexpr uint8_t PHASE_BUTTONS[2] = {
+    PIN_PHASE_WUCHS_BUTTON, PIN_PHASE_BLUETE_BUTTON
+};
+static bool phaseRaw[2] = {false, false};
+static bool phaseStable[2] = {false, false};
+static unsigned long phaseChangedMs[2] = {0, 0};
+static const char *phaseName() {
+  return growPhase == GrowPhase::Wuchs ? "WUCHS" : "BLUETE";
+}
+static void refreshPhaseLeds() {
+  digitalWrite(PIN_PHASE_WUCHS_LED, growPhase == GrowPhase::Wuchs ? HIGH : LOW);
+  digitalWrite(PIN_PHASE_BLUETE_LED, growPhase == GrowPhase::Bluete ? HIGH : LOW);
+}
+static void setGrowPhase(GrowPhase next) {
+  if (next == growPhase) return;
+  growPhase = next;
+  refreshPhaseLeds();
+  Preferences prefs;
+  bool saved = false;
+  if (prefs.begin(PHASE_NVS, false)) {
+    saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) == sizeof(uint8_t);
+    prefs.end();
+  }
+  Serial.printf("PHASE: %s | Speicher %s\n", phaseName(), saved ? "OK" : "FEHLER");
+}
+static void pollGrowPhaseButtons(unsigned long nowMs) {
+  const bool both = digitalRead(PIN_PHASE_WUCHS_BUTTON) == LOW &&
+                    digitalRead(PIN_PHASE_BLUETE_BUTTON) == LOW;
+  for (uint8_t i = 0; i < 2; ++i) {
+    const bool pressed = digitalRead(PHASE_BUTTONS[i]) == LOW;
+    if (pressed != phaseRaw[i]) {
+      phaseRaw[i] = pressed;
+      phaseChangedMs[i] = nowMs;
+    }
+    if (pressed != phaseStable[i] &&
+        nowMs - phaseChangedMs[i] >= PHASE_DEBOUNCE_MS) {
+      phaseStable[i] = pressed;
+      if (pressed && !both) setGrowPhase(i == 0 ? GrowPhase::Wuchs : GrowPhase::Bluete);
+    }
+  }
+}
+static void setupGrowPhaseButtons() {
+  digitalWrite(PIN_PHASE_WUCHS_LED, LOW);
+  digitalWrite(PIN_PHASE_BLUETE_LED, LOW);
+  pinMode(PIN_PHASE_WUCHS_LED, OUTPUT);
+  pinMode(PIN_PHASE_BLUETE_LED, OUTPUT);
+  pinMode(PIN_PHASE_WUCHS_BUTTON, INPUT_PULLUP);
+  pinMode(PIN_PHASE_BLUETE_BUTTON, INPUT_PULLUP);
+  const unsigned long now = millis();
+  for (uint8_t i = 0; i < 2; ++i) {
+    phaseRaw[i] = phaseStable[i] = digitalRead(PHASE_BUTTONS[i]) == LOW;
+    phaseChangedMs[i] = now;
+  }
+  Preferences prefs;
+  if (prefs.begin(PHASE_NVS, true)) {
+    growPhase = prefs.getUChar("phase", 0) == 1 ? GrowPhase::Bluete : GrowPhase::Wuchs;
+    prefs.end();
+  }
+  refreshPhaseLeds();
+  Serial.printf("PHASE nach Start: %s\n", phaseName());
+}
 
 struct SampleStats {
   float meanV;
@@ -805,6 +879,8 @@ static void printHelp() {
   Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
   Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D13, SCL=D14 (mit BH1750)"));
   Serial.println(F("DS18B20: D32 | DHT22: D25/26/27 | BH1750+ADS: D13/14"));
+  Serial.println(F("WUCHS-Taster D16 -> GND, LED D23 -> Vorwiderstand -> GND"));
+  Serial.println(F("BLUETE-Taster D19 -> GND, LED D33 -> Vorwiderstand -> GND"));
   Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
@@ -1044,6 +1120,8 @@ static void drawOled() {
   display.print(adsOk ? F("OK") : F("--"));
   display.print(F(" DS:"));
   display.print(oneWireCount);
+  display.setCursor(94, 0);
+  display.print(growPhase == GrowPhase::Wuchs ? F("WUCHS") : F("BLUETE"));
   display.setCursor(0, 10);
   display.print(F("pH A0:"));
   if (isfinite(liveInputV)) display.print(liveInputV, 4);
@@ -1168,6 +1246,7 @@ static void handleSerial() {
 void setup() {
   Serial.begin(115200);
   delay(400);
+  setupGrowPhaseButtons();
 
   Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL, 100000);
   oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
@@ -1223,6 +1302,7 @@ void setup() {
 }
 
 void loop() {
+  pollGrowPhaseButtons(millis());
   handleSerial();
   updateTemperature();
   updateOptionalSensors();
@@ -1235,6 +1315,7 @@ void loop() {
   static unsigned long lastPrint = 0;
   if (now - lastPrint >= 1000) {
     lastPrint = now;
+    Serial.printf("PHASE %s | ", phaseName());
     Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | std %.2f mV | A1 TDS %.5f V",
                   adsOk ? "OK" : "--", liveInputV, liveStdV * 1000.0f, liveTdsV);
     if (validTemperature(liveWaterTempC)) Serial.printf(" | DS-Wasser %.2f C", liveWaterTempC);
