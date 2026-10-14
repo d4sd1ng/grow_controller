@@ -260,14 +260,14 @@ static void updatePhTestAlarm() {
   if (next == phTestAlarm) return;
   phTestAlarm = next;
   phTestAlertPending = true;
-  Serial.printf("[pH TEST] %s\\n", phMessage(phTestAlarm));
+  Serial.printf("[pH TEST] %s\n", phMessage(phTestAlarm));
 }
 static void setPhTestMode(char c) {
   if (c == '0') {
     phTestActive = false;
     phTestValue = NAN;
     phTestAlertPending = false;
-    Serial.printf("[pH TEST AUS] Echtes Sensor-Alarmsignal: %s\\n", phMessage(phAlarm));
+    Serial.printf("[pH TEST AUS] Echtes Sensor-Alarmsignal: %s\n", phMessage(phAlarm));
     return;
   }
   phTestActive = true;
@@ -276,10 +276,10 @@ static void setPhTestMode(char c) {
   phTestPending = PhAlarm::Fault;
   phTestSamples = 0;
   phTestAlertPending = false;
-  Serial.printf("[pH TEST EIN] pH %.2f simuliert; Sensor/NVS/SSR unveraendert.\\n",
+  Serial.printf("[pH TEST EIN] pH %.2f simuliert; Sensor/NVS/SSR unveraendert.\n",
                 phTestValue);
   for (uint8_t i = 0; i < PH_CONFIRM; ++i) updatePhTestAlarm();
-  Serial.printf("[pH TEST] Ergebnis: %s (3 simulierte Messungen)\\n",
+  Serial.printf("[pH TEST] Ergebnis: %s (3 simulierte Messungen)\n",
                 phMessage(phTestAlarm));
 }
 static void handlePhTestSerial() {
@@ -998,7 +998,7 @@ static void sendPhTestAlertEvent() {
     phTestAlertPending = false;
     Serial.println(F("[pH TEST] Server hat das gekennzeichnete Test-Event angenommen."));
   } else {
-    Serial.printf("[pH TEST] Alarm-HTTP %d (nicht bestaetigt).\\n", response);
+    Serial.printf("[pH TEST] Alarm-HTTP %d (nicht bestaetigt).\n", response);
   }
 }
 
