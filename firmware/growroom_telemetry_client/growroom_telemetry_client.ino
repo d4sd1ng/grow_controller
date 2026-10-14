@@ -27,6 +27,14 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+// MLX90640 erst aktivieren, wenn Modul und Adafruit_MLX90640 installiert sind.
+#ifndef GROW_ENABLE_MLX90640
+#define GROW_ENABLE_MLX90640 0
+#endif
+#if GROW_ENABLE_MLX90640
+#include <Adafruit_MLX90640.h>
+#endif
+
 #if __has_include("device_secrets.h")
 #include "device_secrets.h"
 #else
@@ -163,7 +171,10 @@ struct SensorData {
   float tdsPpm = NAN;
   float ec = NAN; // mS/cm, bezogen auf 25 C mit DS18B20-Kompensation
 
-  float vpd = NAN;
+  float vpd = NAN; // bestehender Luft-VPD (DHT1), unveraendert
+  float thermalRoiTempC = NAN; // mittlere Bildregion, NOCH NICHT als Blatt validiert
+  float vpdLeafCandidate = NAN; // vorlaeufiger Blatt-VPD: ROI + mind. zwei DHT22
+  bool mlx90640Ok = false;
   uint32_t lux = 0;
 
   bool adsOk = false;
@@ -475,6 +486,94 @@ static uint32_t readBh1750() {
   return static_cast<uint32_t>(raw / 1.2f);
 }
 
+
+/* MLX90640 32x24, I2C 0x33 auf bestehendem Bus GPIO21/22.
+ * Bis zur Montage/Validierung NICHT fuer die automatische Regelung nutzen.
+ * Die mittlere Region ist nur eine thermische ROI, keine Blatterkennung.
+ */
+static float saturatedVaporPressureKpa(float tempC) {
+  return 0.61078f * expf(17.27f * tempC / (tempC + 237.3f));
+}
+static void updateLeafVpdCandidate() {
+  sensors.vpdLeafCandidate = NAN;
+  if (!sensors.mlx90640Ok || !isfinite(sensors.thermalRoiTempC)) return;
+  float values[3];
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (!sensors.dht[i].ok) continue;
+    const float actualVapor = saturatedVaporPressureKpa(sensors.dht[i].tempC)
+                              * (sensors.dht[i].rh / 100.0f);
+    values[n++] = saturatedVaporPressureKpa(sensors.thermalRoiTempC) - actualVapor;
+  }
+  if (n < 2) return; // fuer Referenz mind. zwei gueltige Luftsensoren
+  for (uint8_t i = 1; i < n; ++i) {
+    float v = values[i];
+    uint8_t j = i;
+    while (j > 0 && values[j - 1] > v) {
+      values[j] = values[j - 1]; --j;
+    }
+    values[j] = v;
+  }
+  sensors.vpdLeafCandidate = n == 3 ? values[1] : 0.5f * (values[0] + values[1]);
+}
+#if GROW_ENABLE_MLX90640
+static Adafruit_MLX90640 mlx90640;
+static float mlxFrame[32 * 24];
+static bool mlxInitialized = false;
+static unsigned long lastMlxReadMs = 0;
+static void setupMlx90640() {
+  Wire.setClock(400000); // schnelle Bilduebertragung, ADS/OLED danach wieder 100 kHz
+  mlxInitialized = mlx90640.begin(0x33, &Wire);
+  if (mlxInitialized) {
+    mlx90640.setMode(MLX90640_CHESS);
+    mlx90640.setResolution(MLX90640_ADC_18BIT);
+    mlx90640.setRefreshRate(MLX90640_2_HZ);
+  }
+  Wire.setClock(100000);
+  Serial.printf("MLX90640 I2C 0x33: %s\\n",
+                mlxInitialized ? "OK (ROI noch nicht validiert)" : "NICHT ERKANNT");
+  lastMlxReadMs = millis();
+}
+static void pollMlx90640(unsigned long nowMs) {
+  if (!mlxInitialized || nowMs - lastMlxReadMs < 10000UL) return;
+  lastMlxReadMs = nowMs;
+  Wire.setClock(400000);
+  const int error = mlx90640.getFrame(mlxFrame);
+  Wire.setClock(100000);
+  sensors.mlx90640Ok = false;
+  sensors.thermalRoiTempC = NAN;
+  if (error != 0) {
+    updateLeafVpdCandidate();
+    Serial.printf("MLX90640 Bildfehler: %d\\n", error);
+    return;
+  }
+  float roi[16 * 12];
+  uint16_t n = 0;
+  for (uint8_t y = 6; y < 18; ++y) {
+    for (uint8_t x = 8; x < 24; ++x) {
+      const float temp = mlxFrame[y * 32 + x];
+      if (isfinite(temp) && temp >= 0.0f && temp <= 60.0f) roi[n++] = temp;
+    }
+  }
+  if (n < 96) { updateLeafVpdCandidate(); return; }
+  for (uint16_t i = 1; i < n; ++i) {
+    const float temp = roi[i];
+    uint16_t j = i;
+    while (j > 0 && roi[j - 1] > temp) { roi[j] = roi[j - 1]; --j; }
+    roi[j] = temp;
+  }
+  sensors.thermalRoiTempC = n & 1 ? roi[n / 2] :
+                            0.5f * (roi[n / 2 - 1] + roi[n / 2]);
+  sensors.mlx90640Ok = true;
+  updateLeafVpdCandidate();
+  Serial.printf("MLX90640 ROI %.2f C | VPD-Blatt-Kandidat %.3f kPa | %u Pixel\\n",
+      sensors.thermalRoiTempC, sensors.vpdLeafCandidate, static_cast<unsigned>(n));
+}
+#else
+static void setupMlx90640() {}
+static void pollMlx90640(unsigned long) {}
+#endif
+
 /* ---------- Sensor-Lesung ---------- */
 
 static void readSensors() {
@@ -485,6 +584,7 @@ static void readSensors() {
   sensors.vpd = sensors.dht[0].ok
       ? computeVpd(sensors.dht[0].tempC, sensors.dht[0].rh)
       : NAN;
+  updateLeafVpdCandidate();
 
   ds18b20.requestTemperatures();
   const uint8_t foundDs = ds18b20.getDeviceCount();
@@ -584,6 +684,9 @@ static void handleSummary() {
     reading["humidity"] = nullptr;
   }
   setJsonFloat(reading, "vpd", sensors.vpd);
+  reading["mlx90640_ok"] = sensors.mlx90640Ok;
+  setJsonFloat(reading, "thermal_roi_temperature", sensors.thermalRoiTempC);
+  setJsonFloat(reading, "vpd_leaf_candidate", sensors.vpdLeafCandidate);
   setJsonFloat(reading, "ph", sensors.ph);
   reading["ph_temperature_compensated"] = sensors.phTempCompensated;
   setJsonFloat(reading, "case_temperature", sensors.caseTempC);
@@ -740,6 +843,9 @@ static bool sendTelemetry() {
   root["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
 
   setJsonFloat(root, "vpd", sensors.vpd);
+  root["mlx90640_ok"] = sensors.mlx90640Ok;
+  setJsonFloat(root, "thermal_roi_temperature", sensors.thermalRoiTempC);
+  setJsonFloat(root, "vpd_leaf_candidate", sensors.vpdLeafCandidate);
   setJsonFloat(root, "ph_voltage", sensors.phInputV);
   setJsonFloat(root, "tds_voltage", sensors.tdsInputV);
   setJsonFloat(root, "tds_ppm", sensors.tdsPpm);
@@ -875,6 +981,7 @@ void setup() {
 
   ads.setGain(GAIN_ONE);
   sensors.adsOk = ads.begin(0x48, &Wire);
+  setupMlx90640();
 
   scanBh1750Bus();
 
@@ -914,6 +1021,7 @@ void loop() {
 
   localServer.handleClient();
   sampleTdsBackground(now);
+  pollMlx90640(now);
 
   if (WiFi.status() != WL_CONNECTED && now - lastWifiReconnect >= WIFI_RECONNECT_MS) {
     lastWifiReconnect = now;
