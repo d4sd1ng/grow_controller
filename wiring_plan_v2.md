@@ -1,4 +1,4 @@
-# Grow Controller — Verdrahtung V6: zwei ESP32, MLX90640 und Bedienfeld
+# Grow Controller — Verdrahtung V7: 1 Phasentaster, RGB-LED und Buzzer-Reserve
 
 **Stand:** 2026-10-14  
 **Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** als separater Leistungscontroller.  
@@ -27,7 +27,7 @@
                      CYD / Dashboard
 ```
 
-**Keine SSR-/Relaisleitungen auf der 26×30-Sensorplatine.** Der ESP32-C3 ist ein zweites Gerät, kein Aufsteckmodul dieser Platine. Die alte Einzel-ESP32-Zeichnung und die Zuordnung GPIO17/18/19/33 zu den Relais sind überholt. Die bisherige GPIO17/18-Relaiszuordnung ist ungültig; GPIO18 wird nur für den **optionalen, noch deaktivierten pH-Buzzer** vorgemerkt. Vor dem Löten die tatsächliche D18-Beschriftung am Board kontrollieren.
+**Keine SSR-/Relaisleitungen auf der 26×30-Sensorplatine.** Der ESP32-C3 ist ein zweites Gerät, kein Aufsteckmodul dieser Platine. Die alte Einzel-ESP32-Zeichnung und die Zuordnung GPIO17/18/19/33 zu den Relais sind überholt. Die bisherige direkte GPIO17/18/19/33-Relaiszuordnung ist hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt; der optionale, deaktivierte pH-Buzzer wird daher auf D19 reserviert.**
 
 ## Sensor-ESP32: bestätigte Stiftkontakte und Signalzuordnung
 
@@ -45,13 +45,12 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 | DHT22 #3 | **GPIO27 (D27)** | obere Zone | vorgesehen |
 | BH1750 | **GPIO13 (D13) SDA**, **GPIO14 (D14) SCL**, ADDR an GND | Bus B mit ADS1115, Adresse 0x23 | vorgesehen |
 | MLX90640 Infrarotkamera | **GPIO21 (D21) SDA**, **GPIO22 (D22) SCL** | Bus A mit OLED, Adresse 0x33, Kamerastecker vorbereiten | Anschluss einplanen, Modul noch nicht geprüft |
-| WUCHS-Taster | **GPIO16 (D16)** nach GND, INPUT_PULLUP | Schließer, softwareseitig 50 ms entprellt | vorgesehen |
-| BLÜTE-Taster | **GPIO19 (D19)** nach GND, INPUT_PULLUP | Schließer, softwareseitig 50 ms entprellt | vorgesehen |
-| WUCHS-LED | **GPIO23 (D23)** mit Vorwiderstand nach GND | leuchtet nur in Phase WUCHS | vorgesehen |
-| BLÜTE-LED | **GPIO33 (D33)** mit Vorwiderstand nach GND | leuchtet nur in Phase BLÜTE | vorgesehen |
-| pH-Buzzer | **GPIO18 (D18)** als reservierter Signalpin | aktives/passives Modul noch ungeklärt; **Firmware deaktiviert** | noch nicht anschließen |
+| Ein 4-Pin-Phasentaster | **GPIO16 (D16)** nach GND, `INPUT_PULLUP` | Je ein Pin aus den beiden Schaltpaaren; 50 ms Entprellung, jeder Tastendruck wechselt den Modus | vorgesehen |
+| Eine 4-Pin-RGB-LED: Grün | **GPIO23 (D23)** über eigenen 470-Ω-Vorwiderstand | WUCHS = Grün, BLÜTE = Rot und Grün gleichzeitig | Common-Polung offen |
+| Dieselbe RGB-LED: Rot | **GPIO33 (D33)** über eigenen 470-Ω-Vorwiderstand | Blauer LED-Kanal bleibt frei | Common-Polung offen |
+| pH-Buzzer | **GPIO19 (D19)** als reservierter Steuersignalpin | 2-poliger Buzzer; Bauart/Strom/Spannung unbekannt; über Treiber vorsehen, Firmware deaktiviert | noch nicht anschließen |
 
-**Ausdrücklich nicht verdrahten:** PH4502C **TO -> ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO -> GPIO32** (GPIO32 ist für den DS18B20 reserviert, DO wird nicht benötigt). GPIO17/18/19/33 als Relaisleitungen am Sensor-ESP entfallen. GPIO33 bleibt Reserve.
+**Ausdrücklich nicht verdrahten:** PH4502C **TO -> ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO -> GPIO32** (GPIO32 ist für den DS18B20 reserviert, DO wird nicht benötigt). GPIO17/18/19/33 als Relaisleitungen am Sensor-ESP entfallen. GPIO33 wird nun für den RGB-Rotkanal, GPIO19 als Buzzer-Reserve genutzt.
 
 ## 26 × 30 Lochraster — konkreter Bestückungsplan (Kleinspannung)
 
@@ -69,9 +68,9 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 | pH-/EC-Signale | vorhandene kalibrierte/verifizierte Verbindungen A0/A1 sauber übernehmen; geeignete Steckklemmen | keine neue, unbelegte 10k/20k-Teilerannahme |
 | Spannungs-/Masseverteilung | getrennte **3V3- und GND-Verbindungen** auf Lochraster mit isoliertem Draht | Lochraster hat keine automatischen Stromschienen |
 | **MLX90640 Infrarotkamera** | **1 × 4-poliger Anschluss: GND, SDA D21, SCL D22, VCC/VIN** | Kamera außerhalb des Controllergehäuses, Versorgung erst nach Abgleich der Modulvariante festlegen |
-| **WUCHS-Taster + LED** | **Taster D16-GND, LED D23 → 470 Ω → LED-Anode; LED-Kathode → GND** | Taster/LED an Gehäusefront; zwei getrennte Leitungsgruppen |
-| **BLÜTE-Taster + LED** | **Taster D19-GND, LED D33 → 470 Ω → LED-Anode; LED-Kathode → GND** | ein Taster aktiv, jeweils eine LED leuchtet |
-| **Buzzer-Reserve** | **Signal D18, GND, 3V3 als beschriftete 3-polige Reserve** | **noch NICHT** an Buzzer anschließen: aktiver/passiver Typ, Versorgung, Strom und Polarität prüfen |
+| **Ein 4-Pin-Taster** | **D16/GND:** je einen Pin aus zwei unterschiedlichen Kontaktpaaren verwenden, die nur beim Drücken verbunden werden | Kontaktpaare vor dem Verlöten mit Durchgangsprüfer identifizieren |
+| **Eine 4-Pin-RGB-LED** | **Grün D23 über 470 Ω**, **Rot D33 über 470 Ω**, Blau frei, gemeinsamer Anschluss nach Typ | **Gemeinsame Kathode → GND; gemeinsame Anode → 3V3**. Typ und Belegung vor dem Löten bestimmen |
+| **Buzzer-/Treiber-Reserve** | **D19 als Steuersignal, Platz für 2-poligen Buzzer-Anschluss und Transistor-Treiber vorsehen** | Kein unbekannter Buzzer direkt an GPIO; Versorgung und aktiver/passiver Typ prüfen |
 
 **Mechanische Reihenfolge:** zuerst ESP32 und ADS1115 probeweise positionieren; USB-/OLED-Freiraum und Sensor-Steckverbinder prüfen; dann Buchsenleisten und Pull-up-Widerstände verlöten; anschließend Kleinspannungs-Signale und Masse einzeln durchmessen. Steckverbinder nach Signalname und Spannung beschriften. Die DHT22-/BH1750-/DS-Sensoren und die MLX90640-Kamera messen außerhalb des warmen Gehäuses; daher **nur ihre Anschlüsse**, nicht die Messköpfe selbst, auf der Lochrasterplatine anordnen. Für Kamera und Bus A die Leitung möglichst kurz halten; I2C-Betrieb mit 400 kHz ist mit längeren Kabeln nicht garantiert.
 
@@ -79,17 +78,25 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 
 ADS1115, DS18B20, DHT22 und BH1750: geplante **3,3-V-Logik**. **MLX90640: Versorgung gemäß Datenblatt des tatsächlich verbauten Breakout-Moduls; der VCC/VIN-Kontakt bleibt bis dahin unbeschaltet.** Versorgung von konkretem Breakout abhängig; prüfen, ob der 3,3-V-Regler des ESP32 den gesamten Strom liefern kann. PH4502C VCC wurde mit **4,7 V** gemessen; ihre bisher funktionierende Versorgung und A0-Messkette nicht ohne Grund verändern. Alle beteiligten Kleinspannungs-Sensoren benötigen eine passende gemeinsame Signalmasse.
 
-## Bedienfeld: zwei Phasentaster, zwei LEDs und pH-Buzzer-Reserve
+## Bedienfeld: EIN 4-Pin-Taster, EINE 4-Pin-RGB-LED und 2-Pin-Buzzer
 
-**Taster:** Auf der Frontblende jeweils einen Schließer vorsehen, der beim Drücken **nur den vorgesehenen ESP32-Eingang mit GND verbindet**. WUCHS: **D16**; BLÜTE: **D19**. Die Firmware aktiviert `INPUT_PULLUP` und entprellt mit 50 ms; externe Pull-up-Widerstände sind für kurze Leitungen nicht eingeplant.
+**4-Pin-Taster (momentaner Schließer):** Bei üblichen Tact-Switches sind zwei Kontakte je Seite intern dauerhaft verbunden. **Nicht nach Orientierung raten:** Mit dem Multimeter ein Kontaktpaar ermitteln, das ohne Druck **offen** und nur beim Drücken leitend ist. **Einen Kontakt an D16**, den anderen an **GND**. Die zwei übrigen Kontakte werden nicht verbunden. `INPUT_PULLUP`, softwareseitig 50 ms Entprellung. **Jeder Tastendruck wechselt WUCHS ↔ BLÜTE.** Auswahl im ESP32-NVS `growphase_v1`.
 
-**LEDs:** WUCHS-LED über **D23** und BLÜTE-LED über **D33**, jeweils mit **eigenem 470-Ω-Vorwiderstand**. Für gewöhnliche 3-mm/5-mm-LEDs ist die Polung zu prüfen: GPIO → Widerstand → Anode (+), Kathode (−) → GND. Niemals ohne Vorwiderstand anschließen. Nach Neustart zeigt genau eine LED die gespeicherte Phase.
+**4-Pin-RGB-LED:** Vier Kontakte entsprechen gemeinsamem Anschluss, Rot, Grün und Blau. **Beinlänge allein ist kein zuverlässiger Beleg für den gemeinsamen Anschluss.** LED-Typ und R/G-Pinbelegung vor dem Löten prüfen.
 
-**Software:** Die gewählte Phase wird unabhängig von pH-/EC-Kalibrierungen im NVS-Namespace `growphase_v1` gespeichert, auf dem OLED angezeigt und als `phase` in API/Telemetrie ausgegeben. Für **WUCHS** sind nur die schon zuvor verwendeten Klimasollwerte 24 °C und 60 % rF hinterlegt. Für **BLÜTE** gibt es noch **keine abgestimmten Sollwerte**; die automatische Sollwertregelung ist dann absichtlich gesperrt, statt Wuchs-Werte stillschweigend zu übernehmen. Die pH-Alarmgrenzen 5,5/6,5 bleiben aktuell unverändert.
+- **D23 → eigener 470-Ω-Vorwiderstand → Grün**
+- **D33 → eigener 470-Ω-Vorwiderstand → Rot**
+- Blau bleibt unbenutzt.
+- **Gemeinsame Kathode (CC): gemeinsam an GND**; HIGH schaltet jeweilige Farbe ein.
+- **Gemeinsame Anode (CA): gemeinsam an 3V3**; LOW schaltet jeweilige Farbe ein.
 
-**pH-Buzzer:** Auf der Lochrasterplatine **D18** als möglichen Signalpin reservieren und einen Platz für den späteren Anschluss freihalten. **Keinen unbekannten 2-poligen Buzzer direkt an GPIO18 anschließen.** Die konkreten Anschlüsse hängen davon ab, ob es sich um einen aktiven Buzzer mit Steuereingang oder einen passiven Piezo handelt. Aufdruck/Foto, Versorgungsspannung, Stromaufnahme und Polarität sind vorher zu klären; ggf. ist ein Transistortreiber notwendig. Die Firmware verwendet standardmäßig `GROW_ENABLE_PH_BUZZER=0`, sodass **GPIO18 bis zur Klärung nicht angesteuert wird**. Vor der Montage verifizieren, dass dein konkretes OLED-ESP32-Board tatsächlich einen nutzbaren **D18**-Kontakt herausführt.
+Die Firmware ist auf **Grün = WUCHS** und **Rot + Grün = Gelb = BLÜTE** umgestellt. Die Ausgangspolarität ist bis zur Identifikation der tatsächlichen RGB-LED **deaktiviert** (`GROW_ENABLE_PHASE_RGB=0`). Nach Identifikation `GROW_RGB_COMMON_ANODE` korrekt auf 0 oder 1 setzen und das RGB-Feature aktivieren.
 
-**Vorgesehenes akustisches Muster (bei bestätigtem kompatiblem aktivem Modul):** pH unter 5,5 → zwei kurze Signale alle 5 s; pH über 6,5 → drei Signale alle 5 s; Sensorfehler → ein kurzer Hinweis alle 10 s; NORMAL → Stille. In der Diagnosesoftware können die vorhandenen pH-Testbefehle `1/2/3/0` die Warnmuster auslösen. Das Muster ist bewusst nicht-blockierend und verändert keine pH-Kalibrierwerte.
+**Zweipoliger pH-Buzzer aus Sensor-Pack:** Auf der Platine **D19 als Buzzer-Steuersignal und Platz für einen 2-poligen Buzzer-Anschluss sowie einen geeigneten Transistortreiber** vorsehen. Bei unbekanntem Typ/Strom/Spannung ist **kein direkter GPIO-Anschluss freigegeben**. Auch ein 2-Pin-Bauteil kann aktiv (Gleichspannung) oder passiv (Tonerzeugung via PWM erforderlich) sein. Die Versorgung und der Treiber werden **erst nach Identifizierung** des Bauteils festgelegt; der aktuell implementierte Buzzer-Code ist für ein aktives, logikgesteuertes Modul und bleibt deaktiviert (`GROW_ENABLE_PH_BUZZER=0`). **D18 nicht verwenden:** am konkret vorhandenen ESP32-Board nicht herausgeführt.
+
+**pH-Alarm:** LOW bei pH unter **5,5**; HIGH bei pH über **6,2**; Normalbereich 5,5–6,2 inklusive (bei Statuswechseln weiterhin 0,1 pH Hysterese und drei Messungen). Vorbereitete Tonsignale für aktiven Buzzer: LOW zweimal kurz alle 5 s, HIGH dreimal kurz alle 5 s, Sensorfehler einmal alle 10 s.
+
+**Software/Phasensteuerung:** Die Phase wird weiterhin auf OLED, API und Telemetrie ausgegeben. BLÜTE-Klimasollwerte sind noch nicht abgestimmt; die automatische Klimaregelung für BLÜTE bleibt gesperrt. Die pH-/EC-Wochensollwerte und pH-Alarmgrenzen werden durch den Tasterwechsel nicht verändert.
 
 ## MLX90640-Kameraanschluss (jetzt reserviert)
 
