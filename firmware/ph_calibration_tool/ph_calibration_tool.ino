@@ -31,6 +31,14 @@
 #include <string.h>
 #include <stdlib.h>
 
+// Optional: MLX90640 nach Lieferung + Adafruit_MLX90640-Library aktivieren.
+#ifndef GROW_ENABLE_MLX90640
+#define GROW_ENABLE_MLX90640 0
+#endif
+#if GROW_ENABLE_MLX90640
+#include <Adafruit_MLX90640.h>
+#endif
+
 static constexpr uint8_t PIN_DS18B20 = 23;
 static constexpr uint8_t PIN_PH_DO = 32;
 static constexpr bool PH_DO_WIRED = false; // erst nach 3.3-V-Pegelpruefung aktivieren
@@ -106,6 +114,9 @@ uint8_t oneWireCount = 0;
 struct AirData { float tempC = NAN; float humidity = NAN; bool ok = false; };
 AirData air[3];
 float bhLux = NAN;
+bool mlx90640Ok = false;
+float thermalRoiTempC = NAN; // nur mittlere Bildregion, nicht als Blatt verifiziert
+float leafVpdCandidate = NAN;
 float liveInputV = NAN;
 float liveStdV = NAN;
 float liveTdsV = NAN;
@@ -466,6 +477,89 @@ static bool captureToPoint(uint8_t point, float referenceC) {
   return toCalibrated;
 }
 
+
+/* MLX90640 optional auf OLED/ADS-I2C GPIO21/22, 0x33.
+ * Reiner Lesetest; keine NVS-Schreibzugriffe und keine Aktoraktionen.
+ */
+static float vpdSatKpa(float tempC) {
+  return 0.61078f * expf(17.27f * tempC / (tempC + 237.3f));
+}
+static void computeLeafVpdCandidate() {
+  leafVpdCandidate = NAN;
+  if (!mlx90640Ok || !isfinite(thermalRoiTempC)) return;
+  float vp[3];
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (!air[i].ok) continue;
+    vp[count++] = vpdSatKpa(thermalRoiTempC) -
+                  vpdSatKpa(air[i].tempC) * air[i].humidity / 100.0f;
+  }
+  if (count < 2) return;
+  for (uint8_t i = 1; i < count; ++i) {
+    float x = vp[i];
+    uint8_t j = i;
+    while (j > 0 && vp[j - 1] > x) { vp[j] = vp[j - 1]; --j; }
+    vp[j] = x;
+  }
+  leafVpdCandidate = count == 3 ? vp[1] : (vp[0] + vp[1]) * 0.5f;
+}
+#if GROW_ENABLE_MLX90640
+static Adafruit_MLX90640 mlx90640;
+static float mlxPixels[32 * 24];
+static bool mlxReady = false;
+static unsigned long lastMlxMs = 0;
+static void initMlx90640() {
+  Wire.setClock(400000);
+  mlxReady = mlx90640.begin(0x33, &Wire);
+  if (mlxReady) {
+    mlx90640.setMode(MLX90640_CHESS);
+    mlx90640.setResolution(MLX90640_ADC_18BIT);
+    mlx90640.setRefreshRate(MLX90640_2_HZ);
+  }
+  Wire.setClock(100000);
+  Serial.printf("MLX90640 I2C 0x33: %s\\n", mlxReady ? "OK" : "NICHT ERKANNT");
+  lastMlxMs = millis();
+}
+static void sampleMlx90640(unsigned long nowMs) {
+  if (!mlxReady || nowMs - lastMlxMs < 10000UL) return;
+  lastMlxMs = nowMs;
+  Wire.setClock(400000);
+  const int err = mlx90640.getFrame(mlxPixels);
+  Wire.setClock(100000);
+  mlx90640Ok = false;
+  thermalRoiTempC = NAN;
+  if (err != 0) {
+    computeLeafVpdCandidate();
+    Serial.printf("MLX90640 Bildfehler: %d\\n", err);
+    return;
+  }
+  float roi[192];
+  uint16_t n = 0;
+  for (uint8_t y = 6; y < 18; ++y) {
+    for (uint8_t x = 8; x < 24; ++x) {
+      float v = mlxPixels[y * 32 + x];
+      if (isfinite(v) && v >= 0.0f && v <= 60.0f) roi[n++] = v;
+    }
+  }
+  if (n < 96) { computeLeafVpdCandidate(); return; }
+  for (uint16_t i = 1; i < n; ++i) {
+    const float v = roi[i];
+    uint16_t j = i;
+    while (j > 0 && roi[j - 1] > v) { roi[j] = roi[j - 1]; --j; }
+    roi[j] = v;
+  }
+  thermalRoiTempC = n & 1 ? roi[n / 2] :
+                    (roi[n / 2 - 1] + roi[n / 2]) * 0.5f;
+  mlx90640Ok = true;
+  computeLeafVpdCandidate();
+  Serial.printf("MLX90640 ROI: %.2f C | VPD-Blatt-Kandidat %.3f kPa | %u Pixel\\n",
+                thermalRoiTempC, leafVpdCandidate, static_cast<unsigned>(n));
+}
+#else
+static void initMlx90640() {}
+static void sampleMlx90640(unsigned long) {}
+#endif
+
 static void printHardwareStatus() {
   Serial.println(F("\n=== HARDWARE-STATUS ==="));
   Serial.printf("OLED 0x3C : %s\n", oledOk ? "OK" : "NICHT ERKANNT");
@@ -499,6 +593,9 @@ static void printHardwareStatus() {
                               i + 1, air[i].tempC, air[i].humidity);
     else Serial.printf("DHT22 #%u: NICHT ERKANNT / NOCH NICHT VERKABELT\n", i + 1);
   }
+  Serial.printf("MLX90640 0x33: %s | ROI %.2f C | VPD-Blatt-Kandidat %.3f kPa\n",
+                mlx90640Ok ? "OK" : "AUS / NICHT ERKANNT / NOCH NICHT MONTIERT",
+                thermalRoiTempC, leafVpdCandidate);
   if (bhOk && isfinite(bhLux)) Serial.printf("BH1750: %.0f lux\n", bhLux);
   else Serial.println(F("BH1750: NICHT ERKANNT / NOCH NICHT VERKABELT"));
   Serial.println(F("SSR1-4: AUS (kein Aktor-Test)"));
@@ -725,6 +822,7 @@ static void printHelp() {
   Serial.println(F("s = Status + fertige Kalibrierwerte"));
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
+  Serial.println(F("MLX90640 optional: I2C 0x33 an D21/D22; 10s-Bild-ROI; keine Kalibrierung"));
   Serial.println(F("p = pH-Alarmschwellen, Hysterese und Sensorfehler simulieren (nur Serial; kein Server)"));
   Serial.println(F("e = EC kalibrieren: A1 in 1413 uS/cm Referenzloesung, DS18B20 erforderlich"));
   Serial.println(F("w <ROM> = Wasser-DS18B20 aus mehreren Sensoren anhand 16-stelliger ROM festlegen"));
@@ -1041,6 +1139,7 @@ void setup() {
 
   ads.setGain(GAIN_ONE);
   adsOk = ads.begin(ADS_ADDR, &Wire);
+  initMlx90640();
 
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
   scanBh1750();
@@ -1085,6 +1184,8 @@ void loop() {
   handleSerial();
   updateTemperature();
   updateOptionalSensors();
+  computeLeafVpdCandidate();
+  sampleMlx90640(millis());
   updateLive();
 
   const unsigned long now = millis();
@@ -1107,6 +1208,9 @@ void loop() {
       liveTdsStdV * 1000.0f, liveToV, toCaseTempC(liveToV),
       phTemperatureCompensationReady() ? "DS" : "--",
       PH_DO_WIRED ? (liveDoHigh ? "HIGH" : "LOW") : "--");
+    if (mlx90640Ok) Serial.printf(" | MLX ROI %.1f C | BlattVPD-Kandidat %.3f kPa",
+                                thermalRoiTempC, leafVpdCandidate);
+    else Serial.print(F(" | MLX --"));
     Serial.printf(" | DHT %u/3 | BH %s",
                   static_cast<unsigned>(n),
                   bhOk && isfinite(bhLux) ? "OK" : "--");
