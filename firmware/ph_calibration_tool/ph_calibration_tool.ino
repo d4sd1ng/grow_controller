@@ -725,6 +725,7 @@ static void printHelp() {
   Serial.println(F("s = Status + fertige Kalibrierwerte"));
   Serial.println(F("r = gespeicherte Kalibrierpunkte loeschen"));
   Serial.println(F("t = Hardware-Status (alle Sensoren)"));
+  Serial.println(F("p = pH-Alarmschwellen, Hysterese und Sensorfehler simulieren (nur Serial; kein Server)"));
   Serial.println(F("e = EC kalibrieren: A1 in 1413 uS/cm Referenzloesung, DS18B20 erforderlich"));
   Serial.println(F("w <ROM> = Wasser-DS18B20 aus mehreren Sensoren anhand 16-stelliger ROM festlegen"));
   Serial.println(F("a <C> = TO/Gehaeuse Referenzpunkt 1 bei C Grad Celsius"));
@@ -909,6 +910,70 @@ static void drawOled() {
   display.display();
 }
 
+
+/* Reiner pH-Alarm-Selbsttest: identische Schwellen/Hysterese/Bestaetigung
+ * wie growroom_telemetry_client; keine Aenderung an Sensoren, NVS oder Ausgaengen.
+ * Testet nur die lokale Zustandslogik, nicht WLAN/CYD/Server-Zustellung.
+ */
+enum class PhTestAlarm : uint8_t { Normal, Low, High, Fault };
+struct PhTestMachine {
+  PhTestAlarm alarm = PhTestAlarm::Fault;
+  PhTestAlarm pending = PhTestAlarm::Fault;
+  uint8_t samples = 0;
+
+  void update(float ph, bool calibrated = true, bool adcOk = true) {
+    if (!calibrated || !adcOk || !isfinite(ph) || ph < 0.0f || ph > 14.0f) {
+      samples = 0;
+      alarm = PhTestAlarm::Fault;
+      return;
+    }
+    PhTestAlarm next = PhTestAlarm::Normal;
+    if (ph < 5.5f || (alarm == PhTestAlarm::Low && ph < 5.6f))
+      next = PhTestAlarm::Low;
+    else if (ph > 6.5f || (alarm == PhTestAlarm::High && ph > 6.4f))
+      next = PhTestAlarm::High;
+    if (next == alarm) { samples = 0; return; }
+    if (next != pending) { pending = next; samples = 1; }
+    else if (samples < 3) ++samples;
+    if (samples >= 3) { samples = 0; alarm = next; }
+  }
+};
+static void runPhAlarmSelfTest() {
+  Serial.println(F("\n=== pH-ALARM SOFTWARETEST (KEIN REALER ALARM) ==="));
+  PhTestMachine sm;
+  uint8_t passed = 0, failed = 0;
+  auto check = [&](bool ok, const char *name) {
+    Serial.printf("%s | %s\n", ok ? "PASS" : "FAIL", name);
+    if (ok) ++passed; else ++failed;
+  };
+  sm.update(6.0f); sm.update(6.0f); sm.update(6.0f);
+  check(sm.alarm == PhTestAlarm::Normal, "Normal 6.0 nach 3 Messungen");
+  sm.update(5.4f); sm.update(5.4f);
+  check(sm.alarm == PhTestAlarm::Normal, "Untergrenze noch nicht nach 2 Messungen");
+  sm.update(5.4f);
+  check(sm.alarm == PhTestAlarm::Low, "pH 5.4 nach 3 Messungen: LOW");
+  sm.update(5.55f);
+  check(sm.alarm == PhTestAlarm::Low, "pH 5.55: LOW bleibt (Hysterese)");
+  sm.update(5.61f); sm.update(5.61f); sm.update(5.61f);
+  check(sm.alarm == PhTestAlarm::Normal, "pH 5.61 nach 3 Messungen: Normal");
+  sm.update(6.6f); sm.update(6.6f);
+  check(sm.alarm == PhTestAlarm::Normal, "Obergrenze noch nicht nach 2 Messungen");
+  sm.update(6.6f);
+  check(sm.alarm == PhTestAlarm::High, "pH 6.6 nach 3 Messungen: HIGH");
+  sm.update(6.45f);
+  check(sm.alarm == PhTestAlarm::High, "pH 6.45: HIGH bleibt (Hysterese)");
+  sm.update(6.39f); sm.update(6.39f); sm.update(6.39f);
+  check(sm.alarm == PhTestAlarm::Normal, "pH 6.39 nach 3 Messungen: Normal");
+  sm.update(NAN);
+  check(sm.alarm == PhTestAlarm::Fault, "Fehler bei NAN sofort");
+  sm.update(6.0f); sm.update(6.0f); sm.update(6.0f);
+  sm.update(6.0f, false);
+  check(sm.alarm == PhTestAlarm::Fault, "Fehler ohne Kalibrierung sofort");
+  Serial.printf("pH-Alarmtestergebnis: %u PASS / %u FAIL\n",
+                static_cast<unsigned>(passed), static_cast<unsigned>(failed));
+  Serial.println(F("Messung, Alarmspeicher, SSR und Server wurden NICHT veraendert."));
+}
+
 static void handleSerial() {
   while (Serial.available()) {
     const char c = Serial.read();
@@ -933,6 +998,8 @@ static void handleSerial() {
       } else {
         captureToPoint(c == 'a' ? 1 : 2, tempC);
       }
+    } else if (c == 'p' || c == 'P') {
+      runPhAlarmSelfTest();
     } else if (c == 's' || c == 'S') {
       printCalibration();
     } else if (c == 't' || c == 'T') {
