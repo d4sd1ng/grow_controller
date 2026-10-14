@@ -25,7 +25,22 @@
 
 **Nicht bestuecken:** PH4502C TO/DO; TO hat am vorhandenen Exemplar 3,3–3,4 V geliefert und ist nicht direkt ADS-A2-tauglich. **Keine Relaisleitungen auf dem Sensor-ESP32.** Separater ESP32-C3 SuperMini im Leistungsgehäuse.
 
+| 16 | WUCHS-Taster gegen GND (`INPUT_PULLUP`) |
+| 19 | BLÜTE-Taster gegen GND (`INPUT_PULLUP`) |
+| 23 | WUCHS-LED, mit eigenem 470-Ohm-Vorwiderstand nach GND |
+| 33 | BLÜTE-LED, mit eigenem 470-Ohm-Vorwiderstand nach GND |
+| 18 | **Reserve:** optionaler pH-Buzzer-Signalausgang, zunächst **deaktiviert** |
+
 Vollstaendig: [../wiring_plan_v2.md](../wiring_plan_v2.md).
+
+### Bedienfeld: Wachstums-/Blütephase und akustische pH-Warnung
+
+- Die beiden Schließer `WUCHS` und `BLÜTE` werden separat eingelesen, mit 50 ms entprellt und als genau ein aktiver Modus behandelt. Die jeweilige LED zeigt dauerhaft die gespeicherte Phase; auch der OLED-Status wechselt. NVS-Speicher: `growphase_v1`.
+- Die Produktions-Firmware liefert die Phase unter `control.phase`, `phase` in der Telemetrie sowie den Status `phase_profile_configured`. Die bisherigen Wuchs-Klimasollwerte (24 °C und 60 % rF) bleiben zunächst als Wuchs-Profil vorhanden. Für **BLÜTE** liegen noch keine vereinbarten Sollwerte vor: Die Automatik verwendet **keinen** erfundenen Ersatz. pH-Schwellen bleiben bei 5,5/6,5 bis neue Grenzwerte ausdrücklich festgelegt wurden.
+- Der pH-Buzzer ist im Programm **vorbereitet, aber deaktiviert** (`GROW_ENABLE_PH_BUZZER=0`). `GPIO18` ist ausschließlich als optionaler Buzzer-Signalpin vorgemerkt. Bei aktivem, kompatiblem Buzzer: LOW zwei kurze Signale / 5 s; HIGH drei / 5 s; Sensorfehler ein kurzer Hinweis / 10 s. Bei NORMAL schweigt der Buzzer. Die Softwaretests `1/2/3` sollen dasselbe Muster auslösen.
+- **Noch kein Anschluss:** erst aktiven/passiven Typ, Betriebsspannung, erforderlichen Eingangsstrom und Ansteuerpolarität prüfen; ggf. Treiberschaltung. Unbekannte Buzzer nicht direkt an ESP32-GPIO anschließen. Die tatsächliche GPIO18-Stiftposition auf dem verwendeten OLED-ESP32 prüfen.
+
+
 
 ## Kalibrier-/Diagnosesketch
 
