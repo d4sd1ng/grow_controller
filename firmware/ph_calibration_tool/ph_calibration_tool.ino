@@ -421,8 +421,9 @@ static void scanI2CAndBind() {
   bhOk = false;
   bhAddress = 0;
   bhFoundBus = "nicht gefunden";
+  const uint8_t bhAddresses[] = {0x23, 0x5C};
   for (uint8_t b = 0; b < 2 && !bhOk; ++b) {
-    for (uint8_t addr : {uint8_t(0x23), uint8_t(0x5C)}) {
+    for (uint8_t addr : bhAddresses) {
       if (!i2cResponds(*buses[b], addr)) continue;
       bhOk = true;
       bhAddress = addr;
