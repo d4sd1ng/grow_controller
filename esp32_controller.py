@@ -24,7 +24,7 @@ class ESP32Controller:
         self.am2302_2_temperature = 25.0
         self.am2302_2_humidity = 60.0
         self.ec = 1.5
-        self.ph = 6.5
+        self.ph = 6.0
         self.light_intensity = 0.0
 
         self.relay_states = {k: False for k in _DEFAULT_RELAYS}
