@@ -262,7 +262,7 @@ void fetchSummaryAndUpdate() {
   const char *alertMsg = nullptr;
   const char *alertSev = nullptr;
   if (!strcmp(phAlarm, "low")) { alertMsg = "pH unter 5.5"; alertSev = "ALARM"; }
-  else if (!strcmp(phAlarm, "high")) { alertMsg = "pH ueber 6.5"; alertSev = "ALARM"; }
+  else if (!strcmp(phAlarm, "high")) { alertMsg = "pH ueber 6.2"; alertSev = "ALARM"; }
   else if (!strcmp(phAlarm, "sensor_fault")) { alertMsg = "pH-Sensor/Kalibrierung"; alertSev = "FEHLER"; }
 
   updateLabels(mode, t, rh, tdsPpm, ph, ec, ecValid, light, heat, circ, exh, alertMsg, alertSev);
