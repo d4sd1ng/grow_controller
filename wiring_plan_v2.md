@@ -1,104 +1,87 @@
-# Grow Controller — Wiringplan V3 (ein ESP32)
+# Grow Controller — Verdrahtung V4: zwei ESP32
 
-**Stand:** 2026-10-12. Dieser Plan ersetzt den vorherigen Zwei-ESP32-Aufbau.
-**Status:** Firmware-Umstellung vorgenommen; Kompilier- und Hardwaretests ausstehend.
+**Stand:** 2026-10-14  
+**Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** als separater Leistungscontroller.  
+**Status:** Sensor/pH-Kalibrierung funktioniert; die neue Zwei-ESP-Kommunikation und der C3-Leistungsteil sind noch NICHT implementiert bzw. getestet.
 
-Dieser Plan dokumentiert die **Kleinspannungs-Sensor- und Steuersignale**. Die 230-V-Lastseite ist kein Bestandteil dieser Anschlussanleitung. Netzspannungsinstallationen gehören in einen geeigneten, berührungssicheren und fachkundig geprüften Leistungsbereich.
+> Dieser Plan behandelt ausschliesslich die Kleinspannungs-Sensorplatine und die logische Rollenverteilung. Die 230-V-Seite ist nicht Gegenstand des Plans; Montage/Pruefung gehoeren in fachkundige Haende.
 
 ## Architektur
 
 ```text
-Ein ESP32 mit integriertem OLED (gemeinsames Controllergehaeuse)
-  ├── OLED + ADS1115: I2C GPIO21 SDA / GPIO22 SCL
-  │     ├── ADS A0: PH4502C PO ueber Spannungsteiler
-  │     ├── ADS A1: CQRobot TDS-Analogsignal
-  │     └── ADS A2: PH4502C TO (temperaturbezogene Analogspannung; noch nicht freigegeben)
-  ├── PH4502C DO: GPIO32 (digitaler Komparator; noch nicht freigegeben)
-  ├── DS18B20: 1-Wire GPIO23 (bis zu zwei Sensoren)
-  ├── DHT22 #1/#2/#3: GPIO25/26/27 (noch nicht verkabelt)
-  ├── BH1750: I2C GPIO13/14 (noch nicht verkabelt)
-  ├── SSR1: GPIO17, Licht
-  ├── SSR2: GPIO18, Umluft
-  ├── SSR3: GPIO19, Abluft
-  └── SSR4: GPIO33, Heizstrahler
-        |
-        +-- WLAN <--> Cheap Yellow Display (CYD)
-        +-- WLAN ----> Raspberry Pi (API, Dashboard, Telemetrie)
+                       WLAN
+        +--------------------------------+
+        |                                |
++-------v----------------+    +----------v--------------+
+| Sensor-ESP32 + OLED    |    | ESP32-C3 SuperMini       |
+| 26 x 30 Lochraster     |    | separates Leistungsgeh.  |
+| - ADS1115 pH/EC        |    | - Aktorcontroller        |
+| - 3 x DHT22            |    | - Relaisansteuerung      |
+| - DS18B20 (nach Ersatz)|    |   noch NICHT integriert  |
+| - BH1750 (geplant)     |    | - Fail-safe: zu planen   |
++----------+-------------+    +-----------+-------------+
+           | WLAN                         | WLAN
+           +----------> Raspberry Pi <----+
+                            |
+                     CYD / Dashboard
 ```
 
-Kein zweiter ESP32, kein ATmega2560 und keine Datenverbindung zwischen zwei Steuerplatinen. Eine Wasserpumpe ist nicht Bestandteil des aktuellen Aufbaus und wird nicht als Relaiskanal eingeplant.
+**Keine SSR-/Relaisleitungen auf der 26×30-Sensorplatine.** Der ESP32-C3 ist ein zweites Gerät, kein Aufsteckmodul dieser Platine. Die alte Einzel-ESP32-Zeichnung und die Zuordnung GPIO17/18/19/33 zu den Relais sind überholt. Auf dem tatsächlich abgelesenen Sensor-Board sind GPIO17/18 ohnehin nicht als Stiftkontakte aufgeführt.
 
-## GPIO-Belegung
+## Sensor-ESP32: bestätigte Stiftkontakte und Signalzuordnung
 
-| Board-Pin | GPIO | Funktion |
-|---|---:|---|
-| D21 | 21 | internes OLED SDA und ADS1115 SDA |
-| D22 | 22 | internes OLED SCL und ADS1115 SCL |
-| D23 | 23 | DS18B20 DATA / gemeinsamer 1-Wire-Bus |
-| D32 | 32 | PH4502C DO, digitaler einzelner Grenzwert; erst nach Pegelpruefung |
-| ADS1115 A2 | - | PH4502C TO, Analogspannung; erst nach Spannungspruefung |
-| D25 | 25 | DHT22 #1, Pflanzenzone |
-| D26 | 26 | DHT22 #2, Unter-/Zuluftzone |
-| D27 | 27 | DHT22 #3, Ober-/Abluftzone |
-| D13 | 13 | BH1750 SDA, separater I2C-Bus |
-| D14 | 14 | BH1750 SCL, separater I2C-Bus |
-| TX2 / D17 | 17 | SSR1, Licht (Steuereingang) |
-| D18 | 18 | SSR2, Umluft (Steuereingang) |
-| D19 | 19 | SSR3, Abluft (Steuereingang) |
-| D33 | 33 | SSR4, Heizstrahler (Steuereingang) |
-| VP / VN | 36 / 39 | nur analoge Eingangsreserve |
+Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-Pins**, nicht nach einem generischen ESP32-DevKit-Pinout. Ein endgültiger Loch-für-Loch-Aufbau setzt den realen Lochabstand und die Modulmaße voraus.
 
-## Sensoranschluesse (Kleinspannung)
+| Sensor/Modul | Anschluss am Sensor-ESP32 | Zweck | Bauzustand |
+|---|---|---|---|
+| Internes OLED | GPIO21 SDA, GPIO22 SCL | vorhandenes Display (I2C) | vorhanden |
+| ADS1115 | GPIO21 SDA, GPIO22 SCL, 3V3, GND | ADC, Adresse 0x48 (ADDR=GND) | bereits in Verwendung |
+| PH4502C PO | ADS1115 **A0** | pH-Messung, vorhandene kalibrierte Signalkette **nicht umbauen** | kalibriert |
+| CQRobot TDS/EC analog | ADS1115 **A1** | EC-Spannung, vorhandene Signalkette erhalten | bereits angeschlossen |
+| DS18B20 | **GPIO23 (D23)** | Wasser-Temperatur, 1-Wire | Ersatzsensoren noch nicht geliefert |
+| DHT22 #1 | **GPIO25 (D25)** | Pflanzenzone | vorgesehen |
+| DHT22 #2 | **GPIO26 (D26)** | Zuluft-/Unterzone | vorgesehen |
+| DHT22 #3 | **GPIO27 (D27)** | obere Zone | vorgesehen |
+| BH1750 | **GPIO13 (D13) SDA**, **GPIO14 (D14) SCL** | separater I2C-Bus | vorgesehen |
+| MLX90640 optional | GPIO21 SDA, GPIO22 SCL | mit OLED/ADS geteilter I2C-Bus; nur nach Modul-/Pegelpruefung | Reserve |
 
-### Bereits verkabelt / noch elektrisch zu pruefen
+**Ausdrücklich nicht verdrahten:** PH4502C **TO -> ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO -> GPIO32** (für die kalibrierten pH-Grenzalarme nicht erforderlich). GPIO17/18/19/33 als Relaisleitungen am Sensor-ESP entfallen. GPIO32/GPIO33 bleiben Reserve.
 
-**ADS1115:** VDD 3,3 V; GND gemeinsame Kleinspannungsmasse; SDA GPIO21; SCL GPIO22; ADDR GND fuer I2C-Adresse 0x48; A0 pH; A1 TDS. Das integrierte SSD1306-OLED nutzt dieselben I2C-Leitungen, normalerweise Adresse 0x3C.
+## 26 × 30 Lochraster — konkreter Bestückungsplan (Kleinspannung)
 
-**PH4502C:** 5 V und GND; PO -> 10 kOhm -> ADS A0; A0 -> 20 kOhm -> GND. Nominales Teilungsverhaeltnis: 2/3. **Vor dem Anschluss des analogen ADS-Eingangs** sicherstellen, dass die reale Spannung am Teilerknoten im zulaessigen Eingangsbereich des mit 3,3 V versorgten ADS1115 bleibt. Die 3,33 V, die bei idealisierten 5 V am PO rechnerisch entstehen, duerfen nicht als normaler erlaubter Arbeitsbereich angenommen werden.
+**Achtung:** 26×30 bezeichnet 26 × 30 **Bohrungen**, nicht Millimeter. Auf normalem 2,54-mm-Lochraster entspricht das ungefähr 66 × 76 mm im Raster; die Leiterplatte selbst kann etwas größer sein. Bestueckung erst trocken auflegen, da genaue OLED-ESP32-/ADS1115-Modulabmessungen und Reihenabstände nicht zuverlässig vorliegen.
 
-**PH4502C TO/DO (vorgesehen, derzeit deaktiviert):** PO bleibt an ADS A0 ueber den bestehenden Teiler. TO ist ein Analogsignal, vorgesehen fuer ADS1115 A2; das Vorhandensein des NTC auf der Platine bedeutet keine automatische Celsius-Kalibrierung. DO ist ein einzelner digitaler pH-Komparatorausgang, vorgesehen fuer GPIO32. Bei einer mit 5 V versorgten PH4502C duerfen TO und DO nicht ohne vorherige Pruefung von Spannungsbereich und Signalpegel an 3,3-V-Eingaenge angeschlossen werden; eine geeignete Pegelanpassung ist nach Messung/Schaltplan auszuwaehlen. Beide Eingaben sind softwareseitig zunaechst mit `PH_TO_WIRED=false` und `PH_DO_WIRED=false` abgeschaltet. Fuer die ZWEI unabhängigen Alarme pH <5,5 und pH >6,5 wird das kalibrierte kontinuierliche PO-Signal verwendet. DO kann zusaetzlich einen EINZELNEN einstellbaren Hardware-Schwellenwert melden; seine Polaritaet muss experimentell verifiziert werden.
-
-**CQRobot CQRSENTDS01:** Versorgung gemaess Modulvorgabe, gemeinsames GND, analoges Signal an ADS A1. Auch diesen Eingang vor Anschluss auf zulaessige Spannungen pruefen. Ein Kalibrierwert fuer EC liegt noch nicht vor.
-
-**DS18B20:** DATA GPIO23, VDD 3,3 V, GND, ein gemeinsamer 4,7-kOhm-Pull-up zwischen DATA und 3,3 V. Bei zwei Sensoren beide DATA-Leitungen auf denselben 1-Wire-Bus; ROM-Zuordnung spaeter messen. Die pH-Kalibrierung verlangt keinen DS18B20 mehr; ohne Temperaturmessung wird die Puffertemperatur als unbekannt dokumentiert (Pufferwert bei Referenztemperatur beachten).
-
-### Noch NICHT verkabelt
-
-**3 x DHT22:** je 3,3 V, GND und separater DATA-Pin:
-- DHT22 #1: DATA -> GPIO25, Pflanzenzone ca. 10–15 cm oberhalb der Blatthoehe
-- DHT22 #2: DATA -> GPIO26, Unter-/Zuluftzone nicht im direkten Luftstrom
-- DHT22 #3: DATA -> GPIO27, obere Abluft-/Lampenzone nicht im direkten Saugstrom
-
-Je Sensorleitung 4,7 kOhm von DATA nach 3,3 V, sofern auf dem verwendeten DHT22-Modul kein geeigneter Pull-up bereits verbaut ist. Die Sensoren muessen **ausserhalb des warmen Controllergehaeuses** messen.
-
-**BH1750:** VCC 3,3 V; GND; SDA GPIO13; SCL GPIO14; ADDR nach Modul-Default (normalerweise 0x23), separater I2C-Bus mit anfaenglich 50 kHz. Sensor bei den Pflanzen mit freiem Blick zur Beleuchtung positionieren; bei laengerer Leitung geeignete paarweise gefuehrte Signalleitungen verwenden.
-
-Beide bisher fehlenden Sensortypen sind optional im Diagnosesketch: bis zum Anschluss melden sie „NICHT ERKANNT“ und blockieren die vorhandenen Tests nicht.
-
-## pH-Alarmregeln
-
-Die produktive Firmware liest die pH-4-/pH-7-Kalibrierpunkte direkt aus dem ESP32-NVS-Namespace `phads_v1`. Fehlt eine gueltige Kalibrierung oder der ADS1115, lautet der Status `sensor_fault`; es wird KEIN gueltiger pH-Wert vorgetaeuscht. Ein pH unter 5,5 erzeugt `low`, ueber 6,5 `high`, sonst `normal`. Drei aufeinanderfolgende Sensorlesungen bestaetigen Grenzwertwechsel; 0,1 pH Hysterese vermeidet Alarmflattern. Alarmstatus wird auf OLED, CYD, lokaler Zusammenfassung und in der Telemetrie angezeigt; Aenderungen werden als Alert an `/api/v1/alerts` gesendet. DO liefert lediglich seinen eigenen einzelnen Schwellenwert und bestimmt nicht den Zwei-Grenzen-Status.
-
-## Vier SSR-Steuersignale
-
-| Kanal | ESP32-Pin | Funktion |
+| Bauteil / Anschluss | Auf der Sensorplatine vorbereiten | Bemerkung |
 |---|---|---|
-| SSR1 | GPIO17 | Licht |
-| SSR2 | GPIO18 | Umluft links und rechts |
-| SSR3 | GPIO19 | Abluft |
-| SSR4 | GPIO33 | Heizstrahler |
+| Sensor-ESP32 mit OLED | **2 × 15-polige Buchsenleiste**, nur wenn der reale ESP32 die bestätigten 15 Kontakte je Seite und passendes Raster besitzt | USB und OLED müssen erreichbar bleiben |
+| ADS1115-Modul | passende **Buchsenleisten / Stiftadapter** für die tatsächlich vorhandenen Modul-Pins | pH A0/EC A1; A2/A3 frei |
+| DS18B20-Bus | **1 × 3-poliger Anschluss: 3V3, GND, DATA D23** | beide DS18B20 können denselben Bus nutzen |
+| DS-Pull-up | **1 × 4,7 kOhm** zwischen DATA D23 und 3V3 | genau EIN gemeinsamer Pull-up am Bus |
+| DHT22 #1–#3 | **3 × 3-poliger Anschluss: 3V3, GND, DATA** | DATA D25/D26/D27 |
+| DHT-Pull-ups | **bis zu 3 × 4,7 kOhm**, jeweils DATA gegen 3V3 | nur falls das konkrete DHT22-Modul keinen eigenen Pull-up hat |
+| BH1750 | **1 × 4-poliger Anschluss: 3V3, GND, SDA D13, SCL D14** | ggf. ADDR-Pin am Modul beachten, keine doppelten Pull-ups ohne Prüfung |
+| pH-/EC-Signale | vorhandene kalibrierte/verifizierte Verbindungen A0/A1 sauber übernehmen; geeignete Steckklemmen | keine neue, unbelegte 10k/20k-Teilerannahme |
+| Spannungs-/Masseverteilung | getrennte **3V3- und GND-Verbindungen** auf Lochraster mit isoliertem Draht | Lochraster hat keine automatischen Stromschienen |
+| Erweiterung, optional | 4-polige I2C-Reserve für MLX90640, sofern Platz/Modul passend | kein Pflichtteil für die jetzige Platine |
 
-Vorgesehene Logik: LOW AUS, HIGH EIN. Externe 10-kOhm-Pulldowns am Steuereingang verhindern einen undefinierten Zustand vor Initialisierung der GPIOs. Die tatsaechliche erforderliche SSR-Eingangsstromstaerke und zuverlaessige 3,3-V-Ansteuerung sind zu verifizieren; die Beschriftung „3–32 VDC Input“ allein reicht nicht aus.
+**Mechanische Reihenfolge:** zuerst ESP32 und ADS1115 probeweise positionieren; USB-/OLED-Freiraum und Sensor-Steckverbinder prüfen; dann Buchsenleisten und Pull-up-Widerstände verlöten; anschließend Kleinspannungs-Signale und Masse einzeln durchmessen. Steckverbinder nach Signalname und Spannung beschriften. Die DHT22-/BH1750-/DS-Sensoren messen außerhalb des warmen Gehäuses; daher **nur ihre Anschlüsse**, nicht die Messköpfe selbst, auf der Lochrasterplatine anordnen.
 
-Beim **Hardware-Diagnosesketch** bleiben saemtliche vier Ausgaenge AUS. Es erfolgt **kein Last-/Netzspannungstest**. Fuer die Heizlast ist zusaetzlich eine unabhaengige Temperaturbegrenzung erforderlich.
+### Versorgung
 
-## Software / Teststand
+ADS1115, DS18B20, DHT22 und BH1750: geplante **3,3-V-Logik**. Versorgung von konkretem Breakout abhängig; prüfen, ob der 3,3-V-Regler des ESP32 den gesamten Strom liefern kann. PH4502C VCC wurde mit **4,7 V** gemessen; ihre bisher funktionierende Versorgung und A0-Messkette nicht ohne Grund verändern. Alle beteiligten Kleinspannungs-Sensoren benötigen eine passende gemeinsame Signalmasse.
 
-- `firmware/growroom_telemetry_client/growroom_telemetry_client.ino`: einzelner ESP32; Sensorik + vier lokale SSR-Ausgaenge; CYD-API und Telemetrie weiterhin vorhanden.
-- `firmware/ph_calibration_tool/ph_calibration_tool.ino`: Hardwaretest OLED, ADS A0/A1, optional TO A2/DO GPIO32, DS18B20 und spaeter DHT22/BH1750; pH 7/4 ueber ADS A0 mit NVS-Speicherung `phads_v1` auch ohne DS18B20.
-- `firmware/ds18b20_diagnostic/ds18b20_diagnostic.ino`: separates Diagnosetool, GPIO23.
-- `firmware/powerbox_actuator/`: **Legacy, nicht mehr flashen**, da kein zweiter ESP32 vorhanden ist.
-- CYD-Firmware und Server folgen weiterhin dem bestehenden API-Schema; die alten separaten Power-Node-Meldungen werden nicht mehr benoetigt.
-- Der Server verwendet derzeit noch SQLite; PostgreSQL-Migration bleibt ein separater Schritt.
+## ESP32-C3 SuperMini — eigener Aufbau
 
-**Noch nicht geprueft:** Kompilierung unter der lokalen Arduino-ESP32-Toolchain, Sensorwerte, ADS-Grenzspannungen, tatsaechlicher Relais-Eingangsstrom, Ein-/Ausschaltverhalten und reale pH-Kalibrierung. Die 230-V-Seite bleibt bis zur fachgerechten Pruefung ausser Betrieb.
+Der C3 liegt **im separaten Leistungsgehäuse**. Die Vier-Kanal-Zuordnung bleibt funktional **Licht / Umluft / Abluft / Heizstrahler**, aber sie ist **nicht** auf dem Sensor-ESP32 zu verlöten. Konkrete C3-GPIOs, Eingangsstrom-/Pegel-Kompatibilität der eingesetzten Relais und die vollständige Fail-safe-Strategie sind noch zu verifizieren; darum enthält dieser Plan absichtlich **keine erfundene C3-Pinbelegung oder Lastverdrahtung**.
+
+Geplante Kommunikation: über WLAN, mit getrennten Zuständen **angefordert**, **vom C3 bestätigt**, **Kommunikation verloren**. Bei Kommunikationsfehlern muss das System einen eindeutig definierten sicheren Zustand annehmen. Ohne überprüfte Umsetzung gibt es noch keine funktionsfähige Relaissteuerung.
+
+## Softwarestand und nächste Schritte
+
+- `firmware/ph_calibration_tool/ph_calibration_tool.ino`: Sensor-Hardwaretest, pH-Kalibrierung/Alarme; **keine Relais-GPIOs mehr**.
+- `firmware/growroom_telemetry_client/growroom_telemetry_client.ino`: Sensor-Messwerte, WLAN, lokaler API-Endpunkt und Sollwertverwaltung; alte lokale Relais-GPIO-Schaltung **entfernt**. C3 ist noch nicht angebunden. API meldet für Aktoren `esp32_c3_not_connected`.
+- `firmware/ds18b20_diagnostic/ds18b20_diagnostic.ino`: DS18B20-Prüfung auf GPIO23, wenn die Ersatzfühler eintreffen.
+- Das separate C3-Programm sowie die WLAN-Anbindung und ihre Hardwaretests stehen noch aus.
+- Sensorplatine erst vollständig mit Beschriftungen/Kontinuitätsmessungen prüfen; keine Netzspannungsseite während der Sensor-Diagnose.
+
+**Nicht mehr verwenden:** alter Ein-ESP32-Wiringplan, alte direkte SSR-Pinbelegung am Sensorboard und `firmware/powerbox_actuator/` als vermeintliche fertige ESP32-C3-Firmware.
