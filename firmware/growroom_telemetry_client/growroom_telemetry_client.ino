@@ -52,6 +52,11 @@ const bool SERVER_TLS_INSECURE = false;
 static constexpr uint8_t PIN_DHT1 = 25;
 static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
+static constexpr uint8_t PIN_PHASE_WUCHS_BUTTON = 16;
+static constexpr uint8_t PIN_PHASE_BLUETE_BUTTON = 19;
+static constexpr uint8_t PIN_PHASE_WUCHS_LED = 23;
+static constexpr uint8_t PIN_PHASE_BLUETE_LED = 33;
+static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 static constexpr uint8_t PIN_ONEWIRE = 32; // DS18B20 auf D32; PH4502C DO wird nicht genutzt
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
 static constexpr bool PH_TO_WIRED = false;
@@ -69,8 +74,6 @@ static constexpr unsigned long TELEMETRY_INTERVAL_MS = 10000;
 static constexpr unsigned long WIFI_RECONNECT_MS = 5000;
 
 /* ---------- Regelparameter ---------- */
-static constexpr float TARGET_AIR_TEMP = 24.0f;
-static constexpr float TARGET_HUMIDITY = 60.0f;
 static constexpr float TEMP_HYST = 0.5f;
 static constexpr float HUM_HYST = 2.0f;
 static constexpr float PH_LOW = 5.5f;
@@ -186,6 +189,102 @@ ActuatorState targets;
 ActuatorState actual;  // C3-Rueckmeldung fehlt noch: alle Aktoren als AUS / unbekannt
 uint32_t commandSeq = 0;
 char controlMode[8] = "auto";
+
+
+/* Phasenwahl ueber 2 Schliesser gegen GND und 2 LEDs mit Vorwiderstand.
+ * GPIO16/19 INPUT_PULLUP; GPIO23/33 LED-Ausgaenge HIGH=an.
+ * Auswahl wird in eigenem Namespace gespeichert, unabhaengig von pH/EC.
+ * Ohne voreingestellte Bluete-Sollwerte erfolgt KEINE Ersatzregelung.
+ */
+enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
+struct PhaseProfile {
+  float targetAirC;
+  float targetHumidityPct;
+  bool configured;
+};
+static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true}; // bisherige Sollwerte
+static constexpr PhaseProfile BLUETE_PROFILE = {NAN, NAN, false};  // noch nicht festgelegt
+static constexpr char PHASE_NVS[] = "growphase_v1";
+GrowPhase growPhase = GrowPhase::Wuchs;
+static constexpr uint8_t PHASE_BUTTON_PINS[2] = {
+    PIN_PHASE_WUCHS_BUTTON, PIN_PHASE_BLUETE_BUTTON
+};
+static bool phaseRaw[2] = {false, false};
+static bool phaseStable[2] = {false, false};
+static unsigned long phaseChangedMs[2] = {0, 0};
+static const char *phaseName(GrowPhase p) {
+  return p == GrowPhase::Bluete ? "bluete" : "wuchs";
+}
+static const PhaseProfile &phaseProfile() {
+  return growPhase == GrowPhase::Bluete ? BLUETE_PROFILE : WUCHS_PROFILE;
+}
+static void refreshPhaseLeds() {
+  digitalWrite(PIN_PHASE_WUCHS_LED, growPhase == GrowPhase::Wuchs ? HIGH : LOW);
+  digitalWrite(PIN_PHASE_BLUETE_LED, growPhase == GrowPhase::Bluete ? HIGH : LOW);
+}
+static void loadGrowPhase() {
+  Preferences prefs;
+  if (prefs.begin(PHASE_NVS, true)) {
+    growPhase = prefs.getUChar("phase", 0) == 1 ? GrowPhase::Bluete : GrowPhase::Wuchs;
+    prefs.end();
+  } else {
+    Serial.println(F("WARNUNG: Phasenspeicher nicht lesbar; starte mit WUCHS."));
+  }
+  refreshPhaseLeds();
+  Serial.printf("PHASE: %s | Sollwertprofil: %s\n",
+      phaseName(growPhase), phaseProfile().configured ? "bereit" : "FEHLT");
+}
+static void setGrowPhase(GrowPhase next) {
+  if (next == growPhase) return;
+  growPhase = next;
+  refreshPhaseLeds();
+  Preferences prefs;
+  bool saved = false;
+  if (prefs.begin(PHASE_NVS, false)) {
+    saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) == sizeof(uint8_t);
+    prefs.end();
+  }
+  // Beim Wechsel keine veralteten Aktor-Sollwerte der anderen Phase uebernehmen.
+  targets = ActuatorState{};
+  ++commandSeq;
+  Serial.printf("PHASE -> %s | Profil %s | Speicher %s\n",
+      phaseName(growPhase), phaseProfile().configured ? "OK" : "NICHT KONFIGURIERT",
+      saved ? "OK" : "FEHLER");
+}
+static void pollGrowPhaseButtons(unsigned long nowMs) {
+  const bool bothPressed =
+      digitalRead(PIN_PHASE_WUCHS_BUTTON) == LOW &&
+      digitalRead(PIN_PHASE_BLUETE_BUTTON) == LOW;
+  for (uint8_t i = 0; i < 2; ++i) {
+    const bool pressed = digitalRead(PHASE_BUTTON_PINS[i]) == LOW;
+    if (pressed != phaseRaw[i]) {
+      phaseRaw[i] = pressed;
+      phaseChangedMs[i] = nowMs;
+    }
+    if (pressed != phaseStable[i] &&
+        nowMs - phaseChangedMs[i] >= PHASE_DEBOUNCE_MS) {
+      phaseStable[i] = pressed;
+      if (pressed && !bothPressed) {
+        setGrowPhase(i == 0 ? GrowPhase::Wuchs : GrowPhase::Bluete);
+      }
+    }
+  }
+}
+static void setupGrowPhaseButtons() {
+  // Anzeige nach dem Einschalten zunaechst aus, bis die Phase geladen wurde.
+  digitalWrite(PIN_PHASE_WUCHS_LED, LOW);
+  digitalWrite(PIN_PHASE_BLUETE_LED, LOW);
+  pinMode(PIN_PHASE_WUCHS_LED, OUTPUT);
+  pinMode(PIN_PHASE_BLUETE_LED, OUTPUT);
+  pinMode(PIN_PHASE_WUCHS_BUTTON, INPUT_PULLUP);
+  pinMode(PIN_PHASE_BLUETE_BUTTON, INPUT_PULLUP);
+  const unsigned long nowMs = millis();
+  for (uint8_t i = 0; i < 2; ++i) {
+    phaseRaw[i] = phaseStable[i] = digitalRead(PHASE_BUTTON_PINS[i]) == LOW;
+    phaseChangedMs[i] = nowMs;
+  }
+  loadGrowPhase();
+}
 
 enum class PhAlarm : uint8_t { Normal, Low, High, Fault };
 PhAlarm phAlarm = PhAlarm::Fault, phPending = PhAlarm::Fault;
@@ -674,18 +773,26 @@ static void autoControl() {
     return;
   }
 
+  const PhaseProfile &profile = phaseProfile();
+  if (!profile.configured) {
+    // Fehlende Bluete-Werte duerfen nicht still durch Wuchs-Werte ersetzt werden.
+    const ActuatorState before = targets;
+    targets = ActuatorState{};
+    if (!sameState(before, targets)) ++commandSeq;
+    return;
+  }
   const float t = sensors.dht[0].tempC;
   const float rh = sensors.dht[0].rh;
   ActuatorState before = targets;
 
-  if (t < TARGET_AIR_TEMP - TEMP_HYST) targets.heater = true;
-  else if (t > TARGET_AIR_TEMP + TEMP_HYST) targets.heater = false;
+  if (t < profile.targetAirC - TEMP_HYST) targets.heater = true;
+  else if (t > profile.targetAirC + TEMP_HYST) targets.heater = false;
 
-  if (rh > TARGET_HUMIDITY + HUM_HYST) targets.circulation = true;
-  else if (rh < TARGET_HUMIDITY - HUM_HYST) targets.circulation = false;
+  if (rh > profile.targetHumidityPct + HUM_HYST) targets.circulation = true;
+  else if (rh < profile.targetHumidityPct - HUM_HYST) targets.circulation = false;
 
-  if (t > TARGET_AIR_TEMP + 2.0f) targets.exhaust = true;
-  else if (t < TARGET_AIR_TEMP + 0.5f) targets.exhaust = false;
+  if (t > profile.targetAirC + 2.0f) targets.exhaust = true;
+  else if (t < profile.targetAirC + 0.5f) targets.exhaust = false;
 
   if (!sameState(before, targets)) ++commandSeq;
 }
@@ -700,6 +807,15 @@ static void handleSummary() {
 
   JsonObject control = doc.createNestedObject("control");
   control["control_mode"] = controlMode;
+  control["phase"] = phaseName(growPhase);
+  control["phase_profile_configured"] = phaseProfile().configured;
+  if (phaseProfile().configured) {
+    control["phase_air_target_c"] = phaseProfile().targetAirC;
+    control["phase_humidity_target_pct"] = phaseProfile().targetHumidityPct;
+  } else {
+    control["phase_air_target_c"] = nullptr;
+    control["phase_humidity_target_pct"] = nullptr;
+  }
   JsonObject targetObj = control.createNestedObject("targets");
   writeActuators(targetObj, targets);
 
@@ -766,6 +882,8 @@ static void handleActuatorTargets() {
   doc["ok"] = true;
   doc["power_controller_connected"] = false;
   doc["control_mode"] = controlMode;
+  doc["phase"] = phaseName(growPhase);
+  doc["phase_profile_configured"] = phaseProfile().configured;
   doc["seq"] = commandSeq;
   doc["source_ms"] = millis();
   JsonObject commands = doc.createNestedObject("commands");
@@ -828,6 +946,8 @@ static bool sendTelemetry() {
   setJsonFloat(root, "water_temperature", sensors.waterTempC);
   setJsonFloat(root, "case_temperature", sensors.caseTempC);
   root["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
+  root["phase"] = phaseName(growPhase);
+  root["phase_profile_configured"] = phaseProfile().configured;
   root["ph_temperature_compensated"] = sensors.phTempCompensated;
   root["light_level"] = sensors.lux;
   setJsonFloat(root, "ec", sensors.ec); // mS/cm
@@ -868,7 +988,8 @@ static bool sendTelemetry() {
 
   JsonObject dev = root.createNestedObject("device_info");
   dev["device_id"] = "grow_sensor_01";
-  dev["firmware_version"] = "5.0.0-single-esp";
+  dev["firmware_version"] = "5.1.0-sensor-esp";
+  dev["phase"] = phaseName(growPhase);
   dev["control_mode"] = controlMode;
   dev["ads1115"] = sensors.adsOk;
   dev["bh1750"] = bh1750Present;
@@ -881,7 +1002,7 @@ static bool sendTelemetry() {
   dev["ec_temp_compensation"] = "ds18b20_to_25C_or_null";
   dev["water_ds_rom_selected"] = waterSensorRomSelected;
   dev["to_case_calibrated"] = toCalibrated;
-  dev["actuator_controller"] = "local_gpio";
+  dev["actuator_controller"] = "esp32_c3_not_connected";
 
   String body;
   serializeJson(doc, body);
@@ -952,13 +1073,17 @@ static void drawOled() {
   display.setTextColor(SSD1306_WHITE);
 
   display.setCursor(0, 0);
+  display.print(growPhase == GrowPhase::Wuchs ? F("PHASE: WUCHS") : F("PHASE: BLUETE"));
+  if (!phaseProfile().configured) display.print(F(" !"));
+
+  display.setCursor(0, 12);
   if (sensors.dht[0].ok) {
     display.printf("T %.1fC RH %.0f%%", sensors.dht[0].tempC, sensors.dht[0].rh);
   } else {
     display.print("DHT1 FEHLER");
   }
 
-  display.setCursor(0, 16);
+  display.setCursor(0, 24);
   display.print("Box ");
   if (isfinite(sensors.caseTempC)) display.printf("%.1fC", sensors.caseTempC);
   else display.print("--");
@@ -966,7 +1091,7 @@ static void drawOled() {
   if (isfinite(sensors.waterTempC)) display.printf("%.1fC", sensors.waterTempC);
   else display.print("--");
 
-  display.setCursor(0, 32);
+  display.setCursor(0, 36);
   display.print("pH ");
   if (isnan(sensors.ph)) display.print("--");
   else display.printf("%.2f", sensors.ph);
@@ -974,7 +1099,7 @@ static void drawOled() {
   if (!isfinite(sensors.ec)) display.print("--");
   else display.printf("%.2f", sensors.ec);
 
-  display.setCursor(0, 48);
+  display.setCursor(0, 50);
   const PhAlarm shown = phTestActive ? phTestAlarm : phAlarm;
   if (phTestActive) display.print("TEST ");
   if (shown == PhAlarm::Low) display.print("ALARM pH <5.5");
@@ -992,6 +1117,7 @@ void setup() {
   actual = ActuatorState{};
   Serial.begin(115200);
   delay(300);
+  setupGrowPhaseButtons();
   Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.60 | 3=NORMAL 6.00 | 0=Test aus"));
   loadPhCalibration();
   loadEcCalibration();
@@ -1054,6 +1180,7 @@ void loop() {
   const unsigned long now = millis();
 
   localServer.handleClient();
+  pollGrowPhaseButtons(now);
   handlePhTestSerial();
   sampleTdsBackground(now);
   pollMlx90640(now);
