@@ -517,7 +517,7 @@ static void initMlx90640() {
     mlx90640.setRefreshRate(MLX90640_2_HZ);
   }
   Wire.setClock(100000);
-  Serial.printf("MLX90640 I2C 0x33: %s\\n", mlxReady ? "OK" : "NICHT ERKANNT");
+  Serial.printf("MLX90640 I2C 0x33: %s\n", mlxReady ? "OK" : "NICHT ERKANNT");
   lastMlxMs = millis();
 }
 static void sampleMlx90640(unsigned long nowMs) {
@@ -530,7 +530,7 @@ static void sampleMlx90640(unsigned long nowMs) {
   thermalRoiTempC = NAN;
   if (err != 0) {
     computeLeafVpdCandidate();
-    Serial.printf("MLX90640 Bildfehler: %d\\n", err);
+    Serial.printf("MLX90640 Bildfehler: %d\n", err);
     return;
   }
   float roi[192];
@@ -552,7 +552,7 @@ static void sampleMlx90640(unsigned long nowMs) {
                     (roi[n / 2 - 1] + roi[n / 2]) * 0.5f;
   mlx90640Ok = true;
   computeLeafVpdCandidate();
-  Serial.printf("MLX90640 ROI: %.2f C | VPD-Blatt-Kandidat %.3f kPa | %u Pixel\\n",
+  Serial.printf("MLX90640 ROI: %.2f C | VPD-Blatt-Kandidat %.3f kPa | %u Pixel\n",
                 thermalRoiTempC, leafVpdCandidate, static_cast<unsigned>(n));
 }
 #else
