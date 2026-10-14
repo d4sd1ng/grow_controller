@@ -21,7 +21,7 @@
 
 **Änderung gegenüber V7:** DS18B20 wieder von GPIO32 auf **GPIO23** zurückverlegt, um den Pull-up mechanisch wie gewünscht anzuschließen. Der bisherige RGB-Grün-Ausgang **GPIO23** wandert gleichzeitig auf **GPIO32**, ohne doppelte Pinbelegung. DS18B20-Funktion wurde zuvor vom Nutzer bei GPIO32 bestätigt; auf D23 nach dem Umverdrahten erneut prüfen.
 
-**RGB-LED:** Gemeinsame Kathode laut Nutzer → GND, Blau bleibt frei. Grün = WUCHS; Rot + Grün = Gelb (BLÜTE). Firmware verwendet die richtige Polarität `GROW_RGB_COMMON_ANODE=0`, Ausgangsaktivierung `GROW_ENABLE_PHASE_RGB=0` bis der Umbau abgeschlossen ist. Nach Umbau auf 1 umstellen. Ein physischer Taster, Phasenzustand im NVS `growphase_v1`.
+**RGB-LED:** Gemeinsame Kathode laut Nutzer → GND, Blau bleibt frei. Grün = WUCHS; Rot + Grün = Gelb (BLÜTE). Firmware verwendet `GROW_RGB_COMMON_ANODE=0` und aktiviert RGB mit `GROW_ENABLE_PHASE_RGB=1`. **Zwingend erst physisch auf D23/D32 umverdrahten, dann den neuen Sketch flashen.** Ein physischer Taster, Phasenzustand im NVS `growphase_v1`.
 
 **Nicht verdrahten:** PH4502C TO/DO; keine SSR- oder Netzspannungsverkabelung auf der Sensorplatine. Interner OLED auf GPIO21/22. Kamera-Versorgung noch nicht freigegeben. Weitere Details: [wiring_plan_v2.md](wiring_plan_v2.md).
 
