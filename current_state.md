@@ -8,8 +8,8 @@
 
 | Sensorpin | Zweck |
 |---|---|
-| GPIO21/22 | I2C Bus A: integriertes OLED (0x3C) + MLX90640 (0x33; noch nicht angeschlossen) |
-| GPIO13/14 | I2C Bus B: ADS1115 (0x48) + BH1750 (0x23, ADDR an GND) |
+| GPIO21/22 | I²C Bus A: ADS1115 (0x48), integriertes OLED (0x3C) + MLX90640 (0x33; noch nicht angeschlossen) |
+| GPIO13/14 | I²C Bus B: nur BH1750 (0x23, ADDR an GND), unabhängig vom ADS1115 |
 | ADS1115 A0 | PH4502C PO – bestehende kalibrierte pH-Messkette |
 | ADS1115 A1 | CQRobot EC/TDS-Analogsignal |
 | **GPIO23** | **1× DS18B20-Wassertemperatur**, 1-Wire DATA, **4,7-kΩ-Pull-up nach 3V3** |
