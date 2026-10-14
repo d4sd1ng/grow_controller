@@ -1,7 +1,8 @@
 /**
  * Grow Controller: Sensor-ESP32 mit OLED und ADS1115.
  *
- * - 3x DHT22, DS18B20, ADS1115 (pH/EC), BH1750, OLED
+ * - 3x DHT22, DS18B20 (D32), ADS1115 + BH1750 (D13/D14), OLED (D21/D22)
+ * - Kamera MLX90640 (optional) am OLED-I2C D21/D22 (0x33)
  * - HTTP-API fuer CYD/Raspberry Pi, Telemetrie und pH-Alarm
  * - Zweites Geraet: ESP32-C3 SuperMini als eigenstaendiger Leistungscontroller.
  *
@@ -51,11 +52,10 @@ const bool SERVER_TLS_INSECURE = false;
 static constexpr uint8_t PIN_DHT1 = 25;
 static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
-static constexpr uint8_t PIN_ONEWIRE = 23;
-static constexpr uint8_t PIN_PH_DO = 32;
+static constexpr uint8_t PIN_ONEWIRE = 32; // DS18B20 auf D32; PH4502C DO wird nicht genutzt
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
 static constexpr bool PH_TO_WIRED = false;
-static constexpr bool PH_DO_WIRED = false; // erst nach sicherer Pegelpruefung aktivieren
+static constexpr bool PH_DO_WIRED = false; // PH4502C DO bleibt ungenutzt
 
 static constexpr int PIN_I2C_SDA = 21;
 static constexpr int PIN_I2C_SCL = 22;
@@ -130,7 +130,7 @@ Adafruit_SSD1306 display(128, 64, &Wire, OLED_RESET);
 bool oledOk = false;
 Adafruit_ADS1115 ads;
 
-/* BH1750 auf zweitem ESP32-I2C-Controller */
+/* ADS1115 + BH1750 gemeinsam am zweiten I2C-Controller D13/D14 */
 TwoWire bhWire = TwoWire(1);
 static uint8_t bh1750Addr = 0;
 static bool bh1750Present = false;
@@ -653,7 +653,6 @@ static void readSensors() {
     sensors.ec = NAN;
   }
 
-  if (PH_DO_WIRED) sensors.phDoHigh = digitalRead(PIN_PH_DO) == HIGH;
   updatePhAlarm();
   sensors.lux = readBh1750();
 }
@@ -1000,7 +999,6 @@ void setup() {
   loadToCalibration();
   if (!ecCalibrated) Serial.println("EC unkalibriert: 'e' im Diagnose-Sketch verwenden.");
   if (!phCalibrated) Serial.println("WARNUNG: pH-Kalibrierung fehlt.");
-  if (PH_DO_WIRED) pinMode(PIN_PH_DO, INPUT);
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
@@ -1016,7 +1014,7 @@ void setup() {
   }
 
   ads.setGain(GAIN_ONE);
-  sensors.adsOk = ads.begin(0x48, &Wire);
+  sensors.adsOk = ads.begin(0x48, &bhWire);
   setupMlx90640();
 
   scanBh1750Bus();
@@ -1026,9 +1024,9 @@ void setup() {
   dht3.begin();
   ds18b20.begin();
 
-  Serial.printf("ADS1115: %s\n", sensors.adsOk ? "OK" : "NICHT GEFUNDEN");
+  Serial.printf("ADS1115: %s (I2C D13/D14, 0x48)\n", sensors.adsOk ? "OK" : "NICHT GEFUNDEN");
   Serial.printf("BH1750: %s 0x%02X\n", bh1750Present ? "OK" : "NICHT GEFUNDEN", bh1750Addr);
-  Serial.printf("DS18B20 gefunden: %u\n", ds18b20.getDeviceCount());
+  Serial.printf("DS18B20 auf D32 gefunden: %u\n", ds18b20.getDeviceCount());
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
