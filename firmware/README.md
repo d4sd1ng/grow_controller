@@ -32,6 +32,12 @@ Vollstaendig: [../wiring_plan_v2.md](../wiring_plan_v2.md).
 
 Arduino Serial Monitor **115200 Baud**:
 - `t`: vollstaendige Hardwarediagnose
+- `p`: automatischer pH-Alarm-Selbsttest (PASS/FAIL) im Kalibriersketch
+- `1`: pH **5,40** simulieren -> Alarm **LOW** (<5,5)
+- `2`: pH **6,60** simulieren -> Alarm **HIGH** (>6,5)
+- `3`: pH **6,00** simulieren -> **NORMAL**
+- `0`: Testmodus beenden, echte pH-Messung und Alarmanzeige fortsetzen
+- Die Befehle `0`–`3` funktionieren **im Kalibrier- und im Produktionssketch** ueber den seriellen Monitor mit 115200 Baud. Testwerte bleiben von den realen pH-/ADS-Messwerten, der NVS-Kalibrierung und den SSR-Ausgaengen getrennt. Auf dem OLED steht `TEST`, solange ein Wert simuliert wird. Die Produktions-Firmware uebermittelt simulierte Zustandswechsel mit dem Prefix `[TEST, SIMULIERT]` als *Info*-Event an `/api/v1/alerts` und kennzeichnet Testmodus und Teststatus in den JSON-Daten separat (`ph_alarm_test`, `ph_alarm_test_status`, `ph_alarm_test_value`). Der reale Alarm wird weiterhin gesondert geprueft und uebermittelt.
 - `7`: stabilen pH-7-Pufferpunkt ueber ADS1115 A0 speichern
 - `4`: stabilen pH-4-Pufferpunkt ueber ADS1115 A0 speichern
 - `s`: pH-Kalibrierpunkte und Konstanten fuer die produktive Firmware anzeigen
