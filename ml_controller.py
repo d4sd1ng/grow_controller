@@ -76,7 +76,7 @@ class MLController:
                 'humidity': current_humidity,
                 'water_temperature': current_readings.get('water_temperature', 22.0),
                 'ec': current_readings.get('ec', 1.5),
-                'ph': current_readings.get('ph', 6.5),
+                'ph': current_readings.get('ph', 6.0),
             }])
             
             # Predict optimal temperature setpoint
@@ -123,7 +123,7 @@ class MLController:
             
             # Current conditions
             current_ec = current_readings.get('ec', 1.5)
-            current_ph = current_readings.get('ph', 6.5)
+            current_ph = current_readings.get('ph', 6.0)
             current_temp = current_readings.get('air_temperature', 25.0)
             current_humidity = current_readings.get('humidity', 60.0)
             
