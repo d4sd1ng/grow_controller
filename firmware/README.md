@@ -4,12 +4,12 @@
 
 | Sketch | Geraet | Funktion |
 |---|---|---|
-| `growroom_telemetry_client` | Sensor-ESP32 mit OLED (bestehender Code, SSR-Teil noch alt) | 3x DHT22, 2x DS18B20, ADS1115 pH/TDS, BH1750, vier lokale SSR-Steuerausgaenge, AUTO/MANUAL, CYD-API, Telemetrie |
+| `growroom_telemetry_client` | Sensor-ESP32 mit OLED, **26×30-Lochraster** | 3x DHT22, DS18B20, ADS1115 pH/EC, BH1750; **keine Relais-GPIOs**, HTTP-API, Telemetrie |
 | `ph_calibration_tool` | derselbe ESP32, temporär geflasht | Hardwarediagnose aller Sensortypen und pH-7-/pH-4-Kalibrierung ueber ADS1115 A0 |
 | `ds18b20_diagnostic` | derselbe ESP32, temporär geflasht | 1-Wire-Diagnose auf GPIO23 |
 | `cyd_remote_control` | vorhandenes CYD | primaere Fernbedienung |
 | `cyd_grow_display` | dasselbe CYD, alternative Firmware | alternative LVGL-Oberflaeche |
-| `powerbox_actuator` | alter Leistungs-ESP32-Code | bisher nicht auf neuen ESP32-C3 SuperMini portiert; Zwei-Controller-Umstellung noch offen |
+| `powerbox_actuator` | Legacy-Leistungscode | **nicht** als ESP32-C3-Firmware verwenden; C3-Programm und WLAN-Anbindung noch offen |
 
 ## Kleinspannungs-Pins
 
@@ -17,14 +17,13 @@
 |---:|---|
 | 21/22 | OLED, ADS1115 und optional MLX90640 (I2C-Adresse 0x33) |
 | 23 | DS18B20-Datenbus |
-| 32 | PH4502C DO (ein Schwellwert, erst nach Pegelpruefung aktivieren) |
-| ADS1115 A2 | PH4502C TO (analoge Rohspannung, erst nach Pegelpruefung aktivieren) |
+| ADS1115 A0 | PH4502C PO (vorhandene kalibrierte Analog-Messkette) |
+| ADS1115 A1 | CQRobot TDS/EC (vorhandene Analog-Messkette) |
 | 25/26/27 | DHT22 #1/#2/#3 |
 | 13/14 | BH1750 separater I2C-Bus |
-| 17 | SSR1 Licht |
-| 18 | SSR2 Umluft |
-| 19 | SSR3 Abluft |
-| 33 | SSR4 Heizung |
+| 32/33 | Reserve: keine DO- oder Relaisfunktion |
+
+**Nicht bestuecken:** PH4502C TO/DO; TO hat am vorhandenen Exemplar 3,3–3,4 V geliefert und ist nicht direkt ADS-A2-tauglich. **Keine Relaisleitungen auf dem Sensor-ESP32.** Separater ESP32-C3 SuperMini im Leistungsgehäuse.
 
 Vollstaendig: [../wiring_plan_v2.md](../wiring_plan_v2.md).
 
@@ -47,9 +46,9 @@ Arduino Serial Monitor **115200 Baud**:
 - `a <C>`, `b <C>`: zwei bekannte Gehaeusetemperaturen zur TO-Kalibrierung erfassen (je mindestens 5 °C Abstand); nur nach Freigabe von A2
 - `h`: Hilfe
 
-ADS1115 A0=PO pH, A1=TDS/EC, A2=TO (derzeit deaktiviert); PH4502C DO vorgesehen an GPIO32 (ebenfalls deaktiviert). OLED und ADS1115 auf I2C GPIO21/22. Das alte Kalibrierschema ueber VP bleibt in einem **getrennten NVS-Namespace** unberuehrt; die alte VP-Kalibrierung wird nicht unbemerkt fuer ADS-Werte verwendet. Kalibrierpunkte koennen auch ohne DS18B20 gespeichert werden; die fehlende Temperatur wird als unbekannt behandelt und der Pufferwert ist anhand seiner Referenztemperatur zu bewerten. Bei fehlendem ADS1115 oder unruhiger Messung wird die Erfassung abgelehnt.
+ADS1115 A0=PO pH, A1=TDS/EC. PH4502C TO und DO sind dauerhaft nicht vorgesehen (`PH_TO_WIRED=false`, `PH_DO_WIRED=false`). OLED und ADS1115 auf I2C GPIO21/22. Das alte Kalibrierschema ueber VP bleibt in einem **getrennten NVS-Namespace** unberuehrt; die alte VP-Kalibrierung wird nicht unbemerkt fuer ADS-Werte verwendet. Kalibrierpunkte koennen auch ohne DS18B20 gespeichert werden; die fehlende Temperatur wird als unbekannt behandelt und der Pufferwert ist anhand seiner Referenztemperatur zu bewerten. Bei fehlendem ADS1115 oder unruhiger Messung wird die Erfassung abgelehnt.
 
-Die drei DHT22 und der BH1750 sind bisher nicht verkabelt. Sie duerfen in der Diagnose als nicht erkannt angezeigt werden, ohne die anderen Tests zu blockieren. SSR-Ausgaenge bleiben im Diagnosesketch immer LOW.
+Die drei DHT22 und der BH1750 sind bisher nicht verkabelt. Sie duerfen in der Diagnose als nicht erkannt angezeigt werden, ohne die anderen Tests zu blockieren. Der Sensor-Diagnosesketch konfiguriert keine Relais-Ausgaenge mehr.
 
 ## MLX90640 - optionale Blatt-Temperatur / VPD (noch nicht montiert)
 
@@ -76,8 +75,7 @@ Der CQRobot-TDS-Sensor liegt am ADS1115 A1. Sein EC/TDS-Wert wird fuer die Bezug
 - Drei aufeinanderfolgende Abfragen zur Bestaetigung von Alarmzustaenden, 0,1 pH Hysterese.
 - OLED, beide CYD-Anzeigen, lokale Zusammenfassung (`reading.ph_alarm`) und Server-Telemetrie zeigen den Status; Statuswechsel werden an `/api/v1/alerts` gesendet.
 - Der Kalibriersketch speichert pH7/pH4 **und die jeweils gemessene DS18B20-Wassertemperatur** in `phads_v1`; die produktive Firmware liest beides. Der pH-Wert erhaelt eine Steilheitskorrektur nach Nernst mit der aktuell gemessenen DS18B20-Wassertemperatur, wenn beide Kalibriertemperaturen gueltig und nahe beieinander sind. Ansonsten wird der pH-Wert unkompensiert angezeigt (`ph_temperature_compensated=false`), keine 25-Grad-Substitution. Bei alter pH-Kalibrierung ohne DS: beide Pufferpunkte nach Anschluss des Wasser-DS erneut erfassen.
-- DO ist nur ein digitaler Schwellwert, nicht die Messquelle fuer die ZWEI Alarmgrenzen. TO misst die Platinen-/Gehäusetemperatur (nicht Wasser). Zwei Referenzpunkte `a <C>`/`b <C>` werden in `toads_v1` gespeichert; da die Kennlinie der PH-4502C-Platine unbekannt ist, wird nur **zwischen** beiden Punkten interpoliert, nicht extrapoliert. Bis zur bestaetigten elektrischen Pegelsicherheit von A2 bleibt `PH_TO_WIRED=false` und `case_temperature=null`.
-- `PH_DO_WIRED` und `PH_TO_WIRED` bleiben `false`, bis die PH4502C-Ausgangssignale auf ESP32-/ADS1115-vertraegliche Pegel geprueft wurden. Nicht direkt mit 5-V-Signalen verbinden.
+- TO und DO der PH4502C werden **nicht** gebraucht. Wassertemperatur ausschliesslich ueber DS18B20, vorerst noch nicht lieferbar. `PH_DO_WIRED=false` und `PH_TO_WIRED=false` bleiben gesetzt. pH-Alarm beruht nur auf dem kalibrierten PO-Signal.
 
 ## Lokale HTTP-API, Port 8081
 
@@ -85,10 +83,10 @@ Der CQRobot-TDS-Sensor liegt am ADS1115 A1. Sein EC/TDS-Wert wird fuer die Bezug
 |---|---|---|
 | GET | `/api/local/summary` | Livewerte, Modus, Sollwerte und lokale Ausgangszustaende |
 | GET | `/api/local/actuators` | API-Kompatibilitaet: Soll-/Ist-GPIO-Zustaende |
-| POST | `/api/local/control/targets` | `light`/`heater`/`circulation_vent`/`exhaust_vent`, MANUAL |
+| POST | `/api/local/control/targets` | Gibt **HTTP 503 `esp32_c3_not_connected`** zurueck, solange der separate C3-Leistungscontroller fehlt |
 | POST | `/api/local/control/mode` | `auto`/`manual` |
 
-Die geplante Trennung Sensor-ESP32 / ESP32-C3 SuperMini ist im Produktions-Sketch noch NICHT umgesetzt; der alte direkte SSR-Code besteht weiter. Der Heizkanal wird bei ungueltiger Klimamessung gesperrt. Eine unabhaengige physische Temperaturbegrenzung ist trotzdem notwendig.
+Die **Trennung ist in der Sensor-Firmware umgesetzt:** Alle direkten SSR-Pins und GPIO-Schaltbefehle wurden entfernt. Der Sensorcontroller liest Sensoren und verwaltet Sollwerte, meldet Aktoren aber als **`esp32_c3_not_connected`**. **Noch nicht umgesetzt:** eigenes C3-Programm, dessen Kommunikation/Rueckmeldung und sichere Ausfallbehandlung. Es gibt keine betriebsfaehige Leistungssteuerung. Fuer eine Heizlast ist eine unabhaengige physische Temperaturbegrenzung erforderlich.
 
 ## Benoetigte Arduino-Bibliotheken
 
@@ -98,4 +96,4 @@ Adafruit ADS1X15, Adafruit GFX, Adafruit SSD1306, DHT sensor library, OneWire, D
 
 Im Projektroot `python export_firmware_secrets_from_env.py` ausfuehren, um `device_secrets.h` fuer den Sensor-ESP32-Sketch und CYD zu erzeugen (Dateien sind git-ignoriert). Keine WLAN-Passwoerter in Git committen.
 
-Vor dem Flashen muss die neue Firmware mit der lokal installierten Arduino-ESP32-Toolchain kompiliert werden. Danach die Kleinspannungs-Sensorik testen. Die SSR-Lastseite bleibt bis zur fachgerechten Pruefung ausser Betrieb.
+Vor dem Flashen muss die geaenderte Sensor-Firmware mit der lokal installierten Arduino-ESP32-Toolchain kompiliert werden. Danach die Kleinspannungs-Sensorik auf der 26×30-Platine testen. Separate ESP32-C3-Firmware ist noch zu entwickeln; Aktoren bleiben ohne Verbindung. Die SSR-Lastseite bleibt bis zur fachgerechten Pruefung ausser Betrieb.
