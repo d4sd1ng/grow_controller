@@ -37,6 +37,15 @@
 #ifndef GROW_ENABLE_PH_BUZZER
 #define GROW_ENABLE_PH_BUZZER 0
 #endif
+/* RGB-LED Common-Anode/-Kathode noch ungeklaert: Ansteuerung bis Pruefung AUS.
+ * GROW_RGB_COMMON_ANODE = 1 fuer gemeinsame Anode, sonst = 0 fuer Kathode.
+ */
+#ifndef GROW_ENABLE_PHASE_RGB
+#define GROW_ENABLE_PHASE_RGB 0
+#endif
+#ifndef GROW_RGB_COMMON_ANODE
+#define GROW_RGB_COMMON_ANODE 0
+#endif
 #ifndef GROW_PH_BUZZER_ACTIVE_HIGH
 #define GROW_PH_BUZZER_ACTIVE_HIGH 1
 #endif
@@ -50,11 +59,10 @@
 #endif
 
 static constexpr uint8_t PIN_DS18B20 = 32; // D32 auf der gegenueberliegenden Stiftleiste
-static constexpr uint8_t PIN_PHASE_WUCHS_BUTTON = 16;
-static constexpr uint8_t PIN_PHASE_BLUETE_BUTTON = 19;
-static constexpr uint8_t PIN_PHASE_WUCHS_LED = 23;
-static constexpr uint8_t PIN_PHASE_BLUETE_LED = 33;
-static constexpr uint8_t PIN_PH_BUZZER = 18; // reserviert, erst nach Modulpruefung anschliessen
+static constexpr uint8_t PIN_PHASE_BUTTON = 16;
+static constexpr uint8_t PIN_RGB_GREEN = 23;
+static constexpr uint8_t PIN_RGB_RED = 33;
+static constexpr uint8_t PIN_PH_BUZZER = 19; // Buzzer nur reserviert, Typ noch unbekannt
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 // TO erst aktivieren, nachdem sein maximaler Ausgangspegel nachweislich <= ADS-VDD (3.3 V) ist.
 static constexpr bool PH_TO_WIRED = false;
@@ -214,29 +222,31 @@ static bool setGrowWeek(int week) {
   return true;
 }
 
-/* Gleiche physische Phasen-Taster und LEDs wie in der Produktions-Firmware.
- * NVS Namespace getrennt von phads_v1/ecads_v1. Nur Auswahl wird gespeichert.
+/* Ein Taster: D16-GND, entprellt, jeder Druck wechselt den NVS-Modus.
+ * Eine RGB-LED: D23 Gruen (WUCHS), D33 Rot+Gruen (BLUETE=Gelb).
+ * Aktivierung erst nach Pruefung der gemeinsamen RGB-Anode/-Kathode.
  */
 enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
 static GrowPhase growPhase = GrowPhase::Wuchs;
 static constexpr char PHASE_NVS[] = "growphase_v1";
-static constexpr uint8_t PHASE_BUTTONS[2] = {
-    PIN_PHASE_WUCHS_BUTTON, PIN_PHASE_BLUETE_BUTTON
-};
-static bool phaseRaw[2] = {false, false};
-static bool phaseStable[2] = {false, false};
-static unsigned long phaseChangedMs[2] = {0, 0};
+static bool phaseRaw = false;
+static bool phaseStable = false;
+static unsigned long phaseChangedMs = 0;
 static const char *phaseName() {
   return growPhase == GrowPhase::Wuchs ? "WUCHS" : "BLUETE";
 }
-static void refreshPhaseLeds() {
-  digitalWrite(PIN_PHASE_WUCHS_LED, growPhase == GrowPhase::Wuchs ? HIGH : LOW);
-  digitalWrite(PIN_PHASE_BLUETE_LED, growPhase == GrowPhase::Bluete ? HIGH : LOW);
+static void refreshPhaseRgb() {
+#if GROW_ENABLE_PHASE_RGB
+  const bool redOn = growPhase == GrowPhase::Bluete;
+  const bool greenOn = true;
+  digitalWrite(PIN_RGB_RED, redOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
+  digitalWrite(PIN_RGB_GREEN, greenOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
+#endif
 }
 static void setGrowPhase(GrowPhase next) {
   if (next == growPhase) return;
   growPhase = next;
-  refreshPhaseLeds();
+  refreshPhaseRgb();
   Preferences prefs;
   bool saved = false;
   if (prefs.begin(PHASE_NVS, false)) {
@@ -246,39 +256,34 @@ static void setGrowPhase(GrowPhase next) {
   Serial.printf("PHASE: %s | Speicher %s\n", phaseName(), saved ? "OK" : "FEHLER");
 }
 static void pollGrowPhaseButtons(unsigned long nowMs) {
-  const bool both = digitalRead(PIN_PHASE_WUCHS_BUTTON) == LOW &&
-                    digitalRead(PIN_PHASE_BLUETE_BUTTON) == LOW;
-  for (uint8_t i = 0; i < 2; ++i) {
-    const bool pressed = digitalRead(PHASE_BUTTONS[i]) == LOW;
-    if (pressed != phaseRaw[i]) {
-      phaseRaw[i] = pressed;
-      phaseChangedMs[i] = nowMs;
-    }
-    if (pressed != phaseStable[i] &&
-        nowMs - phaseChangedMs[i] >= PHASE_DEBOUNCE_MS) {
-      phaseStable[i] = pressed;
-      if (pressed && !both) setGrowPhase(i == 0 ? GrowPhase::Wuchs : GrowPhase::Bluete);
-    }
+  const bool pressed = digitalRead(PIN_PHASE_BUTTON) == LOW;
+  if (pressed != phaseRaw) {
+    phaseRaw = pressed;
+    phaseChangedMs = nowMs;
+  }
+  if (pressed != phaseStable && nowMs - phaseChangedMs >= PHASE_DEBOUNCE_MS) {
+    phaseStable = pressed;
+    if (pressed) setGrowPhase(
+        growPhase == GrowPhase::Wuchs ? GrowPhase::Bluete : GrowPhase::Wuchs);
   }
 }
 static void setupGrowPhaseButtons() {
-  digitalWrite(PIN_PHASE_WUCHS_LED, LOW);
-  digitalWrite(PIN_PHASE_BLUETE_LED, LOW);
-  pinMode(PIN_PHASE_WUCHS_LED, OUTPUT);
-  pinMode(PIN_PHASE_BLUETE_LED, OUTPUT);
-  pinMode(PIN_PHASE_WUCHS_BUTTON, INPUT_PULLUP);
-  pinMode(PIN_PHASE_BLUETE_BUTTON, INPUT_PULLUP);
-  const unsigned long now = millis();
-  for (uint8_t i = 0; i < 2; ++i) {
-    phaseRaw[i] = phaseStable[i] = digitalRead(PHASE_BUTTONS[i]) == LOW;
-    phaseChangedMs[i] = now;
-  }
+  pinMode(PIN_PHASE_BUTTON, INPUT_PULLUP);
+#if GROW_ENABLE_PHASE_RGB
+  const uint8_t off = GROW_RGB_COMMON_ANODE ? HIGH : LOW;
+  digitalWrite(PIN_RGB_RED, off);
+  digitalWrite(PIN_RGB_GREEN, off);
+  pinMode(PIN_RGB_RED, OUTPUT);
+  pinMode(PIN_RGB_GREEN, OUTPUT);
+#endif
+  phaseRaw = phaseStable = digitalRead(PIN_PHASE_BUTTON) == LOW;
+  phaseChangedMs = millis();
   Preferences prefs;
   if (prefs.begin(PHASE_NVS, true)) {
     growPhase = prefs.getUChar("phase", 0) == 1 ? GrowPhase::Bluete : GrowPhase::Wuchs;
     prefs.end();
   }
-  refreshPhaseLeds();
+  refreshPhaseRgb();
   Serial.printf("PHASE nach Start: %s\n", phaseName());
 }
 
@@ -944,10 +949,10 @@ static void printHelp() {
   Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
   Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D13, SCL=D14 (mit BH1750)"));
   Serial.println(F("DS18B20: D32 | DHT22: D25/26/27 | BH1750+ADS: D13/14"));
-  Serial.println(F("WUCHS-Taster D16 -> GND, LED D23 -> Vorwiderstand -> GND"));
-  Serial.println(F("BLUETE-Taster D19 -> GND, LED D33 -> Vorwiderstand -> GND"));
+  Serial.println(F("PHASE-Taster D16 -> GND: pro Druck WUCHS/BLUETE umschalten"));
+  Serial.println(F("RGB: Gruen D23, Rot D33, je 470 Ohm; Common-Typ pruefen"));
   Serial.println(F("WOCHE: k1 bis k12 + Zeilenumbruch -> pH-/EC-Sollwerte im NVS speichern"));
-  Serial.println(F("Buzzer-Signal D18 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
+  Serial.println(F("Buzzer-Signal D19 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
   Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
