@@ -4,27 +4,26 @@
 **Arbeitsbranch:** `feature/ph-calibration-service-esp`  
 **Architektur:** **zwei ESP32**: (1) Sensor-ESP32 mit OLED auf **26×30-Lochraster**, (2) **ESP32-C3 SuperMini** als separater Leistungscontroller.
 
-## Sensorplatine 26 × 30
+## Sensorplatine 26 × 30 – Pinbelegung V8
 
 | Sensorpin | Zweck |
 |---|---|
-| GPIO21/22 | I2C Bus A: OLED (0x3C) + MLX90640-Kamera (0x33) |
-| ADS1115 A0 | PH4502C PO; kalibrierte, vorhandene Messkette beibehalten |
-| ADS1115 A1 | TDS-/EC-Signaleingang; vorhandene Messkette beibehalten |
-| GPIO32 | DS18B20, 1-Wire mit 4,7-kOhm-Pull-up gegen 3V3; Ersatzfühler ausstehend |
-| GPIO25/26/27 | 3× DHT22 |
-| GPIO13/14 | I2C Bus B: ADS1115 (0x48) + BH1750 (0x23; ADDR an GND) |
-| GPIO16 | WUCHS-Taster gegen GND, interner Pull-up |
-| GPIO19 | BLÜTE-Taster gegen GND, interner Pull-up |
-| GPIO23 | WUCHS-LED über eigenen 470-Ohm-Vorwiderstand |
-| GPIO33 | BLÜTE-LED über eigenen 470-Ohm-Vorwiderstand |
-| GPIO18 | pH-Buzzer-Steuersignal reserviert; **deaktiviert bis Modulprüfung** |
+| GPIO21/22 | I2C Bus A: integriertes OLED (0x3C) + MLX90640 (0x33; noch nicht angeschlossen) |
+| GPIO13/14 | I2C Bus B: ADS1115 (0x48) + BH1750 (0x23, ADDR an GND) |
+| ADS1115 A0 | PH4502C PO – bestehende kalibrierte pH-Messkette |
+| ADS1115 A1 | CQRobot EC/TDS-Analogsignal |
+| **GPIO23** | **1× DS18B20-Wassertemperatur**, 1-Wire DATA, **4,7-kΩ-Pull-up nach 3V3** |
+| GPIO25/26/27 | 3× DHT22 (Pflanzenzone, Zuluft, Abluft/oben) |
+| GPIO16 | **Ein** 4-poliger Schließtaster gegen GND, `INPUT_PULLUP`, Wechsel WUCHS/BLÜTE |
+| **GPIO32** | RGB-Grün über **440 Ω (2×220 Ω in Reihe)** |
+| GPIO33 | RGB-Rot über **440 Ω (2×220 Ω in Reihe)** |
+| GPIO19 | Zweipoliger pH-Buzzer: Steuersignal nur reserviert; Treiber/Spannung unbekannt, Firmware deaktiviert |
 
-**Nicht verwenden:** PH4502C TO und DO. Gemessene TO-Ausgangsspannung 3,3–3,4 V bei ADS-VDD 3,3 V. Wassertemperatur zukünftig über DS18B20.
+**Änderung gegenüber V7:** DS18B20 wieder von GPIO32 auf **GPIO23** zurückverlegt, um den Pull-up mechanisch wie gewünscht anzuschließen. Der bisherige RGB-Grün-Ausgang **GPIO23** wandert gleichzeitig auf **GPIO32**, ohne doppelte Pinbelegung. DS18B20-Funktion wurde zuvor vom Nutzer bei GPIO32 bestätigt; auf D23 nach dem Umverdrahten erneut prüfen.
 
-**Bestückung:** ESP32 über passende, vorab mechanisch geprüfte 2×15-polige Buchsenleisten; ADS1115 steckbar; DS18B20 (3-polig), 3× DHT22 (je 3-polig), BH1750 (**5-polig inklusive ADDR**), MLX90640-Kamera (**4-poliger Stecker: SDA D21, SCL D22, GND, Versorgung vorerst offen**); separate 3V3-/GND-Verteilung; außerdem 2 Taster, 2 Status-LEDs und Buzzer-Reserve. Nur Sensor-/Kleinspannungsschaltungen auf dieser Lochrasterplatine. Vollständiger Plan: [wiring_plan_v2.md](wiring_plan_v2.md).
+**RGB-LED:** Gemeinsame Kathode laut Nutzer → GND, Blau bleibt frei. Grün = WUCHS; Rot + Grün = Gelb (BLÜTE). Firmware verwendet die richtige Polarität `GROW_RGB_COMMON_ANODE=0`, Ausgangsaktivierung `GROW_ENABLE_PHASE_RGB=0` bis der Umbau abgeschlossen ist. Nach Umbau auf 1 umstellen. Ein physischer Taster, Phasenzustand im NVS `growphase_v1`.
 
-**Phasenauswahl:** In beiden Sensor-Sketches sind zwei entprellte physische Taster mit LED-Rückmeldung und Speicherung in NVS `growphase_v1` umgesetzt. WUCHS-Profil nutzt vorläufig die bisherigen Klimawerte 24 °C und 60 % relative Feuchte. BLÜTE-Sollwerte sind noch offen; bis zur Konfiguration ist die Phasenautomatik gesperrt. Der pH-Buzzer ist nur vorbereitet (`GROW_ENABLE_PH_BUZZER=0`), GPIO18 wird noch nicht angesteuert, solange Buzzer-Bauart und Pegel unklar sind.
+**Nicht verdrahten:** PH4502C TO/DO; keine SSR- oder Netzspannungsverkabelung auf der Sensorplatine. Interner OLED auf GPIO21/22. Kamera-Versorgung noch nicht freigegeben. Weitere Details: [wiring_plan_v2.md](wiring_plan_v2.md).
 
 ## pH-Alarm und 12-Wochen-Nährstoffprofil
 
@@ -51,7 +50,7 @@ Separate Installation im Leistungsgehäuse für die späteren vier Funktionskan�
 
 - `firmware/ph_calibration_tool`: Kalibrierung/Diagnose/pH-Alarmtests, **keine Relais-GPIO-Ausgänge**.
 - `firmware/growroom_telemetry_client`: Messwerte, pH-Alarm, OLED, HTTP-API und Sollwertverwaltung; **alte direkte Relais-GPIO-Schaltung entfernt**. Aktorstatus ist `esp32_c3_not_connected`. WLAN-Verbindung zum C3 und tatsächliche Umsetzung von Steuerbefehlen stehen aus.
-- `firmware/ds18b20_diagnostic`: 1-Wire-Test GPIO32, sobald Ersatzfühler da.
+- `firmware/ds18b20_diagnostic`: 1-Wire-Test GPIO23 nach Umverdrahtung.
 - `firmware/powerbox_actuator`: alte Firmware, **nicht** als fertige C3-Version verwenden.
 - CYD und Raspberry Pi kommunizieren bislang weiterhin mit dem Sensor-ESP32.
 
@@ -59,15 +58,15 @@ Separate Installation im Leistungsgehäuse für die späteren vier Funktionskan�
 
 - PH4502C PO pH-4-/pH-7-Kalibrierung laut Nutzer erfolgt.
 - pH-Alarmtests LOW / HIGH / NORMAL laut Nutzer funktionsfähig.
-- PH4502C TO nicht verwendet. DS18B20 Ersatzsensoren noch nicht geliefert.
-- Sonstige Sensor-Stecker, Steckleisten, Taster, LEDs und Lochrasteraufbau noch zu montieren. Buzzer-Typ und Versorgung noch nicht ermittelt.
+- PH4502C TO nicht verwendet. Genau ein DS18B20 laut Nutzer erfolgreich erkannt (bislang GPIO32), Rückverlegung auf GPIO23 nun vereinbart.
+- RGB-LED gemeinsame Kathode geklärt, ein Taster und je zwei 220-Ω-Widerstände pro R/G-Kanal vorgesehen. Buzzer-Typ und Versorgung noch nicht ermittelt.
 - Die aktuell geänderten Sketche wurden hier **nicht** mit einer realen Arduino-ESP32-Toolchain kompiliert und nicht erneut auf Hardware getestet.
 
 ## Nächste Aufgaben
 
 1. Lochrasterplatine 26×30 anhand echter Modulmaße trocken bestücken, USB/OLED und Sensoranschlüsse ausrichten.
 2. Buchsenleisten, 3V3/GND-Verteilung und Sensorsteckverbinder auf der **Sensorplatine** löten; Durchgang und Versorgung prüfen.
-3. DS18B20 nach Lieferung an GPIO32 prüfen und Wasserfühler per ROM zuordnen.
+3. DS18B20 auf GPIO23 mit Pull-up 4,7 kΩ nach 3V3 prüfen; bei einem Sensor ist keine ROM-Zuordnung nötig.
 4. DHT22/BH1750 prüfen und die MLX90640 über den auf D21/D22 reservierten Anschluss mit der tatsächlichen Breakout-Versorgung verbinden, sobald ihr Datenblatt vorliegt.
 5. Getrennten C3-Controller softwareseitig entwickeln, kommunikative und elektrische Sicherheitsprüfung vor jeder Leistungsfreigabe.
 6. PostgreSQL-Migration von bisherigen Serverdaten separat durchführen.
