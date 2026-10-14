@@ -851,6 +851,9 @@ static void readSensors() {
       : NAN;
   updateLeafVpdCandidate();
 
+  // Sensor-Suche wiederholen, falls bei Programmstart noch kein
+  // DS18B20 angeschlossen war (DallasTemperature cached die Geraetezahl).
+  if (ds18b20.getDeviceCount() == 0) ds18b20.begin();
   ds18b20.requestTemperatures();
   const uint8_t foundDs = ds18b20.getDeviceCount();
   sensors.dsCount = foundDs > 2 ? 2 : foundDs;
@@ -858,11 +861,15 @@ static void readSensors() {
   sensors.ds2C = sensors.dsCount >= 2 ? ds18b20.getTempCByIndex(1) : NAN;
   if (!validDsTempC(sensors.ds1C)) sensors.ds1C = NAN;
   if (!validDsTempC(sensors.ds2C)) sensors.ds2C = NAN;
-  if (waterSensorRomSelected) {
+  // Bei nur EINEM Fühler dessen Wert verwenden, selbst wenn die
+  // NVS noch die ROM-Adresse eines frueheren DS18B20 gespeichert hat.
+  if (sensors.dsCount == 1) {
+    sensors.waterTempC = sensors.ds1C;
+  } else if (sensors.dsCount > 1 && waterSensorRomSelected) {
     const float selected = ds18b20.getTempC(waterSensorRom);
     sensors.waterTempC = validDsTempC(selected) ? selected : NAN;
   } else {
-    sensors.waterTempC = sensors.dsCount == 1 ? sensors.ds1C : NAN;
+    sensors.waterTempC = NAN;
   }
 
   if (sensors.adsOk) {
