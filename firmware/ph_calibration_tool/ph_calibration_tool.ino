@@ -5,7 +5,7 @@
  * BH1750 GPIO13/14) werden als FEHLEND angezeigt, ohne die anderen
  * Tests und die pH-Kalibrierung zu blockieren.
  *
- * SSR-Steuerpins 17/18/19/33 werden nur auf AUS initialisiert.
+ * Sensor-ESP32 hat KEINE Relais-Ausgaenge; separater ESP32-C3 SuperMini.
  * Es gibt KEINEN Schalt-/Lasttest und KEINEN 230-V-Test.
  *
  * pH-Messung ausschliesslich ueber ADS1115 A0, kein VP/GPIO36.
@@ -51,10 +51,6 @@ static constexpr uint8_t PIN_BH_SCL = 14;
 static constexpr uint8_t PIN_DHT1 = 25;
 static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
-static constexpr uint8_t PIN_SSR_LIGHT = 17;
-static constexpr uint8_t PIN_SSR_CIRC = 18;
-static constexpr uint8_t PIN_SSR_EXH = 19;
-static constexpr uint8_t PIN_SSR_HEAT = 33;
 static constexpr uint8_t OLED_ADDR = 0x3C;
 static constexpr uint8_t ADS_ADDR = 0x48;
 
@@ -598,7 +594,7 @@ static void printHardwareStatus() {
                 thermalRoiTempC, leafVpdCandidate);
   if (bhOk && isfinite(bhLux)) Serial.printf("BH1750: %.0f lux\n", bhLux);
   else Serial.println(F("BH1750: NICHT ERKANNT / NOCH NICHT VERKABELT"));
-  Serial.println(F("SSR1-4: AUS (kein Aktor-Test)"));
+  Serial.println(F("Aktoren: ESP32-C3 separat, hier keine Ausgangssignale"));
 }
 
 static bool calibrationReady() {
@@ -814,7 +810,7 @@ static void printHelp() {
   Serial.println(F("ADS1115: A0 = PO pH, A1 = TDS, A2 = TO (roh); SDA D21, SCL D22"));
   Serial.println(F("PH4502C DO: GPIO32 (nur 3.3V-sicher, anfangs deaktiviert)"));
   Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | BH1750: D13/14"));
-  Serial.println(F("OLED: 0x3C, D21/D22; SSR-Ausgaenge bleiben AUS"));
+  Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
   Serial.println(F("4 = pH-4-Punkt erfassen + im NVS speichern"));
   Serial.printf("pH-Puffer-Temperatur: %.1f C | PH4502C PO-Soll bei pH7: %.2f V\n",
@@ -1176,12 +1172,6 @@ static void handleSerial() {
 }
 
 void setup() {
-  // Kleinspannungs-SSR-Ausgaenge AUS halten; es wird kein Lasttest durchgefuehrt.
-  const uint8_t ssrPins[] = {
-      PIN_SSR_LIGHT, PIN_SSR_CIRC, PIN_SSR_EXH, PIN_SSR_HEAT
-  };
-  for (uint8_t pin : ssrPins) { digitalWrite(pin, LOW); pinMode(pin, OUTPUT); }
-
   Serial.begin(115200);
   delay(400);
 
