@@ -16,7 +16,7 @@
 | GPIO | Funktion |
 |---:|---|
 | 21/22 | Internes OLED + MLX90640-Kamera (I2C A: 0x3C / 0x33) |
-| 13/14 | ADS1115 + BH1750 (I2C B: 0x48 / 0x23) |
+| 13/14 | I2C Bus B: ADS1115 und BH1750 nach aktueller Verdrahtung |
 | 23 | DS18B20-Datenbus (4,7-kΩ-Pull-up nach 3,3 V) |
 | ADS1115 A0 | PH4502C PO pH (kalibriert, unverändert) |
 | ADS1115 A1 | CQRobot TDS/EC-Signal |
@@ -27,6 +27,8 @@
 | 19 | **pH-Buzzer-Steuerpin reserviert**, optionaler Treiber, deaktiviert |
 | RGB-Blau | Nicht angeschlossen |
 | 18 | **Nicht herausgeführt** am vom Nutzer abgelesenen ESP32-Board |
+
+**I2C-Autodiagnose:** Beide Sensor-Sketches scannen beim Start alle 7-Bit-Adressen von **0x03 bis 0x77** auf **D13/D14 und D21/D22** und geben alle gefundenen Adressen im seriellen Monitor aus. ADS1115 wird auf beiden Bussen mit den Adressen **0x48–0x4B** erkannt und automatisch dem gefundenen Bus zugeordnet; BH1750 ebenso mit **0x23/0x5C**. **`i`** startet eine erneute Suche, ohne die Kalibrierwerte zu loeschen. Die Produktions-Firmware sucht bei fehlendem ADS1115 nach 30 Sekunden erneut. Ein anderes GPIO-Paar als diese beiden kann damit nicht erkannt werden.
 
 **Nicht verdrahten:** PH4502C TO und DO. Die eigentliche Leistungsschaltung liegt auf dem separaten ESP32-C3 SuperMini, nicht auf der Sensorplatine.
 
