@@ -1079,9 +1079,13 @@ static void handleSummary() {
   setJsonFloat(reading, "tds_ppm", sensors.tdsPpm);
   setJsonFloat(reading, "tds_voltage", sensors.tdsInputV);
   reading["light_level"] = sensors.lux; // lx, Bestands-API unveraendert
-  reading["illuminance_lux"] = bh1750Present ? static_cast<float>(sensors.lux) : nullptr;
-  reading["estimated_incident_lumens"] = bh1750Present ?
-      estimatedAreaLumens(static_cast<float>(sensors.lux)) : NAN;
+  if (bh1750Present) {
+    reading["illuminance_lux"] = sensors.lux;
+    reading["estimated_incident_lumens"] = estimatedAreaLumens(static_cast<float>(sensors.lux));
+  } else {
+    reading["illuminance_lux"] = nullptr;
+    reading["estimated_incident_lumens"] = nullptr;
+  }
   reading["light_area_m2"] = GROW_LIGHT_AREA_M2;
   reading["lumens_estimated"] = true;
   setJsonFloat(reading, "ds18b20_1_temperature", sensors.ds1C);
