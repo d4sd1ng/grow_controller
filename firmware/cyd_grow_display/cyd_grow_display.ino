@@ -72,6 +72,8 @@ static lv_obj_t *lbl_mode;
 static lv_obj_t *lbl_temp;
 static lv_obj_t *lbl_hum;
 static lv_obj_t *lbl_ecph;
+static lv_obj_t *lbl_water;
+static lv_obj_t *lbl_light;
 static lv_obj_t *lbl_relay;
 static lv_obj_t *lbl_alert;
 static lv_obj_t *lbl_wifi;
@@ -177,6 +179,9 @@ void exampleToggleHeater(bool on) {
 
 void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
                   float ec, bool ecValid,
+                  float waterC, bool waterValid,
+                  float ecMeasurementC, bool ecMeasurementValid,
+                  float lux, bool luxValid, float areaLumens, bool areaLumensValid,
                   bool light, bool heat, bool circ, bool exh,
                   const char *alert, const char *alertSev) {
   relay_light = light;
@@ -189,6 +194,18 @@ void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
   lv_label_set_text_fmt(lbl_hum, "Luftfeuchte: %.0f %%", rh);
   if (ecValid) lv_label_set_text_fmt(lbl_ecph, "EC %.3f mS/cm | pH %.2f", ec, ph);
   else lv_label_set_text_fmt(lbl_ecph, "EC -- | pH %.2f", ph);
+  if (ecValid && ecMeasurementValid)
+    lv_label_set_text_fmt(lbl_water, "EC bei DS18B20 %.2f C", ecMeasurementC);
+  else if (waterValid)
+    lv_label_set_text_fmt(lbl_water, "Wasser %.2f C | EC 25C (alte FW)", waterC);
+  else
+    lv_label_set_text_static(lbl_water, "Wasser/EC-Temperatur: --");
+  if (luxValid && areaLumensValid)
+    lv_label_set_text_fmt(lbl_light, "BH %.0f lx | Beet ~%.0f lm (1 m2)", lux, areaLumens);
+  else if (luxValid)
+    lv_label_set_text_fmt(lbl_light, "BH %.0f lx | Lumen --", lux);
+  else
+    lv_label_set_text_static(lbl_light, "BH1750: --");
   lv_label_set_text_fmt(lbl_relay, "L:%s H:%s C:%s E:%s",
                         light ? "ON" : "off",
                         heat ? "ON" : "off",
@@ -227,7 +244,7 @@ void fetchSummaryAndUpdate() {
   String payload = http.getString();
   http.end();
 
-  StaticJsonDocument<2048> doc;
+  StaticJsonDocument<4096> doc;
   if (deserializeJson(doc, payload) || !doc["ok"].as<bool>()) {
     lv_label_set_text_static(lbl_wifi, "JSON-Fehler");
     return;
@@ -237,7 +254,9 @@ void fetchSummaryAndUpdate() {
   const char *mode = c["control_mode"];
 
   float t = 0, rh = 0, tdsPpm = 0, ph = 0, ec = 0;
-  bool ecValid = false;
+  float waterC = 0, ecMeasurementC = 0, lux = 0, areaLumens = 0;
+  bool ecValid = false, waterValid = false, ecMeasurementValid = false;
+  bool luxValid = false, areaLumensValid = false;
   JsonObject r = doc["reading"];
   if (!r.isNull()) {
     t = r["air_temperature"] | 0.0f;
@@ -246,6 +265,41 @@ void fetchSummaryAndUpdate() {
     ph = r["ph"] | 0.0f;
     ec = r["ec"] | 0.0f;
     ecValid = !r["ec"].isNull();
+    JsonVariant waterReading = r["water_temperature"];
+    if (!waterReading.isNull() && isfinite(waterReading.as<float>())) {
+      waterC = waterReading.as<float>();
+      waterValid = true;
+    }
+    JsonVariant ecTempReading = r["ec_measurement_temperature_c"];
+    if (ecValid && !ecTempReading.isNull() && isfinite(ecTempReading.as<float>())) {
+      ecMeasurementC = ecTempReading.as<float>();
+      ecMeasurementValid = true;
+    }
+    JsonVariant luxReading = r["illuminance_lux"];
+    if (!luxReading.isNull() && isfinite(luxReading.as<float>()) &&
+        luxReading.as<float>() >= 0.0f) {
+      lux = luxReading.as<float>();
+      luxValid = true;
+    } else if (!r.containsKey("illuminance_lux")) {
+      // Aeltere Sensor-Firmware hatte nur light_level; dort 0 auch bei fehlendem BH.
+      JsonVariant oldLuxReading = r["light_level"];
+      if (!oldLuxReading.isNull() && isfinite(oldLuxReading.as<float>()) &&
+          oldLuxReading.as<float>() > 0.0f) {
+        lux = oldLuxReading.as<float>();
+        luxValid = true;
+      }
+    }
+    JsonVariant areaLumenReading = r["estimated_incident_lumens"];
+    if (luxValid && !areaLumenReading.isNull() &&
+        isfinite(areaLumenReading.as<float>()) &&
+        areaLumenReading.as<float>() >= 0.0f) {
+      areaLumens = areaLumenReading.as<float>();
+      areaLumensValid = true;
+    } else if (luxValid && !r.containsKey("estimated_incident_lumens")) {
+      // Schaetzung fuer 1 m2, keine Lampen-Gesamt-Lumen.
+      areaLumens = lux * 1.0f;
+      areaLumensValid = true;
+    }
   }
 
   bool light = false, heat = false, circ = false, exh = false;
@@ -265,7 +319,10 @@ void fetchSummaryAndUpdate() {
   else if (!strcmp(phAlarm, "high")) { alertMsg = "pH ueber 6.2"; alertSev = "ALARM"; }
   else if (!strcmp(phAlarm, "sensor_fault")) { alertMsg = "pH-Sensor/Kalibrierung"; alertSev = "FEHLER"; }
 
-  updateLabels(mode, t, rh, tdsPpm, ph, ec, ecValid, light, heat, circ, exh, alertMsg, alertSev);
+  updateLabels(mode, t, rh, tdsPpm, ph, ec, ecValid,
+               waterC, waterValid, ecMeasurementC, ecMeasurementValid,
+               lux, luxValid, areaLumens, areaLumensValid,
+               light, heat, circ, exh, alertMsg, alertSev);
   lv_label_set_text_fmt(lbl_wifi, "WiFi OK | %s", WiFi.localIP().toString().c_str());
 }
 
@@ -278,7 +335,8 @@ void build_ui() {
   lv_obj_set_pos(cont, 2, 2);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-  lv_obj_set_style_pad_all(cont, 6, 0);
+  lv_obj_set_style_pad_all(cont, 4, 0);
+  lv_obj_set_style_pad_row(cont, 2, 0); // zwei Licht-/Wassertemperaturzeilen ohne UI-Ueberlauf
   lv_obj_set_style_bg_color(cont, lv_color_hex(0x0C11), 0);
   lv_obj_set_style_border_width(cont, 0, 0);
 
@@ -300,7 +358,15 @@ void build_ui() {
 
   lbl_ecph = lv_label_create(cont);
   lv_obj_set_style_text_color(lbl_ecph, lv_color_hex(0xFFFFFF), 0);
-  lv_label_set_text_static(lbl_ecph, "TDS -- | pH --");
+  lv_label_set_text_static(lbl_ecph, "EC -- | pH --");
+
+  lbl_water = lv_label_create(cont);
+  lv_obj_set_style_text_color(lbl_water, lv_color_hex(0xFFFFFF), 0);
+  lv_label_set_text_static(lbl_water, "Wasser/EC-Temperatur: --");
+
+  lbl_light = lv_label_create(cont);
+  lv_obj_set_style_text_color(lbl_light, lv_color_hex(0xFFFFFF), 0);
+  lv_label_set_text_static(lbl_light, "BH1750: --");
 
   lbl_relay = lv_label_create(cont);
   lv_obj_set_style_text_color(lbl_relay, lv_color_hex(0xB7FF), 0);
