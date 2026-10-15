@@ -1086,6 +1086,8 @@ static void handleSummary() {
   JsonObject control = doc.createNestedObject("control");
   control["control_mode"] = controlMode;
   control["phase"] = phaseName(growPhase);
+  control["pump_maintenance_pause_requested"] = pumpMaintenancePaused;
+  control["pump_output_confirmed"] = false;
   writeNutrientTargets(control);
   control["phase_profile_configured"] = phaseProfile().configured;
   if (phaseProfile().configured) {
@@ -1148,6 +1150,8 @@ static void handleSummary() {
   JsonObject outputs = doc.createNestedObject("actuators");
   outputs["source"] = "esp32_c3_not_connected";
   outputs["connected"] = false;
+  outputs["pump_maintenance_pause_requested"] = pumpMaintenancePaused;
+  outputs["pump_output_confirmed"] = false;
   JsonObject actualObj = outputs.createNestedObject("actual");
   writeActuators(actualObj, actual);
 
@@ -1162,6 +1166,8 @@ static void handleActuatorTargets() {
   StaticJsonDocument<512> doc;
   doc["ok"] = true;
   doc["power_controller_connected"] = false;
+  doc["pump_maintenance_pause_requested"] = pumpMaintenancePaused;
+  doc["pump_output_confirmed"] = false;
   doc["control_mode"] = controlMode;
   doc["phase"] = phaseName(growPhase);
   writeNutrientTargets(doc.as<JsonObject>());
@@ -1255,6 +1261,8 @@ static bool sendTelemetry() {
   setJsonFloat(root, "case_temperature", sensors.caseTempC);
   root["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
   root["phase"] = phaseName(growPhase);
+  root["pump_maintenance_pause_requested"] = pumpMaintenancePaused;
+  root["pump_output_confirmed"] = false; // C3 nicht verbunden: kein Pumpenrelais-Feedback
   writeNutrientTargets(root);
   root["phase_profile_configured"] = phaseProfile().configured;
   root["ph_temperature_compensated"] = sensors.phTempCompensated;
@@ -1388,6 +1396,7 @@ static void drawOled() {
   if (growWeek) display.printf(" W%u", growWeek);
   else display.print(F(" W?"));
   if (!phaseProfile().configured) display.print(F(" !"));
+  if (pumpMaintenancePaused) display.print(F(" P!")); // Wunsch: Pumpen-Wartungssperre
 
   display.setCursor(0, 12);
   if (sensors.dht[0].ok) {
