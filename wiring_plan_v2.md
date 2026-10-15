@@ -27,7 +27,7 @@
                             CYD / Dashboard
 ```
 
-**Keine der fünf Relaisleitungen gehört auf die 26×30-Sensorplatine.** Der ESP32-C3 ist ein eigenes Board im Leistungsgehäuse; frühere direkte SSR-Pinbelegungen des Sensor-ESP32 sind hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt.** Am Sensor-ESP32: bestehender Phasentaster D19, Buzzer-Signal D16 (in der Firmware noch deaktiviert). Ein **zweiter, unabhängiger Pumpen-Wartungstaster** ist vorgesehen; Platzierung und Anschluss am C3 sind noch festzulegen.
+**Keine der fünf Relaisleitungen gehört auf die 26×30-Sensorplatine.** Der ESP32-C3 ist ein eigenes Board im Leistungsgehäuse; frühere direkte SSR-Pinbelegungen des Sensor-ESP32 sind hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt.** Am Sensor-ESP32: bestehender Phasentaster D19, Buzzer-Signal D16 (in der Firmware noch deaktiviert). Ein **zweiter, unabhängiger, nicht rastender Pumpen-Drucktaster** ist vorgesehen: einmal drücken = Pumpe AUS, erneut drücken = Pumpe EIN; Platzierung und Anschluss am C3 sind noch festzulegen.
 
 ## Sensor-ESP32: bestätigte Stiftkontakte und Signalzuordnung
 
@@ -78,7 +78,7 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 
 ADS1115, DS18B20, DHT22 und BH1750: vorgesehene **3,3-V-Logik**. **MLX90640: Versorgung gemäß Datenblatt des tatsächlich verbauten Breakout-Moduls; VCC/VIN bis dahin unbeschaltet lassen.** Prüfen, ob die ESP32-3V3-Versorgung für die gesamte Sensorlast ausreicht. PH4502C VCC wurde mit **4,7 V** gemessen; die laut Nutzer funktionierende pH-Messkette nicht eigenmächtig umbauen. Alle Kleinspannungs-Sensoren benötigen eine gemeinsame Signalmasse.
 
-## Sensor-Bedienfeld: Phasentaster, RGB-LED und Buzzer; weiterer Pumpentaster am Leistungsteil geplant
+## Sensor-Bedienfeld: Phasentaster, RGB-LED und Buzzer; zusätzlicher Pumpen-Drucktaster am Leistungsteil geplant
 
 **Bestehender 4-Pin-Phasentaster (momentaner Schließer, NICHT der neue Pumpentaster):** Bei üblichen Tact-Switches sind zwei Kontakte je Seite intern dauerhaft verbunden. **Nicht nach Orientierung raten:** Mit dem Multimeter ein Kontaktpaar ermitteln, das ohne Druck **offen** und nur beim Drücken leitend ist. **Einen Kontakt an D19**, den anderen an **GND**. Die zwei übrigen Kontakte werden nicht verbunden. `INPUT_PULLUP`, softwareseitig 50 ms Entprellung. **Jeder Tastendruck wechselt WUCHS ↔ BLÜTE.** Auswahl im ESP32-NVS `growphase_v1`.
 
@@ -141,13 +141,14 @@ Die Wochenzahl wird auf dem Sensor-ESP32 getrennt von der Phasentaster-Auswahl g
 | 4 – Heizung | Heizstrahler | Eigenständiger Kanal; unabhängige Schutz-/Temperaturbegrenzung erforderlich |
 | 5 – Pumpe | **Geplante Filter-/Umwälzpumpe** | Eigenständiger Kanal; Pumpe kommt neu hinzu, technische Daten und Anschluss noch offen |
 
-### Zusätzlicher Pumpen-Taster für Filterreinigung
+### Zusätzlicher Pumpen-Drucktaster für Filterreinigung
 
-- **Zusätzlicher, separater Taster** zur Pumpe, unabhängig vom bereits vorhandenen **WUCHS/BLÜTE-Phasentaster D19**. Der Buzzer bleibt auf **D16**. Die Sensorplatine erhält dadurch keine neuen Relaisausgänge.
-- **Soll-Funktion:** Betätigen des Pumpentasters versetzt den Pumpenkanal in einen deutlich erkennbaren Zustand **„Wartung / Pumpe gesperrt“**. Der Pumpenkanal muss aus bleiben, auch wenn Automatik, WLAN-Befehle oder Neustart ihn aktivieren wollen.
-- **Wiedereinschalten:** Nicht automatisch nach Neustart oder Kommunikationsunterbrechung; erst nach bewusster Aufhebung der Sperre. Der konkrete Bedienablauf (erneuter Tastendruck oder getrennte Bestätigung) ist noch festzulegen.
-- **Anschluss:** Als Kleinspannungs-Bedieneingang am separaten Leistungsteil/C3 geplant. **C3-GPIO, Tasterbauart und Position sind noch offen**; keine GPIO-Nummer wird ohne Prüfung zugewiesen.
-- **Sicherheit:** Eine reine Software-Pausentaste oder Relaisanzeige ist **keine sichere elektrische Freischaltung** für Arbeiten am Filter oder an der Pumpe. Vor dem Reinigen muss die Energiezufuhr zur Pumpe fachgerecht und gegen unbeabsichtigten Wiederanlauf gesichert sein. Die Ausführung eines geeigneten, gegebenenfalls verriegelbaren Wartungs-AUS/Trennmittels sowie aller Netzspannungsarbeiten ist durch eine Elektrofachkraft zu planen und zu prüfen.
+- **Bauart: normaler, nicht rastender Drucktaster (Schließer).** Er ist unabhängig vom **WUCHS/BLÜTE-Phasentaster D19** und vom Buzzer D16.
+- **Erster Tastendruck:** Pumpenrelais AUS; Zustand **„Wartung / Pumpe gesperrt“** aktiv. Automatik und WLAN-Befehle dürfen die Pumpe in diesem Zustand nicht erneut starten.
+- **Zweiter Tastendruck:** Wartungssperre wird aufgehoben; die Pumpe kehrt in den normalen EIN-Betrieb zurück, sofern dessen Betriebsfreigaben vorliegen. Bei jedem weiteren Tastendruck wechselt der Modus zwischen AUS und EIN.
+- **Bedienlogik:** Eine entprellte Flankenerkennung je Tastendruck, kein Dauersignal und keine Rastfunktion am Taster. Während eines Pumpenstopps darf kein anderer Steuerpfad den Wartungszustand überstimmen. Nach einem Neustart oder Kommunikationsausfall darf die Pumpe nicht allein durch diesen Umstand wieder anlaufen; der Ausfallzustand ist sicher auszuführen.
+- **Anschluss:** Als Niederspannungs-Bedieneingang am separaten Leistungsteil/C3 vorgesehen. **Der konkrete C3-GPIO und die Tasterposition sind noch nicht geprüft**; keine erfundene Pinzuordnung.
+- **Sicherheit:** Dieser elektronische EIN/AUS-Drucktaster ist **keine elektrische Freischaltung** für die Filterreinigung. Vor Eingriffen an Pumpe oder Filter muss die Energiezufuhr fachgerecht getrennt und unbeabsichtigter Wiederanlauf verhindert werden. Geeignetes Wartungs-AUS/Trennmittel und Netzspannungsanschlüsse sind durch eine Elektrofachkraft zu planen bzw. zu prüfen.
 
 **Noch offen am C3:** GPIOs für fünf Relais plus Pumpen-Wartungstaster, aktive Relaispegel und Treiberkompatibilität, Größe/Typ der Pumpe, tatsächliche Lampentreiber-Last, Schutzkonzept und Rückmeldung des Pumpen-Wartungszustands.
 
