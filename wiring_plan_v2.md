@@ -117,14 +117,14 @@ D32 wird **nicht mehr** für RGB benutzt, weil dort laut Nutzer kein Signal anka
 | Bauteil | Kontakt 1 | Kontakt 2 | Externer Widerstand / Status |
 |---|---|---|---|
 | **Taster 1 – WUCHS/BLÜTE** | **D19 / GPIO19**, rechts 10. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner**, interner INPUT_PULLUP ist in beiden Sketches aktiv |
-| **Taster 2 – Pumpe AUS/EIN** | **D18 / GPIO18**, rechts 9. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner** bei geplantem internem INPUT_PULLUP; **Funktion in Firmware noch NICHT implementiert** |
+| **Taster 2 – Pumpe AUS/EIN** | **D18 / GPIO18**, rechts 9. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner** (internes INPUT_PULLUP jetzt in beiden Sensor-Sketches aktiv); Zustand nur lokal, kein Relais |
 | **Buzzer-Steuersignal** | **RX2 / GPIO16**, rechts 6. Kontakt von oben | Elektrische Beschaltung noch zu prüfen | Typ/Treiber noch offen; Buzzer-Firmware deaktiviert |
 
 Die beiden Taster sind **normale, nicht rastende Schließer**. Bei einem 4-Pin-Taster müssen die ausgewählten Kontakte im Ruhezustand getrennt und nur beim Drücken leitend sein. **Keine Tasterverbindung an 3V3 oder VIN.** Bei abgezogenem USB-Kabel verdrahten.
 
 **Taster 1: Diagnose bei weiterhin ausbleibender Funktion:** Nach Flashen des aktuellen Sketches meldet Serial (115200 Baud) beim Druck `TASTER D19 ...`; im Kalibriersketch zeigt `t` HIGH (offen) bzw. LOW (gedrückt). Die Eingabefunktion auf D19 ist bereits programmiert.
 
-**Taster 2: Sollfunktion:** erster Druck = Pumpe AUS/Wartungssperre; nächster Druck = Pumpenbetrieb wieder freigeben. **D18 ist zwar auf dem Board vorhanden und in beiden Sketches unbelegt, der Pumpentaster ist softwareseitig noch NICHT umgesetzt.** Der Sensor-ESP32 muss den Zustand später an den separaten Leistungscontroller senden; dessen Pumpe darf die Wartungssperre nicht ignorieren. Das bloße Anlöten bewirkt noch kein Abschalten. Für die tatsächliche Filterreinigung ist eine sichere elektrische Trennung gegen Wiederanlauf erforderlich.
+**Taster 2: Funktion im Sensor-ESP32 JETZT implementiert:** Erster Druck = Wartungssperre/Pumpe AUS **angefordert**, nächster Druck = Betrieb **freigegeben**. D18 wird per FALLING-Interrupt mit 50-ms-Entprellung erfasst. Der Anforderungszustand wird im NVS `pumpbtn_v1` gespeichert. **Serial 115200** meldet `PUMPEN-TASTER D18 ...`; im Kalibriersketch zeigt `t` Eingang und Wartungszustand. Bei aktiver Pause zeigt das OLED `P!`. Im Produktionssketch melden `/api/local/summary` und `/api/local/actuators` den Booleschen Wert `pump_maintenance_pause_requested`, mit `pump_output_confirmed=false` – **dies bestätigt ausdrücklich KEINE tatsächliche Pumpenabschaltung**. Der Sensor-ESP32 übermittelt die Anforderung derzeit **nicht** an die Leistungsbox. Die C3-Firmware, der Transport, sichere Abschalt- und Wiederanlaufverriegelung sowie Rückmeldungen fehlen. Das Anlöten bewirkt noch kein Abschalten. Für Filterreinigung ist eine sichere elektrische Trennung gegen Wiederanlauf erforderlich.
 
 ## 7. MLX90640 – vorbereitet, nicht montiert
 | Modulanschluss | Verbindung | Widerstand |
@@ -145,7 +145,7 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 | 4 | **Heizstrahler** | offen |
 | 5 | **Filter-/Umwälzpumpe (geplant)** | offen |
 
-**Pumpentaster-Zuordnung:** Ausschließlich **Sensor-ESP32 mit OLED, D18 → Taster 2 → GND**; Details samt Widerstand direkt in Abschnitt 6. **Keine Pumpentaster-Verbindung am separaten Leistungscontroller.**
+**Pumpentaster-Zuordnung:** Ausschließlich **Sensor-ESP32 mit OLED, D18 → Taster 2 → GND**; Details samt Widerstand direkt in Abschnitt 6. **Keine Pumpentaster-Verbindung am separaten Leistungscontroller.** Die lokale D18-Tastenerfassung ist umgesetzt; sie steuert derzeit keine Pumpe.
 
 Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Befestigung vorhanden). PCF8574 und Tastenpins sind **noch nicht** zu verdrahten. Die geplante C3-WLAN-Anbindung, Relaislogik und Pumpensperre sind noch nicht implementiert oder getestet.
 
@@ -161,7 +161,7 @@ Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Bef
 | **ADS/OLED-I²C** | ggf. **1 × 4,7 kΩ D21→3V3 + 1 × 4,7 kΩ D22→3V3** | nur wenn Pull-ups fehlen |
 | **BH1750-I²C** | ggf. **1 × 4,7 kΩ D13→3V3 + 1 × 4,7 kΩ D14→3V3** | nur wenn Pull-ups fehlen |
 | **Taster 1: Phasenwechsel am Sensor-ESP32** | **kein externer Widerstand** (interner Pull-up) | **D19 → Taster → GND** |
-| **Taster 2: Pumpenpause am OLED-Sensor-ESP32** | **kein externer Widerstand bei künftigem INPUT_PULLUP** | **D18 → Taster → GND**, rechte Seite Position 9; Firmwarefunktion noch offen |
+| **Taster 2: Pumpenpause am OLED-Sensor-ESP32** | **kein externer Widerstand, INPUT_PULLUP in Firmware aktiv** | **D18 → Taster → GND**, rechte Seite Position 9; lokale Wartungsanforderung programmiert, Relaissteuerung fehlt |
 | **Buzzer / geplante C3-Relais** | **Widerstände/Treiber erst nach Prüfung der konkreten Module festlegen** | nicht erraten |
 
 **Wichtig:** Der frühere Widerspruch „ADS A0 ohne Spannungsteiler“ ist hiermit korrigiert. Die bestehende **10-kΩ-/20-kΩ-Teilerverdrahtung** und die auf ihr beruhende pH-Kalibrierung sind maßgeblich. Nicht ohne Messungen verändern.
