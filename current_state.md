@@ -14,14 +14,14 @@
 | ADS1115 A1 | CQRobot EC/TDS-Analogsignal |
 | **GPIO23** | **1× DS18B20-Wassertemperatur**, 1-Wire DATA, **4,7-kΩ-Pull-up nach 3V3** |
 | GPIO25/26/27 | 3× DHT22 (Pflanzenzone, Zuluft, Abluft/oben) |
-| GPIO16 | **Ein** 4-poliger Schließtaster gegen GND, `INPUT_PULLUP`, Wechsel WUCHS/BLÜTE |
-| **GPIO32** | RGB-Grün über **440 Ω (2×220 Ω in Reihe)** |
+| GPIO16 | Zweipoliger pH-Buzzer: Steuersignal reserviert; Treiber/Spannung unbekannt, Firmware deaktiviert |
+| **GPIO4 (D4)** | RGB-Grün über **440 Ω (2×220 Ω in Reihe)**; ersetzt ausgefallenen GPIO32 |
 | GPIO33 | RGB-Rot über **440 Ω (2×220 Ω in Reihe)** |
-| GPIO19 | Zweipoliger pH-Buzzer: Steuersignal nur reserviert; Treiber/Spannung unbekannt, Firmware deaktiviert |
+| GPIO19 | **Ein** 4-poliger Schließtaster gegen GND, `INPUT_PULLUP`, Wechsel WUCHS/BLÜTE |
 
-**Änderung gegenüber V7:** DS18B20 wieder von GPIO32 auf **GPIO23** zurückverlegt, um den Pull-up mechanisch wie gewünscht anzuschließen. Der bisherige RGB-Grün-Ausgang **GPIO23** wandert gleichzeitig auf **GPIO32**, ohne doppelte Pinbelegung. DS18B20-Funktion wurde zuvor vom Nutzer bei GPIO32 bestätigt; auf D23 nach dem Umverdrahten erneut prüfen.
+**Änderung gegenüber V7:** DS18B20 wieder von GPIO32 auf **GPIO23** zurückverlegt, um den Pull-up mechanisch wie gewünscht anzuschließen. RGB-Grün war zuletzt auf **GPIO32** geplant, dort kommt laut Hardwaretest kein Signal an; deshalb nun auf **GPIO4 (D4)** ohne doppelte Pinbelegung. DS18B20-Funktion wurde zuvor vom Nutzer bei GPIO32 bestätigt; auf D23 nach dem Umverdrahten erneut prüfen.
 
-**RGB-LED:** Gemeinsame Kathode laut Nutzer → GND, Blau bleibt frei. Grün = WUCHS; Rot + Grün = Gelb (BLÜTE). Firmware verwendet `GROW_RGB_COMMON_ANODE=0` und aktiviert RGB mit `GROW_ENABLE_PHASE_RGB=1`. **Zwingend erst physisch auf D23/D32 umverdrahten, dann den neuen Sketch flashen.** Ein physischer Taster, Phasenzustand im NVS `growphase_v1`.
+**RGB-LED:** Gemeinsame Kathode laut Nutzer → GND, Blau bleibt frei. Grün = WUCHS; Rot + Grün = Gelb (BLÜTE). Firmware verwendet `GROW_RGB_COMMON_ANODE=0` und aktiviert RGB mit `GROW_ENABLE_PHASE_RGB=1`. **DS18B20 D23 und RGB-Grün D4 statt D32 verdrahten, dann den neuen Sketch flashen.** Ein physischer Taster, Phasenzustand im NVS `growphase_v1`.
 
 **Nicht verdrahten:** PH4502C TO/DO; keine SSR- oder Netzspannungsverkabelung auf der Sensorplatine. Interner OLED auf GPIO21/22. Kamera-Versorgung noch nicht freigegeben. Weitere Details: [wiring_plan_v2.md](wiring_plan_v2.md).
 
