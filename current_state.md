@@ -1,10 +1,10 @@
 # Current State — Grow Controller
 
-**Stand:** 2026-10-14  
+**Stand:** 2026-10-15  
 **Arbeitsbranch:** `feature/ph-calibration-service-esp`  
 **Architektur:** **zwei ESP32**: (1) Sensor-ESP32 mit OLED auf **26×30-Lochraster**, (2) **ESP32-C3 SuperMini** als separater Leistungscontroller.
 
-## Sensorplatine 26 × 30 – Pinbelegung V8
+## Sensorplatine 26 × 30 – aktuelle Pinbelegung
 
 | Sensorpin | Zweck |
 |---|---|
@@ -44,7 +44,7 @@ Die Wochenzahl ist im separaten ESP32-NVS `growweek_v1` manuell wählbar (`k1` b
 
 ## Zweites Gerät — ESP32-C3 SuperMini
 
-Separate Installation im Leistungsgehäuse für die späteren vier Funktionskanäle Licht, Umluft, Abluft und Heizstrahler. **Die C3-Pinbelegung und Steuerungsfirmware sind noch nicht freigegeben, keine Relaisansteuerung funktionsfähig.** Kommunikationsausfall und Rückmeldungen müssen sicher behandelt werden. Keine 230-V-Anschlussanleitung in diesem Repository.
+Separate Installation im Leistungsgehäuse für **fünf Relais**: **(1) beide Pflanzenlampen gemeinsam über einen Lichtkanal, (2) Abluft, (3) Umluft, (4) Heizung/Heizstrahler und (5) die neu geplante Filter-/Umwälzpumpe**. Zusätzlich ist ein **eigener Pumpen-Wartungstaster** vorgesehen, unabhängig vom Phasentaster des Sensor-ESP32. Dessen C3-Eingang und Montageort sind noch offen. Die Pumpe muss im Wartungszustand gegen automatische Aktivierung und Neustart gesperrt sein; ein Software-Taster ersetzt keine fachgerecht ausgeführte elektrische Freischaltung für Wartungsarbeiten. **Die C3-Pinbelegung und Steuerungsfirmware sind noch nicht freigegeben; keine Relaisansteuerung funktionsfähig.** Kommunikationsausfall und Rückmeldungen müssen sicher behandelt werden. Keine 230-V-Anschlussanleitung in diesem Repository.
 
 ## Firmware
 
