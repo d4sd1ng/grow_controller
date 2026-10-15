@@ -48,7 +48,7 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 | Ein 4-Pin-Phasentaster | **GPIO19 (D19)** nach GND, `INPUT_PULLUP` | Je ein Pin aus den beiden Schaltpaaren; 50 ms Entprellung, jeder Tastendruck wechselt den Modus | vorgesehen |
 | Eine 4-Pin-RGB-LED: Grün | **GPIO4 (D4)** über **440 Ω (2×220 Ω in Reihe)** | WUCHS = Grün, BLÜTE = Rot und Grün gleichzeitig | gemeinsame Kathode bestätigt |
 | Dieselbe RGB-LED: Rot | **GPIO33 (D33)** über **440 Ω (2×220 Ω in Reihe)** | Blauer LED-Kanal bleibt frei | gemeinsame Kathode bestätigt |
-| pH-Buzzer | **GPIO16 (D16)** als reservierter Steuersignalpin | 2-poliger Buzzer; Bauart/Strom/Spannung unbekannt; über Treiber vorsehen, Firmware deaktiviert | noch nicht anschließen |
+| pH-Buzzer | **GPIO16 (D16)** als zugeordneter Steuersignalpin | 2-poliger Buzzer; Bauart/Strom/Spannung und benötigter Treiber noch prüfen; Firmware deaktiviert | Pinzuordnung vom Nutzer bestätigt, elektrischer Aufbau noch nicht verifiziert |
 
 **Nicht verbinden:** PH4502C **TO → ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO → GPIO23** (D23 ist für den DS18B20). Frühere Relaisleitungen am Sensor-ESP entfallen. **D4 Grün, D33 Rot, D19 Taster, D16 Buzzer-Signal (deaktiviert), D23 DS18B20.**
 
@@ -65,7 +65,7 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 | DHT22 #1–#3 | **3 × 3-poliger Anschluss: 3V3, GND, DATA** | DATA D25/D26/D27 |
 | DHT-Pull-ups | **bis zu 3 × 4,7 kOhm**, jeweils DATA gegen 3V3 | nur falls das konkrete DHT22-Modul keinen eigenen Pull-up hat |
 | BH1750 | **1 × 5-poliger Anschluss: 3V3, GND, SDA D13, SCL D14, ADDR** | ADDR an GND: Adresse 0x23; Board-Aufdruck ggf. „SCA“ für SDA prüfen |
-| pH-/EC-Signale | vorhandene kalibrierte/verifizierte Verbindungen A0/A1 sauber übernehmen; geeignete Steckklemmen | keine neue, unbelegte 10k/20k-Teilerannahme |
+| pH-/EC-Signale | PO an ADS A0 (pH-Kalibrierung funktioniert); EC-Analogausgang an ADS A1 (EC-Kalibrierstatus separat prüfen) | keine neue, unbelegte 10k/20k-Teilerannahme |
 | Spannungs-/Masseverteilung | getrennte **3V3- und GND-Verbindungen** auf Lochraster mit isoliertem Draht | Lochraster hat keine automatischen Stromschienen |
 | **MLX90640 Infrarotkamera** | **1 × 4-poliger Anschluss: GND, SDA D21, SCL D22, VCC/VIN** | Kamera außerhalb des Controllergehäuses, Versorgung erst nach Abgleich der Modulvariante festlegen |
 | **Ein 4-Pin-Taster** | **D19/GND:** je einen Pin aus zwei unterschiedlichen Kontaktpaaren verwenden, die nur beim Drücken verbunden werden | Kontaktpaare vor dem Verlöten mit Durchgangsprüfer identifizieren |
@@ -91,7 +91,7 @@ ADS1115, DS18B20, DHT22 und BH1750: vorgesehene **3,3-V-Logik**. **MLX90640: Ver
 
 Die Firmware ist auf **Grün = WUCHS** und **Rot + Grün = Gelb = BLÜTE** umgestellt. **Gemeinsame Kathode steht fest** (`GROW_RGB_COMMON_ANODE=0`); RGB-Ausgänge sind im jetzt aktualisierten Sketch aktiviert (`GROW_ENABLE_PHASE_RGB=1`). **Vor dem Flashen DS-DATA auf D23 und RGB-Grün vom nicht funktionierenden D32 auf D4 anschließen.**
 
-**Zweipoliger pH-Buzzer aus Sensor-Pack:** Auf der Platine **D16 als Buzzer-Steuersignal und Platz für einen 2-poligen Buzzer-Anschluss sowie einen geeigneten Transistortreiber** vorsehen. Bei unbekanntem Typ/Strom/Spannung ist **kein direkter GPIO-Anschluss freigegeben**. Auch ein 2-Pin-Bauteil kann aktiv (Gleichspannung) oder passiv (Tonerzeugung via PWM erforderlich) sein. Die Versorgung und der Treiber werden **erst nach Identifizierung** des Bauteils festgelegt; der aktuell implementierte Buzzer-Code ist für ein aktives, logikgesteuertes Modul und bleibt deaktiviert (`GROW_ENABLE_PH_BUZZER=0`). **D18 nicht verwenden:** am konkret vorhandenen ESP32-Board nicht herausgeführt.
+**Zweipoliger pH-Buzzer:** Der Nutzer ordnet das Steuersignal **D16** zu. **Die Firmware hält die Buzzer-Ansteuerung mit `GROW_ENABLE_PH_BUZZER=0` deaktiviert.** Die elektrische Beschaltung, Versorgung, Stromaufnahme sowie aktiv/passiv müssen am konkreten Buzzer geprüft werden; eine erforderliche Treiberstufe darf nicht erraten werden. **D18 nicht verwenden:** am vorhandenen Board nicht herausgeführt.
 
 **pH-Alarm:** LOW bei pH unter **5,5**; HIGH bei pH über **6,2**; Normalbereich 5,5–6,2 inklusive (bei Statuswechseln weiterhin 0,1 pH Hysterese und drei Messungen). Vorbereitete Tonsignale für aktiven Buzzer: LOW zweimal kurz alle 5 s, HIGH dreimal kurz alle 5 s, Sensorfehler einmal alle 10 s.
 
