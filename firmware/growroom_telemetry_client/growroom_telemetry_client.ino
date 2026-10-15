@@ -306,6 +306,69 @@ static void pollGrowPhaseButtons(unsigned long nowMs) {
     setGrowPhase(growPhase == GrowPhase::Wuchs ? GrowPhase::Bluete : GrowPhase::Wuchs);
   }
 }
+// Zweiter nicht rastender Taster: am fotografierten ESP32-OLED-Board D18 -> Taster -> GND.
+// Erfasst nur eine Wartungsanforderung. Die Leistungseinheit ist NICHT verbunden;
+// dieser Sketch behauptet daher niemals, das Pumpenrelais geschaltet zu haben.
+static constexpr uint8_t PIN_PUMP_BUTTON = 18;
+static constexpr uint32_t PUMP_DEBOUNCE_US = 50000UL;
+static constexpr char PUMP_NVS_NAMESPACE[] = "pumpbtn_v1";
+static volatile uint32_t pumpPendingPresses = 0;
+static volatile uint32_t pumpLastInterruptUs = 0;
+static bool pumpMaintenancePaused = false; // gespeicherter Wunsch, KEIN bestaetigter Relaiszustand
+
+static void IRAM_ATTR onPumpButtonFalling() {
+  const uint32_t nowUs = micros();
+  if (static_cast<uint32_t>(nowUs - pumpLastInterruptUs) >= PUMP_DEBOUNCE_US) {
+    pumpLastInterruptUs = nowUs;
+    if (pumpPendingPresses < 1000000UL) ++pumpPendingPresses;
+  }
+}
+
+static void setupPumpButton() {
+  pinMode(PIN_PUMP_BUTTON, INPUT_PULLUP);
+  Preferences prefs;
+  if (prefs.begin(PUMP_NVS_NAMESPACE, true)) {
+    pumpMaintenancePaused = prefs.getBool("paused", false);
+    prefs.end();
+  } else {
+    // Bei NVS-Lesefehler keinen Betrieb als freigegeben darstellen.
+    pumpMaintenancePaused = true;
+    Serial.println(F("WARNUNG: Pumpen-Wartungsstatus nicht lesbar; Sperrwunsch aktiv."));
+  }
+  pumpPendingPresses = 0;
+  pumpLastInterruptUs = micros() - PUMP_DEBOUNCE_US;
+  attachInterrupt(digitalPinToInterrupt(PIN_PUMP_BUTTON), onPumpButtonFalling, FALLING);
+  Serial.printf("PUMPEN-TASTER D18: %s | Wartung %s | RELAIS NICHT VERBUNDEN\n",
+                digitalRead(PIN_PUMP_BUTTON) == LOW ? "LOW" : "HIGH",
+                pumpMaintenancePaused ? "GESPERRT" : "FREIGEGEBEN");
+}
+
+static void pollPumpButton() {
+  uint32_t presses = 0;
+  noInterrupts();
+  presses = pumpPendingPresses;
+  pumpPendingPresses = 0;
+  interrupts();
+  if (!presses) return;
+
+  if (presses & 1UL) {
+    pumpMaintenancePaused = !pumpMaintenancePaused;
+    Preferences prefs;
+    bool saved = false;
+    if (prefs.begin(PUMP_NVS_NAMESPACE, false)) {
+      saved = prefs.putBool("paused", pumpMaintenancePaused) == sizeof(bool);
+      prefs.end();
+    }
+    Serial.printf("PUMPEN-TASTER D18: %lu Druck/Drucke | WARTUNG %s | NVS %s | PUMPENRELAIS NICHT ANGESTEUERT\n",
+                  static_cast<unsigned long>(presses),
+                  pumpMaintenancePaused ? "PUMPE AUS ANGEFORDERT" : "PUMPENBETRIEB FREIGEGEBEN",
+                  saved ? "OK" : "FEHLER");
+  } else {
+    Serial.printf("PUMPEN-TASTER D18: %lu Druck/Drucke | Wartungszustand unveraendert\n",
+                  static_cast<unsigned long>(presses));
+  }
+}
+
 static void setupGrowPhaseButtons() {
   pinMode(PIN_PHASE_BUTTON, INPUT_PULLUP);
 #if GROW_ENABLE_PHASE_RGB
@@ -1368,6 +1431,7 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   setupGrowPhaseButtons();
+  setupPumpButton();
   loadGrowWeek();
   setupPhBuzzer();
   Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
@@ -1437,6 +1501,7 @@ void loop() {
 
   localServer.handleClient();
   pollGrowPhaseButtons(now);
+  pollPumpButton();
   handlePhTestSerial();
   updatePhBuzzer(now);
   sampleTdsBackground(now);
