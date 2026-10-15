@@ -138,6 +138,16 @@ Im Projektroot `python export_firmware_secrets_from_env.py` ausfuehren, um `devi
 Vor dem Flashen muss die geaenderte Sensor-Firmware mit der lokal installierten Arduino-ESP32-Toolchain kompiliert werden. Danach die Kleinspannungs-Sensorik auf der 26×30-Platine testen. Separate ESP32-C3-Firmware ist noch zu entwickeln; Aktoren bleiben ohne Verbindung. Die SSR-Lastseite bleibt bis zur fachgerechten Pruefung ausser Betrieb.
 
 
+## CYD: Lux/Lumen und EC bei DS18B20-Wassertemperatur
+
+Beide CYD-Sketches sind fuer die aktuelle Sensor-API `GET /api/local/summary` angepasst:
+- `cyd_remote_control` (primaere Fernbedienung mit drei Tafeln): zeigt weiterhin Temperatur, relative Feuchte, EC, pH, VPD, H2O, Relais und Meldungen; hinzu kommen die **EC-Bezugstemperatur**, **BH1750-Lux** und **geschaetzte Lumen auf der 1,00-m2-Kulturflaeche**.
+- `cyd_grow_display` (alternative LVGL-Oberflaeche): zeigt ebenfalls die EC-Bezugstemperatur und die Lux-/Lumen-Zeile; bestehende Touch-Elemente bleiben unveraendert.
+- Datenquellen: `reading.ec` (mS/cm), `reading.ec_measurement_temperature_c` (DS18B20), `reading.illuminance_lux`, `reading.estimated_incident_lumens` und `reading.water_temperature`. Die CYDs **rechnen EC nicht selbst um**, sondern zeigen den fertig berechneten Wert der Sensor-Firmware.
+- Kompatibilitaet: Fehlt das neue Temperaturbezugsfeld bei noch alter Sensor-Firmware, wird der EC-Wert als **25-C-Alt-Firmware-Wert** markiert, nicht als EC bei DS-Temperatur ausgegeben. Existiert nur das bisherige `light_level` mit einem positiven Lux-Wert, berechnet das CYD die Grobschaetzung `~lm = lx × 1,00 m2`. Ein fehlender BH1750 wird nicht als garantierte Null-Lux-Messung ausgegeben.
+- **Die Relaissteuerung ist damit nicht aktiv:** Der Sensor antwortet weiterhin mit `esp32_c3_not_connected`, solange der Leistungscontroller fehlt. Vorhandene Touch-Buttons duerfen nicht als Bestaetigung tatsaechlicher Relaiszustaende betrachtet werden.
+- Firmwareaenderungen sind auf GitHub gespeichert und statisch geprueft, **noch nicht lokal mit den CYD-Bibliotheken kompiliert oder am CYD getestet**.
+
 ## BH1750 Lichtmessung auf der Kulturflaeche (1,00 × 1,00 m)
 
 Die aktuelle Sensor-Firmware berechnet aus dem gemessenen **Lux (lx)** des BH1750 den **geschaetzten einfallenden Lichtstrom (~lm)** auf einer festen Kulturflaeche von **1,00 m²**: `geschaetzte_lm = Lux × 1,00 m²`. Die Pflanzengroesse aendert die konfigurierte Beetflaeche nicht. **Achtung:** Ein einzelner BH1750 misst lokal, nicht die raeumliche Mittelbeleuchtungsstaerke. Die Lumenangabe ist deshalb eine grobe Naeherung fuer das Beet, **kein vom BH1750 direkt gemessener Wert und keine Lampen-Gesamtleistung**. Keine Ableitung von PPFD oder PAR.
