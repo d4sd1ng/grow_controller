@@ -18,8 +18,8 @@
 | 21/22 | ADS1115 (0x48) + internes OLED (0x3C) + optionale MLX90640 (0x33); I²C Bus A |
 | 13/14 | I²C Bus B: BH1750 (0x23) separat |
 | 23 | DS18B20-Datenbus (4,7-kΩ-Pull-up nach 3,3 V) |
-| ADS1115 A0 | PH4502C PO pH (kalibriert, unverändert) |
-| ADS1115 A1 | CQRobot TDS/EC-Signal |
+| ADS1115 A0 | **pH-Spannungsteiler:** PH4502C PO → **10 kΩ in Reihe** → ADS A0, **20 kΩ von A0 nach GND**. Vorhandene, kalibrierte Verdrahtung beibehalten. |
+| ADS1115 A1 | CQRobot TDS/EC-Signal, **ohne den 10k/20k-pH-Spannungsteiler**; maximale Analogspannung prüfen |
 | 25/26/27 | DHT22 #1/#2/#3 |
 | 16 | **Buzzer-Steuersignal**, deaktiviert bis zum Abgleich von Typ und Treiber |
 | 4 | **RGB-LED Grün**, 440 Ω Vorwiderstand (2×220 Ω in Reihe); ersetzt GPIO32 |
