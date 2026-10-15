@@ -27,6 +27,10 @@ Raspberry Pi    CYD-Fernanzeige    ESP32-C3 SuperMini
 **Wichtig:** Der separate ESP32-C3 soll **fünf Relais** ansteuern: **Licht für beide Lampen gemeinsam, Abluft, Umluft, Heizung und geplante Filter-/Umwälzpumpe**. Für die Pumpe kommt ein **normaler, nicht rastender Drucktaster** hinzu: **einmal drücken = Pumpe AUS/Wartungssperre, erneut drücken = Pumpe EIN/normaler Pumpenbetrieb**. Die automatische Pumpensteuerung muss während Wartung gesperrt bleiben. Ein Taster/Softwaremodus ist keine sichere Netztrennung für Reinigungsarbeiten. Die Sensor-Firmware enthält keine direkten Relais-GPIOs; die C3-Anbindung ist noch nicht implementiert und Aktoren werden derzeit **nicht** angesteuert. Die Netzspannungsseite bedarf einer fachkundig geprüften, separaten Installation.
 
 
+## Geplantes zentrales Bedienfeld
+
+Die vorhandene **4×4-Matrix-Tastatur** (0–9, A–D, *, #) wird als **Bedienfeld für den gesamten Grow-Controller** eingeplant: Aktoren, pH/EC, Klima, Wasser, Woche/Phase, Sollwerte, Zeitpläne, Alarme und Kalibrierungsmenüs. Geplant ist die Anbindung über einen **PCF8574-I²C-Expander an den ESP32-C3**, mit Menü-/Statusanzeige auf dem **CYD**. Die **A-Taste** soll die Pumpe wie gewünscht mit aufeinanderfolgenden Tastendrücken AUS/EIN schalten. Ein separater Pumpen-Drucktaster ist bisher ebenfalls eingeplant; ob er durch A entfällt, ist noch offen. **Tastatur, I²C-Pins, C3-Firmware und Protokoll sind bisher nicht umgesetzt.** Details: [wiring_plan_v2.md](wiring_plan_v2.md).
+
 ## Firmware
 
 - `firmware/growroom_telemetry_client/` — Sensor-ESP32; pH/EC/Klima, OLED, API/Telemetrie, **keine SSR-GPIO-Ausgaenge**. C3-Anbindung steht noch aus.
