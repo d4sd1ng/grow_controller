@@ -21,10 +21,10 @@
 | ADS1115 A0 | PH4502C PO pH (kalibriert, unverändert) |
 | ADS1115 A1 | CQRobot TDS/EC-Signal |
 | 25/26/27 | DHT22 #1/#2/#3 |
-| 16 | **Ein 4-Pin-Taster**, zwischen D16 und GND (je einen Kontakt aus verschiedenen Schaltpaaren) |
-| 32 | **RGB-LED Grün**, 440 Ω Vorwiderstand (2×220 Ω in Reihe) |
+| 16 | **Buzzer-Steuersignal**, deaktiviert bis zum Abgleich von Typ und Treiber |
+| 4 | **RGB-LED Grün**, 440 Ω Vorwiderstand (2×220 Ω in Reihe); ersetzt GPIO32 |
 | 33 | **RGB-LED Rot**, 440 Ω Vorwiderstand (2×220 Ω in Reihe) |
-| 19 | **pH-Buzzer-Steuerpin reserviert**, optionaler Treiber, deaktiviert |
+| 19 | **Ein 4-Pin-Taster**, zwischen D19 und GND (je einen Kontakt aus verschiedenen Schaltpaaren) |
 | RGB-Blau | Nicht angeschlossen |
 | 18 | **Nicht herausgeführt** am vom Nutzer abgelesenen ESP32-Board |
 
@@ -34,9 +34,9 @@
 
 ### Bedienfeld: ein 4-Pin-Taster, eine 4-Pin-RGB-LED, ein 2-Pin-Buzzer
 
-- **Taster** zwischen GPIO16 und GND; bei einem vierbeinigen Taster dürfen die zwei gewählten Kontakte **ohne Tastendruck nicht verbunden** sein. Jeden Tastendruck als Moduswechsel WUCHS ↔ BLÜTE behandeln, 50 ms Entprellung; Auswahl bleibt im NVS (`growphase_v1`) gespeichert.
-- **RGB-LED:** Grün über 440 Ω (2×220 Ω in Reihe) an GPIO32, Rot über eigene 440 Ω (2×220 Ω in Reihe) an GPIO33, Blau frei. **Gemeinsame Kathode an GND** (vom Nutzer bestätigt), HIGH schaltet Farbe ein. **Grün = WUCHS**, **Rot+Grün = Gelb = BLÜTE**. Firmware ist mit `GROW_ENABLE_PHASE_RGB=1` und `GROW_RGB_COMMON_ANODE=0` eingestellt. **Vor dem Flashen zuerst DATA des DS18B20 auf D23 und Grün der LED auf D32 umverdrahten.**
-- **Zweipoliger Buzzer aus Sensor-Kit:** **GPIO19** als Steuersignal, Platz für **zweipoligen Buzzer-Stecker und Transistortreiber** reservieren. Keine Annahme zur Spannung oder aktiv/passiv aus der Anschlusszahl ableiten, daher **noch nicht direkt an GPIO anschließen**. Das bislang für aktive Buzzer vorgesehene Alarmsignal ist deaktiviert (`GROW_ENABLE_PH_BUZZER=0`) und braucht ggf. Anpassung auf PWM bei passivem Piezo.
+- **Taster** zwischen GPIO19 und GND; bei einem vierbeinigen Taster dürfen die zwei gewählten Kontakte **ohne Tastendruck nicht verbunden** sein. Jeden Tastendruck als Moduswechsel WUCHS ↔ BLÜTE behandeln, 50 ms Entprellung; Auswahl bleibt im NVS (`growphase_v1`) gespeichert.
+- **RGB-LED:** Grün über 440 Ω (2×220 Ω in Reihe) an GPIO4 (D4) statt GPIO32, Rot über eigene 440 Ω (2×220 Ω in Reihe) an GPIO33, Blau frei. **Gemeinsame Kathode an GND** (vom Nutzer bestätigt), HIGH schaltet Farbe ein. **Grün = WUCHS**, **Rot+Grün = Gelb = BLÜTE**. Firmware ist mit `GROW_ENABLE_PHASE_RGB=1` und `GROW_RGB_COMMON_ANODE=0` eingestellt. **Vor dem Flashen DATA des DS18B20 auf D23 und Grün der LED vom ausgefallenen D32 auf D4 umverdrahten.**
+- **Zweipoliger Buzzer aus Sensor-Kit:** **GPIO16** als Steuersignal, Platz für **zweipoligen Buzzer-Stecker und Transistortreiber** reservieren. Keine Annahme zur Spannung oder aktiv/passiv aus der Anschlusszahl ableiten, daher **noch nicht direkt an GPIO anschließen**. Das bislang für aktive Buzzer vorgesehene Alarmsignal ist deaktiviert (`GROW_ENABLE_PH_BUZZER=0`) und braucht ggf. Anpassung auf PWM bei passivem Piezo.
 - Im Produktionssketch stehen unter `control.phase` sowie `phase` in Telemetrie der gespeicherte Zustand; **BLÜTE** hat bislang kein definiertes Klimasollwertprofil, also bleibt die automatische Klimaregelung dafür gesperrt. Die wochenabhängigen pH-/EC-Sollwerte sind unabhängig vom Taster; die pH-Alarmgrenzen bleiben 5,5–6,2.
 
 **Vollständiger Anschluss-/Bestückungsplan:** [../wiring_plan_v2.md](../wiring_plan_v2.md).
