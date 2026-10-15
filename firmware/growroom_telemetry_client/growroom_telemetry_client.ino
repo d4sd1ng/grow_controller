@@ -749,6 +749,14 @@ static void applyActuators() {
 }
 
 /* ---------- BH1750 ---------- */
+// 1,00 x 1,00 m ist die physische Anbauflaeche, unabhaengig von der Blattgroesse.
+// Eine Einzelpunkt-Luxmessung gibt nur einen groben Mittelwert-Schaetzer fuer
+// einfallenden Lichtstrom auf dieser Flaeche, NICHT die Lumenleistung der Lampe.
+static constexpr float GROW_LIGHT_AREA_M2 = 1.00f;
+static float estimatedAreaLumens(float lux) {
+  return isfinite(lux) && lux >= 0.0f ? lux * GROW_LIGHT_AREA_M2 : NAN;
+}
+
 
 // Feste Zuordnung wiederhergestellt: ADS1115 D21/D22, BH1750 D13/D14.
 // Bus-Adressscan dient nur zur Diagnose und bindet Module nicht um.
@@ -1070,7 +1078,12 @@ static void handleSummary() {
   setJsonFloat(reading, "ec_reference_voltage", ecReferenceInputV);
   setJsonFloat(reading, "tds_ppm", sensors.tdsPpm);
   setJsonFloat(reading, "tds_voltage", sensors.tdsInputV);
-  reading["light_level"] = sensors.lux;
+  reading["light_level"] = sensors.lux; // lx, Bestands-API unveraendert
+  reading["illuminance_lux"] = bh1750Present ? static_cast<float>(sensors.lux) : nullptr;
+  reading["estimated_incident_lumens"] = bh1750Present ?
+      estimatedAreaLumens(static_cast<float>(sensors.lux)) : NAN;
+  reading["light_area_m2"] = GROW_LIGHT_AREA_M2;
+  reading["lumens_estimated"] = true;
   setJsonFloat(reading, "ds18b20_1_temperature", sensors.ds1C);
   setJsonFloat(reading, "ds18b20_2_temperature", sensors.ds2C);
   setJsonFloat(reading, "water_temperature", sensors.waterTempC);
@@ -1195,7 +1208,16 @@ static bool sendTelemetry() {
   writeNutrientTargets(root);
   root["phase_profile_configured"] = phaseProfile().configured;
   root["ph_temperature_compensated"] = sensors.phTempCompensated;
-  root["light_level"] = sensors.lux;
+  root["light_level"] = sensors.lux; // lx, Bestandstelemetrie unveraendert
+  if (bh1750Present) {
+    root["illuminance_lux"] = sensors.lux;
+    root["estimated_incident_lumens"] = estimatedAreaLumens(static_cast<float>(sensors.lux));
+  } else {
+    root["illuminance_lux"] = nullptr;
+    root["estimated_incident_lumens"] = nullptr;
+  }
+  root["light_area_m2"] = GROW_LIGHT_AREA_M2;
+  root["lumens_estimated"] = true;
   setJsonFloat(root, "ec", sensors.ec); // mS/cm
   root["ec_calibrated"] = ecCalibrated;
   root["ec_reference_temp_verified"] = validDsTempC(ecCalTempC);
@@ -1334,12 +1356,22 @@ static void drawOled() {
   }
 
   display.setCursor(0, 24);
-  display.print("Box ");
-  if (isfinite(sensors.caseTempC)) display.printf("%.1fC", sensors.caseTempC);
-  else display.print("--");
-  display.print(" H2O ");
-  if (isfinite(sensors.waterTempC)) display.printf("%.1fC", sensors.waterTempC);
-  else display.print("--");
+  // Zur Platzersparnis alle 5 s abwechselnd Temperatur oder Licht zeigen.
+  // pH/EC und die Alarmzeile bleiben zu jeder Zeit sichtbar.
+  if ((millis() / 5000UL) % 2UL == 1UL) {
+    if (bh1750Present) {
+      display.printf("%lu lx ~%.0f lm",
+                     static_cast<unsigned long>(sensors.lux),
+                     estimatedAreaLumens(static_cast<float>(sensors.lux)));
+    } else display.print(F("BH1750 --"));
+  } else {
+    display.print("Box ");
+    if (isfinite(sensors.caseTempC)) display.printf("%.1fC", sensors.caseTempC);
+    else display.print("--");
+    display.print(" H2O ");
+    if (isfinite(sensors.waterTempC)) display.printf("%.1fC", sensors.waterTempC);
+    else display.print("--");
+  }
 
   display.setCursor(0, 36);
   display.print("pH ");
