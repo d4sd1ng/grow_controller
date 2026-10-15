@@ -831,6 +831,9 @@ static void printHardwareStatus() {
   Serial.println(F("\n=== HARDWARE-STATUS ==="));
   Serial.printf("TASTER D19: %s | Pull-up aktiviert; Taste -> GND\n",
                 digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW / GEDRUECKT" : "HIGH / OFFEN");
+  Serial.printf("PUMPENTASTER D18: %s | Wartungswunsch %s | RELAIS NICHT ANGESTEUERT\n",
+                digitalRead(PIN_PUMP_BUTTON) == LOW ? "LOW / GEDRUECKT" : "HIGH / OFFEN",
+                pumpMaintenancePaused ? "PUMPE AUS" : "NORMALBETRIEB");
   Serial.printf("OLED 0x3C : %s\n", oledOk ? "OK" : "NICHT ERKANNT");
   Serial.printf("ADS  0x%02X auf %s: %s\n", adsFoundAddr, adsFoundBus, adsOk ? "OK" : "NICHT ERKANNT");
   if (adsOk) {
@@ -1089,6 +1092,7 @@ static void printHelp() {
   Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D21, SCL=D22, 0x48"));
   Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | ADS D21/22, BH D13/14"));
   Serial.println(F("PHASE-Taster D19 -> GND: pro Druck WUCHS/BLUETE umschalten (Interrupt gegen verpasste Klicks)"));
+  Serial.println(F("PUMPENTASTER D18 -> GND: pro Druck Wartung PUMPE AUS / normaler Betrieb; nur Wunsch, KEINE reale Relaissteuerung"));
   Serial.println(F("RGB: Gruen D4, Rot D33, je 440 Ohm (2x220); gemeinsame Kathode GND"));
   Serial.println(F("WOCHE: k1 bis k12 + Zeilenumbruch -> pH-/EC-Sollwerte im NVS speichern"));
   Serial.println(F("Buzzer-Signal D16 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
@@ -1415,6 +1419,7 @@ static void drawOled() {
   display.print(dhtCount);
   display.print(F("/3 BH:"));
   display.print(bhOk && isfinite(bhLux) ? F("OK") : F("--"));
+  if (pumpMaintenancePaused) display.print(F(" P!"));
   display.setCursor(0, 52);
   display.print(phSimulationActive ? F("TEST ") : F("pH "));
   display.print(F("ALARM:"));
@@ -1599,7 +1604,8 @@ void loop() {
   static unsigned long lastPrint = 0;
   if (now - lastPrint >= 1000) {
     lastPrint = now;
-    Serial.printf("PHASE %s | WOCHE %u | ", phaseName(), growWeek);
+    Serial.printf("PHASE %s | WOCHE %u | Pumpe-Wartung %s (kein Relais) | ",
+                phaseName(), growWeek, pumpMaintenancePaused ? "AUS ANGEFORDERT" : "FREIGEGEBEN");
     Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | std %.2f mV | A1 TDS %.5f V",
                   adsOk ? "OK" : "--", liveInputV, liveStdV * 1000.0f, liveTdsV);
     if (validTemperature(liveWaterTempC)) Serial.printf(" | DS-Wasser %.2f C", liveWaterTempC);
