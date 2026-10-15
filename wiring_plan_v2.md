@@ -1,8 +1,8 @@
 # Grow Controller — Wiring Plan V2: Sensor-ESP32 und 5 Relais (Stand 15.10.2026)
 
 **Stand:** 2026-10-15  
-**Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** im separaten Leistungsgehäuse für **genau fünf Relais**: zwei Lampen gemeinsam, Abluft, Umluft, Heizung und geplante Filter-/Umwälzpumpe. (3) **4×4-Matrix-Tastatur als zentrales Bedienfeld für alle Funktionen**; PCF8574-I²C-Portexpander am C3 als Entwurf. Der bisherige Phasentaster D19 und der geplante separate Pumpen-Drucktaster bleiben bis zur Entscheidung über die endgültige mechanische Bedienanordnung dokumentiert.  
-**Status:** Die **pH-Kalibrierung funktioniert laut aktueller Nutzerbestätigung**. Die Funktionen der fünf Relais sind benannt. **4×4-Tastatur und vollständige Menübedienung sind neu beschlossen, aber noch nicht angeschlossen oder programmiert.** C3-GPIO-Zuordnung, Leistungsansteuerung, C3-I²C-Zusatzbus, WLAN-Kommunikation und Pumpen-Wartungssperre sind noch nicht implementiert oder getestet. Einzelne Sensoren und RGB-GPIO4 sind nicht allein durch die Pinliste als erfolgreich getestet anzusehen.
+**Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** im separaten Leistungsgehäuse für **genau fünf Relais**: zwei Lampen gemeinsam, Abluft, Umluft, Heizung und geplante Filter-/Umwälzpumpe. (3) **4×4-Matrix-Tastatur ausschließlich als spätere Option vorgemerkt**, da derzeit keine Befestigungsmöglichkeit vorhanden ist. PCF8574-I²C-Portexpander am C3 nur als Entwurf; keine Montage, Verkabelung oder Implementierung jetzt. Der vorhandene Phasentaster D19 und der separat geplante Pumpen-Drucktaster bleiben vorgesehen.  
+**Status:** Die **pH-Kalibrierung funktioniert laut aktueller Nutzerbestätigung**. Die Funktionen der fünf Relais sind benannt. **4×4-Tastatur und vollständige Menübedienung sind lediglich für später vorgemerkt: derzeit fehlt eine Befestigungsmöglichkeit; kein Einbau und keine Programmierung vorgesehen.** C3-GPIO-Zuordnung, Leistungsansteuerung, C3-I²C-Zusatzbus, WLAN-Kommunikation und Pumpen-Wartungssperre sind noch nicht implementiert oder getestet. Einzelne Sensoren und RGB-GPIO4 sind nicht allein durch die Pinliste als erfolgreich getestet anzusehen.
 
 > Dieser Plan behandelt ausschliesslich die Kleinspannungs-Sensorplatine und die logische Rollenverteilung. Die 230-V-Seite ist nicht Gegenstand des Plans; Montage/Pruefung gehoeren in fachkundige Haende.
 
@@ -154,9 +154,9 @@ Die Wochenzahl wird auf dem Sensor-ESP32 getrennt von der Phasentaster-Auswahl g
 
 Die zwei ESP32 sollen später über **WLAN** kommunizieren. Geplante Zustände: **angefordert**, **vom C3 bestätigt**, **Kommunikation verloren**. Die Umsetzung, sichere Fehlerzustände und Hardwaretests fehlen. Dieser Plan dokumentiert die Logik, nicht die 230-V-Verdrahtung.
 
-### 4×4-Matrix-Tastatur als zentrales Bedienfeld (NEU, Planung)
+### 4×4-Matrix-Tastatur als zentrales Bedienfeld (nur vorgemerkt; Befestigung fehlt)
 
-Die vorhandene **4×4-Tastatur mit 16 Tasten (0–9, A–D, \*, #)** soll **alle Grow-Controller-Funktionen** bedienen: Betriebsstatus, fünf Relais, Temperatur/Feuchte/VPD, pH, EC, Wasser-Temperatur, Sollwerte, Wachstumsphase/Woche, Zeitpläne, Alarme und manuell ausgelöste Kalibrierungsdialoge. Das ist ein **Bedienkonzept, noch keine vorhandene Firmwarefunktion**.
+Die vorhandene **4×4-Tastatur mit 16 Tasten (0–9, A–D, \*, #)** soll **alle Grow-Controller-Funktionen** bedienen: Betriebsstatus, fünf Relais, Temperatur/Feuchte/VPD, pH, EC, Wasser-Temperatur, Sollwerte, Wachstumsphase/Woche, Zeitpläne, Alarme und manuell ausgelöste Kalibrierungsdialoge. Das ist **nur ein späteres Bedienkonzept**, keine vorhandene Firmwarefunktion. **Derzeit keine Befestigungsmöglichkeit: Tastatur nicht montieren, nicht verdrahten und die PCF8574-Anbindung noch nicht umsetzen.**
 
 **Tastenbelegung – vorgeschlagen, nicht programmiert:**
 
@@ -181,11 +181,11 @@ Die vorhandene **4×4-Tastatur mit 16 Tasten (0–9, A–D, \*, #)** soll **alle
 
 **Bedienregel:** Die Zifferntasten 1–9 öffnen zunächst eine Funktion; sie schalten Heizung/Licht/Lüfter **nicht unmittelbar** ohne Statusanzeige und Bestätigung. Einstellungen über Zifferneingabe, \* zurück, # bestätigen. Die Kalibrierungsfunktionen übernehmen nur Bedienung und Anzeigen; Messung/Referenzlösungen und Plausibilitätsprüfung bleiben am jeweiligen Sensorcontroller.
 
-**A-Taste (Pumpe):** Wie vom Nutzer festgelegt **ein Tastendruck AUS, der nächste EIN**. Die Sperre muss am C3 lokal wirksam sein und darf während Wartung nicht durch andere Befehle übersteuert werden. Der zuvor geplante **separate physische Pumpen-Drucktaster bleibt zunächst zusätzlich vorgesehen**; ob Taste A diesen ersetzen soll, ist **noch nicht entschieden**. Eine der beiden Tasten ersetzt bei der Filterreinigung **keine sichere elektrische Trennung**.
+**A-Taste (Pumpe):** Wie vom Nutzer festgelegt **ein Tastendruck AUS, der nächste EIN**. Die Sperre muss am C3 lokal wirksam sein und darf während Wartung nicht durch andere Befehle übersteuert werden. Der **separate physische Pumpen-Drucktaster bleibt vorgesehen und ist für die aktuelle Planung maßgeblich**. Taste A ist lediglich eine spätere optionale Zweitbedienung, keine aktuell vorgesehene Ablösung. Eine der beiden Tasten ersetzt bei der Filterreinigung **keine sichere elektrische Trennung**.
 
 **Hardwarekonzept:** Eine typische passive 4×4-Matrix besitzt **vier Zeilen und vier Spalten, also acht Leitungen**. Statt acht direkte C3-GPIOs zu verbrauchen, ist ein **PCF8574-I²C-Portexpander** am separaten **ESP32-C3** vorgesehen. Der Expander nutzt einen C3-I²C-Bus (SDA und SCL sowie kompatible Versorgung/Masse); die acht Matrixleitungen werden vom PCF8574 ausgewertet. Die **acht tatsächlichen Tastaturkontakte** sind anhand der Rückseite/Leitungsprüfung zu identifizieren; die Reihenfolge wird nicht erfunden. Die I²C-Adresse (beispielsweise 0x20 bei geeigneter A0/A1/A2-Beschaltung) und die **konkreten zwei C3-GPIOs** sind vor Verdrahtung zu prüfen und erst dann festzulegen. Keine Änderung am Sensor-ESP32-Bus D21/D22 für ADS1115/OLED.
 
-**Anzeige und Kommunikation:** Die CYD-Oberfläche dient als bevorzugte ausführliche Menü-/Statusanzeige; das kleine Sensor-OLED kann Kurzstatus zeigen. Tastatureingaben am C3 müssen mit dem Sensor-ESP32 bzw. der CYD-Oberfläche über ein noch zu entwickelndes Protokoll abgeglichen werden. Ohne bestätigte Verbindung dürfen keine scheinbar erfolgreichen Aktorbefehle oder Sensor-Kalibrierungen angezeigt werden. Die genauen Standorte und Sichtbeziehungen von Tastatur/CYD sind noch offen.
+**Anzeige und Kommunikation:** Die CYD-Oberfläche dient als bevorzugte ausführliche Menü-/Statusanzeige; das kleine Sensor-OLED kann Kurzstatus zeigen. Tastatureingaben am C3 müssen mit dem Sensor-ESP32 bzw. der CYD-Oberfläche über ein noch zu entwickelndes Protokoll abgeglichen werden. Ohne bestätigte Verbindung dürfen keine scheinbar erfolgreichen Aktorbefehle oder Sensor-Kalibrierungen angezeigt werden. Für die Tastatur fehlt derzeit eine geeignete Befestigung; Standort, Sichtbeziehung und mechanische Integration sind offen. Bis dahin bleiben CYD und vorhandene Bedienelemente maßgeblich.
 
 ## Softwarestand und nächste Schritte
 
