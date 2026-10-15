@@ -29,7 +29,7 @@ Raspberry Pi    CYD-Fernanzeige    ESP32-C3 SuperMini
 
 ## Geplantes zentrales Bedienfeld
 
-Die vorhandene **4×4-Matrix-Tastatur** (0–9, A–D, *, #) wird als **Bedienfeld für den gesamten Grow-Controller** eingeplant: Aktoren, pH/EC, Klima, Wasser, Woche/Phase, Sollwerte, Zeitpläne, Alarme und Kalibrierungsmenüs. Geplant ist die Anbindung über einen **PCF8574-I²C-Expander an den ESP32-C3**, mit Menü-/Statusanzeige auf dem **CYD**. Die **A-Taste** soll die Pumpe wie gewünscht mit aufeinanderfolgenden Tastendrücken AUS/EIN schalten. Ein separater Pumpen-Drucktaster ist bisher ebenfalls eingeplant; ob er durch A entfällt, ist noch offen. **Tastatur, I²C-Pins, C3-Firmware und Protokoll sind bisher nicht umgesetzt.** Details: [wiring_plan_v2.md](wiring_plan_v2.md).
+Die vorhandene **4×4-Matrix-Tastatur** (0–9, A–D, *, #) wird **nur für später vorgemerkt**, da aktuell eine Befestigungsmöglichkeit fehlt. Nach geeigneter Montage kann sie als **Bedienfeld für den gesamten Grow-Controller** dienen: Aktoren, pH/EC, Klima, Wasser, Woche/Phase, Sollwerte, Zeitpläne, Alarme und Kalibrierungsmenüs. Geplant ist die Anbindung über einen **PCF8574-I²C-Expander an den ESP32-C3**, mit Menü-/Statusanzeige auf dem **CYD**. Die **A-Taste** soll die Pumpe wie gewünscht mit aufeinanderfolgenden Tastendrücken AUS/EIN schalten. Der **separate Pumpen-Drucktaster bleibt in der aktuellen Planung**; A ist allenfalls eine spätere zusätzliche Bedienmöglichkeit. **Keine Montage, Verdrahtung, Pinreservierung oder Firmware-Implementierung für die Tastatur, solange die Befestigung ungeklärt ist.** Tastatur, I²C-Pins, C3-Firmware und Protokoll sind nicht umgesetzt. Details: [wiring_plan_v2.md](wiring_plan_v2.md).
 
 ## Firmware
 
