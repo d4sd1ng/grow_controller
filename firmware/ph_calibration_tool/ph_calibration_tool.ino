@@ -284,69 +284,6 @@ static void pollGrowPhaseButtons(unsigned long nowMs) {
     setGrowPhase(growPhase == GrowPhase::Wuchs ? GrowPhase::Bluete : GrowPhase::Wuchs);
   }
 }
-// Zweiter nicht rastender Taster: am fotografierten ESP32-OLED-Board D18 -> Taster -> GND.
-// Erfasst nur eine Wartungsanforderung. Die Leistungseinheit ist NICHT verbunden;
-// dieser Sketch behauptet daher niemals, das Pumpenrelais geschaltet zu haben.
-static constexpr uint8_t PIN_PUMP_BUTTON = 18;
-static constexpr uint32_t PUMP_DEBOUNCE_US = 50000UL;
-static constexpr char PUMP_NVS_NAMESPACE[] = "pumpbtn_v1";
-static volatile uint32_t pumpPendingPresses = 0;
-static volatile uint32_t pumpLastInterruptUs = 0;
-static bool pumpMaintenancePaused = false; // gespeicherter Wunsch, KEIN bestaetigter Relaiszustand
-
-static void IRAM_ATTR onPumpButtonFalling() {
-  const uint32_t nowUs = micros();
-  if (static_cast<uint32_t>(nowUs - pumpLastInterruptUs) >= PUMP_DEBOUNCE_US) {
-    pumpLastInterruptUs = nowUs;
-    if (pumpPendingPresses < 1000000UL) ++pumpPendingPresses;
-  }
-}
-
-static void setupPumpButton() {
-  pinMode(PIN_PUMP_BUTTON, INPUT_PULLUP);
-  Preferences prefs;
-  if (prefs.begin(PUMP_NVS_NAMESPACE, true)) {
-    pumpMaintenancePaused = prefs.getBool("paused", false);
-    prefs.end();
-  } else {
-    // Bei NVS-Lesefehler keinen Betrieb als freigegeben darstellen.
-    pumpMaintenancePaused = true;
-    Serial.println(F("WARNUNG: Pumpen-Wartungsstatus nicht lesbar; Sperrwunsch aktiv."));
-  }
-  pumpPendingPresses = 0;
-  pumpLastInterruptUs = micros() - PUMP_DEBOUNCE_US;
-  attachInterrupt(digitalPinToInterrupt(PIN_PUMP_BUTTON), onPumpButtonFalling, FALLING);
-  Serial.printf("PUMPEN-TASTER D18: %s | Wartung %s | RELAIS NICHT VERBUNDEN\n",
-                digitalRead(PIN_PUMP_BUTTON) == LOW ? "LOW" : "HIGH",
-                pumpMaintenancePaused ? "GESPERRT" : "FREIGEGEBEN");
-}
-
-static void pollPumpButton() {
-  uint32_t presses = 0;
-  noInterrupts();
-  presses = pumpPendingPresses;
-  pumpPendingPresses = 0;
-  interrupts();
-  if (!presses) return;
-
-  if (presses & 1UL) {
-    pumpMaintenancePaused = !pumpMaintenancePaused;
-    Preferences prefs;
-    bool saved = false;
-    if (prefs.begin(PUMP_NVS_NAMESPACE, false)) {
-      saved = prefs.putBool("paused", pumpMaintenancePaused) == sizeof(bool);
-      prefs.end();
-    }
-    Serial.printf("PUMPEN-TASTER D18: %lu Druck/Drucke | WARTUNG %s | NVS %s | PUMPENRELAIS NICHT ANGESTEUERT\n",
-                  static_cast<unsigned long>(presses),
-                  pumpMaintenancePaused ? "PUMPE AUS ANGEFORDERT" : "PUMPENBETRIEB FREIGEGEBEN",
-                  saved ? "OK" : "FEHLER");
-  } else {
-    Serial.printf("PUMPEN-TASTER D18: %lu Druck/Drucke | Wartungszustand unveraendert\n",
-                  static_cast<unsigned long>(presses));
-  }
-}
-
 static void setupGrowPhaseButtons() {
   pinMode(PIN_PHASE_BUTTON, INPUT_PULLUP);
 #if GROW_ENABLE_PHASE_RGB
@@ -831,9 +768,6 @@ static void printHardwareStatus() {
   Serial.println(F("\n=== HARDWARE-STATUS ==="));
   Serial.printf("TASTER D19: %s | Pull-up aktiviert; Taste -> GND\n",
                 digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW / GEDRUECKT" : "HIGH / OFFEN");
-  Serial.printf("PUMPENTASTER D18: %s | Wartungswunsch %s | RELAIS NICHT ANGESTEUERT\n",
-                digitalRead(PIN_PUMP_BUTTON) == LOW ? "LOW / GEDRUECKT" : "HIGH / OFFEN",
-                pumpMaintenancePaused ? "PUMPE AUS" : "NORMALBETRIEB");
   Serial.printf("OLED 0x3C : %s\n", oledOk ? "OK" : "NICHT ERKANNT");
   Serial.printf("ADS  0x%02X auf %s: %s\n", adsFoundAddr, adsFoundBus, adsOk ? "OK" : "NICHT ERKANNT");
   if (adsOk) {
@@ -1092,7 +1026,6 @@ static void printHelp() {
   Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D21, SCL=D22, 0x48"));
   Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | ADS D21/22, BH D13/14"));
   Serial.println(F("PHASE-Taster D19 -> GND: pro Druck WUCHS/BLUETE umschalten (Interrupt gegen verpasste Klicks)"));
-  Serial.println(F("PUMPENTASTER D18 -> GND: pro Druck Wartung PUMPE AUS / normaler Betrieb; nur Wunsch, KEINE reale Relaissteuerung"));
   Serial.println(F("RGB: Gruen D4, Rot D33, je 440 Ohm (2x220); gemeinsame Kathode GND"));
   Serial.println(F("WOCHE: k1 bis k12 + Zeilenumbruch -> pH-/EC-Sollwerte im NVS speichern"));
   Serial.println(F("Buzzer-Signal D16 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
@@ -1419,7 +1352,6 @@ static void drawOled() {
   display.print(dhtCount);
   display.print(F("/3 BH:"));
   display.print(bhOk && isfinite(bhLux) ? F("OK") : F("--"));
-  if (pumpMaintenancePaused) display.print(F(" P!"));
   display.setCursor(0, 52);
   display.print(phSimulationActive ? F("TEST ") : F("pH "));
   display.print(F("ALARM:"));
@@ -1530,7 +1462,6 @@ void setup() {
   Serial.begin(115200);
   delay(400);
   setupGrowPhaseButtons();
-  setupPumpButton();
   loadGrowWeek();
   printGrowWeek();
   setupPhBuzzer();
@@ -1586,22 +1517,10 @@ void setup() {
   if (havePh7 || havePh4) printCalibration();
   printHardwareStatus();
   Serial.println(F("Kalibrieren: nach stabilem LIVE-Wert '7' bzw. '4' senden."));
-  // LED-Regressionstest nach ALLEN Initialisierungen (einschl. neuer D18-Taster).
-  // Gleiches Pinout und gleiche Phasenlogik wie zuvor; keine Fremd-Pins aendern.
-#if GROW_ENABLE_PHASE_RGB
-  pinMode(PIN_RGB_GREEN, OUTPUT);
-  pinMode(PIN_RGB_RED, OUTPUT);
-  refreshPhaseRgb();
-  Serial.printf("RGB STARTTEST (Kalibrier-Sketch): PHASE %s | GPIO4 GRUEN=%d | GPIO33 ROT=%d | gemeinsame Kathode GND\n",
-                phaseName(),
-                digitalRead(PIN_RGB_GREEN), digitalRead(PIN_RGB_RED));
-#endif
-
 }
 
 void loop() {
   pollGrowPhaseButtons(millis());
-  pollPumpButton();
   handleSerial();
   updateTemperature();
   updateOptionalSensors();
@@ -1615,8 +1534,7 @@ void loop() {
   static unsigned long lastPrint = 0;
   if (now - lastPrint >= 1000) {
     lastPrint = now;
-    Serial.printf("PHASE %s | WOCHE %u | Pumpe-Wartung %s (kein Relais) | ",
-                phaseName(), growWeek, pumpMaintenancePaused ? "AUS ANGEFORDERT" : "FREIGEGEBEN");
+    Serial.printf("PHASE %s | WOCHE %u | ", phaseName(), growWeek);
     Serial.printf("LIVE | ADS:%s | A0 pH %.5f V | std %.2f mV | A1 TDS %.5f V",
                   adsOk ? "OK" : "--", liveInputV, liveStdV * 1000.0f, liveTdsV);
     if (validTemperature(liveWaterTempC)) Serial.printf(" | DS-Wasser %.2f C", liveWaterTempC);
