@@ -82,6 +82,12 @@ struct RemoteState {
   float tempC, rh, ec, ph, tdsPpm, waterC;
   char phStatus[16]; // high/low/normal/sensor_fault
   bool haveWater;
+  // EC wird NICHT im CYD umgerechnet, sondern kommt fertig vom Sensor.
+  // Nur die neue Sensor-Firmware weist den EC-Wert explizit der DS-Temperatur zu.
+  bool haveEcMeasurementC;
+  float ecMeasurementC;
+  bool haveLux, haveAreaLumens;
+  float lux, areaLumens; // ~lm ueber 1,00 m2, keine gemessenen Lampen-Lumen
   char alertLines[5][72];
   uint8_t nAlerts;
 } state;
@@ -189,7 +195,7 @@ bool fetchSummary() {
   String payload = http.getString();
   http.end();
 
-  StaticJsonDocument<3072> doc;
+  StaticJsonDocument<4096> doc;
   if (deserializeJson(doc, payload) || !doc["ok"].as<bool>())
     return false;
 
@@ -208,6 +214,9 @@ bool fetchSummary() {
   state.haveReading = !r.isNull();
   state.haveWater = false;
   state.haveEc = false;
+  state.haveEcMeasurementC = false;
+  state.haveLux = false;
+  state.haveAreaLumens = false;
   state.phStatus[0] = 0;
   if (state.haveReading) {
     state.tempC = r["air_temperature"] | 0.0f;
@@ -219,9 +228,40 @@ bool fetchSummary() {
     snprintf(state.phStatus, sizeof(state.phStatus), "%s", phAlarm);
     state.tdsPpm = r["tds_ppm"] | 0.0f;
     JsonVariant water = r["water_temperature"];
-    if (!water.isNull()) {
+    if (!water.isNull() && isfinite(water.as<float>())) {
       state.waterC = water.as<float>();
       state.haveWater = true;
+    }
+    JsonVariant ecMeasurement = r["ec_measurement_temperature_c"];
+    if (state.haveEc && !ecMeasurement.isNull() &&
+        isfinite(ecMeasurement.as<float>())) {
+      state.ecMeasurementC = ecMeasurement.as<float>();
+      state.haveEcMeasurementC = true;
+    }
+    // Neue Sensor-API: explizites null = BH1750 fehlt.
+    // Alte Sensor-API: light_level (0 konnte auch "kein BH1750" bedeuten).
+    JsonVariant luxReading = r["illuminance_lux"];
+    if (!luxReading.isNull() && isfinite(luxReading.as<float>()) &&
+        luxReading.as<float>() >= 0.0f) {
+      state.lux = luxReading.as<float>();
+      state.haveLux = true;
+    } else if (!r.containsKey("illuminance_lux")) {
+      JsonVariant legacyLux = r["light_level"];
+      if (!legacyLux.isNull() && isfinite(legacyLux.as<float>()) &&
+          legacyLux.as<float>() > 0.0f) {
+        state.lux = legacyLux.as<float>();
+        state.haveLux = true;
+      }
+    }
+    JsonVariant lumenReading = r["estimated_incident_lumens"];
+    if (state.haveLux && !lumenReading.isNull() &&
+        isfinite(lumenReading.as<float>()) && lumenReading.as<float>() >= 0.0f) {
+      state.areaLumens = lumenReading.as<float>();
+      state.haveAreaLumens = true;
+    } else if (state.haveLux && !r.containsKey("estimated_incident_lumens")) {
+      // Altgeraet: lokaler Schaetzwert bei 1 m2, niemals Lampen-Gesamtleistung.
+      state.areaLumens = state.lux * 1.0f;
+      state.haveAreaLumens = true;
     }
     float vpd = computeVpd(state.tempC, state.rh);
     /* nur bei echten Messungen Historie füllen */
@@ -371,6 +411,27 @@ static void drawCenterPanel() {
     if (state.haveWater) {
       snprintf(ln, sizeof(ln), "H2O %.1f C", state.waterC);
       tft.drawString(ln, x0, y);
+      y += 12;
+    }
+    if (state.haveEc) {
+      if (state.haveEcMeasurementC)
+        snprintf(ln, sizeof(ln), "EC @ %.1f C (DS)", state.ecMeasurementC);
+      else
+        snprintf(ln, sizeof(ln), "EC @25C (alte API)");
+      tft.drawString(ln, x0, y);
+      y += 12;
+    }
+    if (state.haveLux) {
+      snprintf(ln, sizeof(ln), "BH %.0f lx", state.lux);
+      tft.drawString(ln, x0, y);
+      y += 12;
+      if (state.haveAreaLumens) {
+        snprintf(ln, sizeof(ln), "Beet ~%.0f lm", state.areaLumens);
+        tft.drawString(ln, x0, y);
+        y += 12;
+      }
+    } else {
+      tft.drawString("BH1750 --", x0, y);
       y += 12;
     }
   } else {
