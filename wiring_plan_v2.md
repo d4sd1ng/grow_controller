@@ -8,6 +8,32 @@
 - Ein Widerstand steht **immer direkt beim betroffenen Modul** in dessen Tabelle. „Keiner“ bedeutet ausdrücklich kein zusätzlicher externer Widerstand an dieser Verbindung; integrierte Modulbauteile sind davon unberührt.
 - **Keine 230-V-Anschlussanleitung.** Die Netzspannungsseite und die Schaltlasten sind von einer Elektrofachkraft zu planen und zu prüfen. Nur im spannungsfreien Zustand an der Kleinspannungsverdrahtung arbeiten.
 
+## 0a. Exakte Pinbeschriftung des jetzt gezeigten ESP32-OLED-Boards
+
+**Bildbezug:** Platine von **vorn**, USB-Buchse **unten**, OLED sichtbar. Das Bild zeigt das **Sensor-ESP32-OLED-Board**, **nicht** den separat geplanten ESP32-C3-SuperMini der Leistungsbox. Die farbige Legende und der aufgedruckte Pinname widersprechen sich rechts ganz unten: **Auf der Leiterplatte steht 3V3, in der farbigen Legende fälschlich VIN. Hier gilt 3V3.** Links unten steht tatsächlich VIN. **Diese Pins niemals verwechseln.**
+
+| Position von oben | Links – tatsächlich aufgedruckt | Rechts – tatsächlich aufgedruckt |
+|---|---|---|
+| 15 | EN | **D23** (GPIO23) |
+| 14 | VP (GPIO36) | **D22** (GPIO22) |
+| 13 | VN (GPIO39) | TX0 (GPIO1) |
+| 12 | D34 (GPIO34) | RX0 (GPIO3) |
+| 11 | D35 (GPIO35) | **D21** (GPIO21) |
+| 10 | D32 (GPIO32; **nicht verwenden für RGB**) | **D19** (GPIO19; Phasentaster) |
+| 9 | **D33** (GPIO33; LED Rot) | **D18** (GPIO18; **ist herausgeführt**) |
+| 8 | **D25** (GPIO25; DHT22-1) | D5 (GPIO5) |
+| 7 | **D26** (GPIO26; DHT22-2) | TX2 (GPIO17) |
+| 6 | **D27** (GPIO27; DHT22-3) | **RX2 (GPIO16; Buzzer-Signal)** |
+| 5 | **D14** (GPIO14; BH1750 SCL) | **D4** (GPIO4; LED Grün) |
+| 4 | D12 (GPIO12) | D2 (GPIO2) |
+| 3 | **D13** (GPIO13; BH1750 SDA) | D15 (GPIO15) |
+| 2 | GND | GND |
+| 1 (unten) | **VIN** | **3V3** – Leiterplattenaufdruck; **nicht VIN!** |
+
+**Keine GPIO6-Buchse** auf diesem Board. Das Foto liefert **keine** verlässliche Pinbelegung für den separaten ESP32-C3 in der Leistungsbox. **Pumpentaster und fünf Relais dort nicht anschließen, bis das konkrete Leistungsboard identifiziert ist.**
+
+**Fürs Löten an der Kleinspannungs-Sensorplatine:** Pinbezeichnungen aus dieser Tabelle benutzen und die Widerstände jeweils aus den unten stehenden **Bauteiltabellen** übernehmen. Nicht auf Grundlage der früheren generischen Pinzeichnungen oder der falschen VIN-Legende arbeiten.
+
 ## 1. ADS1115 + PH4502C-pH-Sensor – BESTEHENDEN Spannungsteiler beibehalten
 Der ADS1115 hängt mit dem OLED am I²C-Bus **D21/D22**, Adresse **0x48**. Seine Versorgung ist **3,3 V**, nicht 5 V. pH wird an **A0**, EC an **A1** gemessen.
 
