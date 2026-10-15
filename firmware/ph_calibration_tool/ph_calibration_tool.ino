@@ -234,9 +234,17 @@ enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
 static void setGrowPhase(GrowPhase next);
 static GrowPhase growPhase = GrowPhase::Wuchs;
 static constexpr char PHASE_NVS[] = "growphase_v1";
-static bool phaseRaw = false;
-static bool phaseStable = false;
-static unsigned long phaseChangedMs = 0;
+// FALLING-Interrupt erfasst auch kurze Tastendruecke waehrend blockierender ADC-Messungen.
+// Kein Kontaktprellen als mehrere Eingaben werten (50 ms Mindestabstand).
+static volatile uint32_t phasePendingPresses = 0;
+static volatile uint32_t phaseLastInterruptUs = 0;
+static void IRAM_ATTR onPhaseButtonFalling() {
+  const uint32_t us = micros();
+  if (static_cast<uint32_t>(us - phaseLastInterruptUs) >= PHASE_DEBOUNCE_MS * 1000UL) {
+    phaseLastInterruptUs = us;
+    if (phasePendingPresses < 1000000UL) ++phasePendingPresses;
+  }
+}
 static const char *phaseName() {
   return growPhase == GrowPhase::Wuchs ? "WUCHS" : "BLUETE";
 }
@@ -261,15 +269,19 @@ static void setGrowPhase(GrowPhase next) {
   Serial.printf("PHASE: %s | Speicher %s\n", phaseName(), saved ? "OK" : "FEHLER");
 }
 static void pollGrowPhaseButtons(unsigned long nowMs) {
-  const bool pressed = digitalRead(PIN_PHASE_BUTTON) == LOW;
-  if (pressed != phaseRaw) {
-    phaseRaw = pressed;
-    phaseChangedMs = nowMs;
-  }
-  if (pressed != phaseStable && nowMs - phaseChangedMs >= PHASE_DEBOUNCE_MS) {
-    phaseStable = pressed;
-    if (pressed) setGrowPhase(
-        growPhase == GrowPhase::Wuchs ? GrowPhase::Bluete : GrowPhase::Wuchs);
+  (void)nowMs;
+  uint32_t pressedCount;
+  noInterrupts();
+  pressedCount = phasePendingPresses;
+  phasePendingPresses = 0;
+  interrupts();
+  if (pressedCount == 0) return;
+  Serial.printf("TASTER D19: %lu Druck-Flanke(n), GPIO19 aktuell %s\n",
+                static_cast<unsigned long>(pressedCount),
+                digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW (gedrueckt)" : "HIGH (offen)");
+  // Bei zwei sehr schnellen Druecken wird zweimal umgeschaltet -> Ursprungsphase.
+  if (pressedCount & 1UL) {
+    setGrowPhase(growPhase == GrowPhase::Wuchs ? GrowPhase::Bluete : GrowPhase::Wuchs);
   }
 }
 static void setupGrowPhaseButtons() {
@@ -281,8 +293,11 @@ static void setupGrowPhaseButtons() {
   pinMode(PIN_RGB_RED, OUTPUT);
   pinMode(PIN_RGB_GREEN, OUTPUT);
 #endif
-  phaseRaw = phaseStable = digitalRead(PIN_PHASE_BUTTON) == LOW;
-  phaseChangedMs = millis();
+  phasePendingPresses = 0;
+  phaseLastInterruptUs = micros() - PHASE_DEBOUNCE_MS * 1000UL;
+  attachInterrupt(digitalPinToInterrupt(PIN_PHASE_BUTTON), onPhaseButtonFalling, FALLING);
+  Serial.printf("TASTER D19 beim Start: %s (INPUT_PULLUP, nach GND druecken)\n",
+                digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW (Kontakt bereits geschlossen)" : "HIGH (offen)");
   Preferences prefs;
   if (prefs.begin(PHASE_NVS, true)) {
     growPhase = prefs.getUChar("phase", 0) == 1 ? GrowPhase::Bluete : GrowPhase::Wuchs;
@@ -751,6 +766,8 @@ static void sampleMlx90640(unsigned long) {}
 
 static void printHardwareStatus() {
   Serial.println(F("\n=== HARDWARE-STATUS ==="));
+  Serial.printf("TASTER D19: %s | Pull-up aktiviert; Taste -> GND\n",
+                digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW / GEDRUECKT" : "HIGH / OFFEN");
   Serial.printf("OLED 0x3C : %s\n", oledOk ? "OK" : "NICHT ERKANNT");
   Serial.printf("ADS  0x%02X auf %s: %s\n", adsFoundAddr, adsFoundBus, adsOk ? "OK" : "NICHT ERKANNT");
   if (adsOk) {
@@ -1008,7 +1025,7 @@ static void printHelp() {
   Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
   Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D21, SCL=D22, 0x48"));
   Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | ADS D21/22, BH D13/14"));
-  Serial.println(F("PHASE-Taster D19 -> GND: pro Druck WUCHS/BLUETE umschalten"));
+  Serial.println(F("PHASE-Taster D19 -> GND: pro Druck WUCHS/BLUETE umschalten (Interrupt gegen verpasste Klicks)"));
   Serial.println(F("RGB: Gruen D4, Rot D33, je 440 Ohm (2x220); gemeinsame Kathode GND"));
   Serial.println(F("WOCHE: k1 bis k12 + Zeilenumbruch -> pH-/EC-Sollwerte im NVS speichern"));
   Serial.println(F("Buzzer-Signal D16 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
