@@ -41,9 +41,9 @@
 
 **Vollständiger Anschluss-/Bestückungsplan:** [../wiring_plan_v2.md](../wiring_plan_v2.md).
 
-### Geplante globale 4×4-Matrix-Tastatur
+### 4×4-Matrix-Tastatur (nur spätere Option; Befestigung fehlt)
 
-Eine vorhandene **16-Tasten-Matrix** soll sämtliche Bedienfunktionen übernehmen, nicht nur Relais. Entwurf: **PCF8574 am separaten ESP32-C3**, CYD als Menü-/Statusanzeige, Sensor-ESP32 weiterhin zuständig für Messung und Kalibrierung. Tasten **1–5 Aktoren; 6 Klima; 7 pH; 8 EC; 9 Wasser; 0 Phase/Woche; A Pumpen-Wartungsmodus AUS/EIN; B Automatik/Manuell; C Status; D Einstellungen; * Zurück; # Bestätigen**. Der vorhandene Phasentaster GPIO19 bleibt unverändert. Die separate Pumpe-Taste bleibt bis zur Entscheidung über ihren möglichen Ersatz durch die **A-Taste** dokumentiert. **PCF8574-Modul, Matrixkontakt-Reihenfolge, C3-GPIOs und zugehörige Firmware sind noch nicht verifiziert/implementiert.** Der Taster bietet keine sichere elektrische Freischaltung für Wartungsarbeiten.
+Die vorhandene **16-Tasten-Matrix** bleibt vorerst nur als spätere Bedienoption für sämtliche Funktionen vorgemerkt, nicht nur Relais. **Noch keine Befestigungsmöglichkeit: keine Montage, GPIO-Belegung, PCF8574-Verdrahtung oder Tastatur-Firmware jetzt.** Entwurf: **PCF8574 am separaten ESP32-C3**, CYD als Menü-/Statusanzeige, Sensor-ESP32 weiterhin zuständig für Messung und Kalibrierung. Tasten **1–5 Aktoren; 6 Klima; 7 pH; 8 EC; 9 Wasser; 0 Phase/Woche; A Pumpen-Wartungsmodus AUS/EIN; B Automatik/Manuell; C Status; D Einstellungen; * Zurück; # Bestätigen**. Der vorhandene Phasentaster GPIO19 bleibt unverändert. Der separate Pumpen-Drucktaster **bleibt Bestandteil der aktuellen Planung**; die A-Taste ist allenfalls eine spätere Zusatzbedienung. **PCF8574-Modul, Matrixkontakt-Reihenfolge, C3-GPIOs und zugehörige Firmware sind noch nicht verifiziert/implementiert.** Der Taster bietet keine sichere elektrische Freischaltung für Wartungsarbeiten.
 
 ## Kalibrier-/Diagnosesketch
 
