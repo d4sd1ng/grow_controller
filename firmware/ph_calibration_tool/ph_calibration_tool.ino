@@ -37,11 +37,11 @@
 #ifndef GROW_ENABLE_PH_BUZZER
 #define GROW_ENABLE_PH_BUZZER 0
 #endif
-/* RGB: gemeinsame Kathode laut Nutzer bestaetigt, gruen D32 / rot D33.
+/* RGB: gemeinsame Kathode laut Nutzer bestaetigt, gruen D4 / rot D33.
  * GROW_RGB_COMMON_ANODE = 0, gemeinsamer Kontakt an GND.
  */
 #ifndef GROW_ENABLE_PHASE_RGB
-#define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode bestaetigt; erst nach Umverdrahtung auf D23/D32 flashen
+#define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode: LED gruen D4, rot D33; DS18B20 D23
 #endif
 #ifndef GROW_RGB_COMMON_ANODE
 #define GROW_RGB_COMMON_ANODE 0
@@ -59,10 +59,10 @@
 #endif
 
 static constexpr uint8_t PIN_DS18B20 = 23; // D23, 4.7 kOhm Pull-up nach 3V3
-static constexpr uint8_t PIN_PHASE_BUTTON = 16;
-static constexpr uint8_t PIN_RGB_GREEN = 32;
+static constexpr uint8_t PIN_PHASE_BUTTON = 19; // Taster an D19
+static constexpr uint8_t PIN_RGB_GREEN = 4; // Gruen an D4; GPIO32 liefert kein Signal
 static constexpr uint8_t PIN_RGB_RED = 33;
-static constexpr uint8_t PIN_PH_BUZZER = 19; // Buzzer nur reserviert, Typ noch unbekannt
+static constexpr uint8_t PIN_PH_BUZZER = 16; // Buzzer an D16; deaktiviert bis Typ/Treiber geklaert
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 // TO erst aktivieren, nachdem sein maximaler Ausgangspegel nachweislich <= ADS-VDD (3.3 V) ist.
 static constexpr bool PH_TO_WIRED = false;
@@ -225,8 +225,8 @@ static bool setGrowWeek(int week) {
   return true;
 }
 
-/* Ein Taster: D16-GND, entprellt, jeder Druck wechselt den NVS-Modus.
- * Eine RGB-LED: D32 Gruen (WUCHS), D33 Rot+Gruen (BLUETE=Gelb).
+/* Ein Taster: D19-GND, entprellt, jeder Druck wechselt den NVS-Modus.
+ * Eine RGB-LED: D4 Gruen (WUCHS), D33 Rot+D4 Gruen (BLUETE=Gelb).
  * Gemeinsame Kathode GND bestaetigt, aktiv nach physischer Umverdrahtung.
  */
 enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
@@ -1008,10 +1008,10 @@ static void printHelp() {
   Serial.println(F("=== Grow-Controller Hardwaretest + pH-Kalibrierung ==="));
   Serial.println(F("ADS1115: A0=PO pH, A1=TDS; SDA=D21, SCL=D22, 0x48"));
   Serial.println(F("DS18B20: D23 | DHT22: D25/26/27 | ADS D21/22, BH D13/14"));
-  Serial.println(F("PHASE-Taster D16 -> GND: pro Druck WUCHS/BLUETE umschalten"));
-  Serial.println(F("RGB: Gruen D32, Rot D33, je 440 Ohm (2x220); gemeinsame Kathode GND"));
+  Serial.println(F("PHASE-Taster D19 -> GND: pro Druck WUCHS/BLUETE umschalten"));
+  Serial.println(F("RGB: Gruen D4, Rot D33, je 440 Ohm (2x220); gemeinsame Kathode GND"));
   Serial.println(F("WOCHE: k1 bis k12 + Zeilenumbruch -> pH-/EC-Sollwerte im NVS speichern"));
-  Serial.println(F("Buzzer-Signal D19 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
+  Serial.println(F("Buzzer-Signal D16 RESERVIERT, bislang deaktiviert (Typ/Spannung pruefen)"));
   Serial.println(F("OLED: 0x3C, D21/D22; keine Relais-GPIOs auf Sensor-ESP32"));
   Serial.println(F("i = I2C-Adressen auf beiden Bussen anzeigen (ohne Neuzuordnung)"));
   Serial.println(F("7 = pH-7-Punkt erfassen + im NVS speichern"));
