@@ -46,6 +46,12 @@ Die Wochenzahl ist im separaten ESP32-NVS `growweek_v1` manuell wählbar (`k1` b
 
 Separate Installation im Leistungsgehäuse für **fünf Relais**: **(1) beide Pflanzenlampen gemeinsam über einen Lichtkanal, (2) Abluft, (3) Umluft, (4) Heizung/Heizstrahler und (5) die neu geplante Filter-/Umwälzpumpe**. Zusätzlich ist ein **normaler, nicht rastender Pumpen-Drucktaster** vorgesehen, unabhängig vom Phasentaster des Sensor-ESP32: **1× drücken = Pumpe AUS (Wartungssperre), erneut drücken = Pumpe EIN bzw. normaler Pumpenbetrieb freigegeben**. Der Zustand muss gegen Übersteuerung durch Automatik/WLAN geschützt sein; Neustart oder Kommunikationsverlust dürfen keinen unbeabsichtigten Pumpenstart auslösen. Dessen C3-Eingang und Montageort sind noch offen. Ein Software-Taster ersetzt keine fachgerecht ausgeführte elektrische Freischaltung für Wartungsarbeiten. **Die C3-Pinbelegung und Steuerungsfirmware sind noch nicht freigegeben; keine Relaisansteuerung funktionsfähig.** Kommunikationsausfall und Rückmeldungen müssen sicher behandelt werden. Keine 230-V-Anschlussanleitung in diesem Repository.
 
+### Zentrales Bedienfeld (neu geplant)
+
+Die vorhandene **4×4-Matrix-Tastatur (0–9, A–D, *, #)** soll **sämtliche Funktionen** bedienen: fünf Relais/Aktoren, Klima/VPD, pH/EC, DS18B20, Woche/Phase, Sollwerte, Zeitpläne, Alarme und geführte Kalibrierung. Tastenvorschlag: **1–5 Aktoren, 6 Klima, 7 pH, 8 EC, 9 Wasser/Temperatur, 0 Phase/Woche, A Pumpen-Wartung AUS/EIN je Tastendruck, B Automatik/Manuell, C Status, D Einstellungen, * Zurück, # Bestätigen**. Kein direkter Heizungs-/Licht-Schaltbefehl allein durch eine Ziffer.
+
+Ein **PCF8574-I²C-Portexpander am ESP32-C3** ist vorgesehen, damit eine passive 4×4-Matrix nicht acht direkte GPIOs verbraucht. Der C3-I²C-Pinplan und die acht Matrixleitungen sind **noch nicht geprüft**, ebenso fehlen Protokoll, Firmware und Anzeigeabgleich mit **CYD** und Sensor-OLED. Der separat geplante Pumpen-Drucktaster bleibt bestehen, bis entschieden ist, ob die **A-Taste** ihn ersetzen soll. Für die tatsächliche Filterreinigung ist eine sichere elektrische Trennung unabhängig von der Tastatur nötig.
+
 ## Firmware
 
 - `firmware/ph_calibration_tool`: Kalibrierung/Diagnose/pH-Alarmtests, **keine Relais-GPIO-Ausgänge**.
