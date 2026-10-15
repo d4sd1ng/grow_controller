@@ -118,11 +118,11 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 
 | Vom C3 | Widerstand | Zum Taster | Gegenstelle |
 |---|---|---|---|
-| **ESP32-C3 SuperMini IO6 / GPIO6** | **kein externer Widerstand**, später **INPUT_PULLUP** | **Kontakt 1** des separaten, nicht rastenden Drucktasters | **Kontakt 2 → GND desselben C3** |
+| **ESP32-C3: GPIO noch nicht bestätigt** | **externer Widerstand abhängig von tatsächlichem GPIO/Schaltung; mit geeignetem INPUT_PULLUP keiner vorgesehen** | **Kontakt 1** des separaten, nicht rastenden Drucktasters | **Kontakt 2 → GND desselben C3** |
 
 **Funktion:** 1× drücken = Pumpe AUS/Wartungssperre, erneut drücken = Pumpe EIN/normaler Betrieb freigegeben. Entprellung in der noch zu entwickelnden C3-Firmware; automatische Pumpensteuerung darf eine aktive Wartungssperre nicht überstimmen. Für den Taster **keine Versorgung 3V3/5V auf einen Kontakt** und keine Verbindung zum Sensor-ESP32-D19 vorsehen. Bei einem vierbeinigen Taster müssen die zwei gewählten Pins **nur während des Drückens leitend sein**; die zwei intern dauerhaft verbundenen Pins sind dafür ungeeignet.
 
-**Wichtig zum Stand:** **GPIO6 wurde anhand des bekannten ESP32-C3-SuperMini-Pinouts als eigener, nicht mit Boot-Strapping belegter Eingang ausgewählt**; die tatsächliche Boardbeschriftung und freie Nutzung vor dem Anschluss prüfen. **Der Pumpenkanal und dieser Taster sind derzeit nur dokumentiert, nicht durch ein C3-Programm funktionsfähig.** Keine pH-/EC-Sensor-Firmware auf den C3 flashen.
+**Wichtig zum Stand:** Die vorige Zuordnung auf **GPIO6 war unbestätigt und wurde zurückgenommen**, weil dieser Anschluss am tatsächlichen Board laut Nutzer nicht vorhanden ist. **Keinen Pin anschließen, bis die reale Beschriftung des Leistungsteil-ESP32-C3 geprüft ist.** Der Pumpenkanal und dieser Taster sind derzeit nur geplant; eine C3-Firmware dafür ist nicht implementiert. Keine pH-/EC-Sensor-Firmware auf den C3 flashen.
 
 **Wartungssicherheit:** Die elektronische Pumpenpause ersetzt **keine sichere elektrische Trennung** vor Eingriffen an Filter oder Pumpe. Die Netzversorgung muss für die Reinigung fachgerecht getrennt und gegen ungewollten Wiederanlauf gesichert werden.
 
@@ -140,7 +140,7 @@ Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Bef
 | **ADS/OLED-I²C** | ggf. **1 × 4,7 kΩ D21→3V3 + 1 × 4,7 kΩ D22→3V3** | nur wenn Pull-ups fehlen |
 | **BH1750-I²C** | ggf. **1 × 4,7 kΩ D13→3V3 + 1 × 4,7 kΩ D14→3V3** | nur wenn Pull-ups fehlen |
 | **Taster 1: Phasenwechsel am Sensor-ESP32** | **kein externer Widerstand** (interner Pull-up) | **D19 → Taster → GND** |
-| **Taster 2: Pumpenpause am ESP32-C3** | **kein externer Widerstand** (geplant INPUT_PULLUP) | **C3 GPIO6 → separater Drucktaster → C3 GND; Firmware noch offen** |
+| **Taster 2: Pumpenpause am ESP32-C3** | **noch nicht endgültig festgelegt; bei INPUT_PULLUP kein externer Widerstand geplant** | **C3-GPIO NOCH OFFEN → separater Drucktaster → C3-GND; Pinbeschriftung und Firmware prüfen** |
 | **Buzzer / geplante C3-Relais** | **Widerstände/Treiber erst nach Prüfung der konkreten Module festlegen** | nicht erraten |
 
 **Wichtig:** Der frühere Widerspruch „ADS A0 ohne Spannungsteiler“ ist hiermit korrigiert. Die bestehende **10-kΩ-/20-kΩ-Teilerverdrahtung** und die auf ihr beruhende pH-Kalibrierung sind maßgeblich. Nicht ohne Messungen verändern.
