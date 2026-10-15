@@ -87,13 +87,13 @@ Die Pull-ups liegen **parallel zum Bus**, nicht in Reihe. Vorhandene Widerständ
 
 D32 wird **nicht mehr** für RGB benutzt, weil dort laut Nutzer kein Signal ankam. **Grün = WUCHS; Rot + Grün = Gelb = BLÜTE.** D4 ist in beiden aktuellen Sketches eingetragen; Hardwarefunktion erst nach dem Umstecken und Flashen bestätigen.
 
-## 6. Phasentaster und Buzzer
+## 6. Taster 1 (Phasenwechsel) und Buzzer
 | Bauteil | Verbindung | Externer Widerstand |
 |---|---|---|
-| **Phasentaster / Schließer** | ESP32 **D19 / GPIO19 → Taster → GND** | **keiner**, Firmware verwendet **INPUT_PULLUP** |
+| **Phasentaster / Schließer** | Sensor-ESP32 **D19 / GPIO19 → Taster → GND** | **kein externer Widerstand**, Firmware verwendet **INPUT_PULLUP**; GPIO19-Impulse werden jetzt per Interrupt erfasst |
 | **Buzzer-Steuersignal** | ESP32 **D16 / GPIO16** | kein Widerstand/Treiber pauschal festgelegt; **Buzzer deaktiviert** bis Bauart, Strom und Versorgung geprüft sind |
 
-Ein Tasterdruck wechselt die Wachstumsphase; mechanische Tasterkontakte nach Durchgang prüfen. Einen unbekannten zweipoligen Buzzer nicht direkt als GPIO-Last behandeln.
+**Fehlersuche am D19-Taster:** Nach Flashen der aktualisierten Firmware meldet der Serial-Monitor bei 115200 Baud beim Start den Ruhezustand **HIGH (offen)** und bei Tastendruck die Flankenmeldung **TASTER D19 ...** sowie **PHASE**. Im Kalibriersketch liefert außerdem **`t`** den augenblicklichen Status **HIGH (offen) / LOW (gedrückt)**. Wird der Eingang beim Drücken nicht LOW, sind Steckkontakt, GND-Verbindung und die zwei tatsächlich schaltenden Kontakte des vierpoligen Tasters zu prüfen (nicht zwei intern dauerverbundene Kontakte verwenden). Nicht andere Sensorpins umlegen. Einen unbekannten zweipoligen Buzzer nicht direkt als GPIO-Last behandeln.
 
 ## 7. MLX90640 – vorbereitet, nicht montiert
 | Modulanschluss | Verbindung | Widerstand |
@@ -114,7 +114,17 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 | 4 | **Heizstrahler** | offen |
 | 5 | **Filter-/Umwälzpumpe (geplant)** | offen |
 
-**Pumpen-Drucktaster (separat):** Nicht rastender Schließer; **1× drücken = Pumpe AUS/Wartungssperre, erneut drücken = Pumpe EIN/freigegeben**. Ein C3-Niederspannungseingang wird gebraucht; **dessen GPIO noch offen**, deshalb hier **kein erfundener Widerstand oder Pin**. Die Sperre soll lokal am C3 gegen automatische Wiedereinschaltung wirken. Für tatsächliche Filterreinigung ist außerdem eine fachgerecht ausgeführte, gegen Wiederanlauf sichere **elektrische Trennung der Pumpenversorgung** erforderlich: Die Softwaretaste ersetzt sie nicht.
+### Zweiter Taster – Pumpenabschaltung, eigener Eingang am ESP32-C3
+
+| Vom C3 | Widerstand | Zum Taster | Gegenstelle |
+|---|---|---|---|
+| **ESP32-C3 SuperMini IO6 / GPIO6** | **kein externer Widerstand**, später **INPUT_PULLUP** | **Kontakt 1** des separaten, nicht rastenden Drucktasters | **Kontakt 2 → GND desselben C3** |
+
+**Funktion:** 1× drücken = Pumpe AUS/Wartungssperre, erneut drücken = Pumpe EIN/normaler Betrieb freigegeben. Entprellung in der noch zu entwickelnden C3-Firmware; automatische Pumpensteuerung darf eine aktive Wartungssperre nicht überstimmen. Für den Taster **keine Versorgung 3V3/5V auf einen Kontakt** und keine Verbindung zum Sensor-ESP32-D19 vorsehen. Bei einem vierbeinigen Taster müssen die zwei gewählten Pins **nur während des Drückens leitend sein**; die zwei intern dauerhaft verbundenen Pins sind dafür ungeeignet.
+
+**Wichtig zum Stand:** **GPIO6 wurde anhand des bekannten ESP32-C3-SuperMini-Pinouts als eigener, nicht mit Boot-Strapping belegter Eingang ausgewählt**; die tatsächliche Boardbeschriftung und freie Nutzung vor dem Anschluss prüfen. **Der Pumpenkanal und dieser Taster sind derzeit nur dokumentiert, nicht durch ein C3-Programm funktionsfähig.** Keine pH-/EC-Sensor-Firmware auf den C3 flashen.
+
+**Wartungssicherheit:** Die elektronische Pumpenpause ersetzt **keine sichere elektrische Trennung** vor Eingriffen an Filter oder Pumpe. Die Netzversorgung muss für die Reinigung fachgerecht getrennt und gegen ungewollten Wiederanlauf gesichert werden.
 
 Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Befestigung vorhanden). PCF8574 und Tastenpins sind **noch nicht** zu verdrahten. Die geplante C3-WLAN-Anbindung, Relaislogik und Pumpensperre sind noch nicht implementiert oder getestet.
 
@@ -129,7 +139,8 @@ Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Bef
 | **DHT22 Nr. 1/2/3** | ggf. **je 1 × 4,7 kΩ DATA→3V3** | nur bei fehlendem Modul-Pull-up |
 | **ADS/OLED-I²C** | ggf. **1 × 4,7 kΩ D21→3V3 + 1 × 4,7 kΩ D22→3V3** | nur wenn Pull-ups fehlen |
 | **BH1750-I²C** | ggf. **1 × 4,7 kΩ D13→3V3 + 1 × 4,7 kΩ D14→3V3** | nur wenn Pull-ups fehlen |
-| **Phasentaster** | **0 Ω extern** (interner Pull-up) | D19 ↔ GND |
-| **Buzzer / geplante C3-Relais / Pumpentaster** | **nicht festgelegt**, solange Modul-/Treibertechnik nicht geprüft ist | nicht erraten |
+| **Taster 1: Phasenwechsel am Sensor-ESP32** | **kein externer Widerstand** (interner Pull-up) | **D19 → Taster → GND** |
+| **Taster 2: Pumpenpause am ESP32-C3** | **kein externer Widerstand** (geplant INPUT_PULLUP) | **C3 GPIO6 → separater Drucktaster → C3 GND; Firmware noch offen** |
+| **Buzzer / geplante C3-Relais** | **Widerstände/Treiber erst nach Prüfung der konkreten Module festlegen** | nicht erraten |
 
 **Wichtig:** Der frühere Widerspruch „ADS A0 ohne Spannungsteiler“ ist hiermit korrigiert. Die bestehende **10-kΩ-/20-kΩ-Teilerverdrahtung** und die auf ihr beruhende pH-Kalibrierung sind maßgeblich. Nicht ohne Messungen verändern.
