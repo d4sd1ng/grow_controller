@@ -1,8 +1,8 @@
-# Grow Controller — Verdrahtung V9: DS18B20 D23, RGB-Grün D4, Taster D19, Buzzer D16
+# Grow Controller — Wiring Plan V2: Sensor-ESP32 und 5 Relais (Stand 15.10.2026)
 
-**Stand:** 2026-10-14  
-**Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** als separater Leistungscontroller.  
-**Status:** Sensor/pH-Kalibrierung funktioniert; die neue Zwei-ESP-Kommunikation und der C3-Leistungsteil sind noch NICHT implementiert bzw. getestet.
+**Stand:** 2026-10-15  
+**Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** im separaten Leistungsgehäuse für **insgesamt fünf Relais**.  
+**Status:** Die **pH-Kalibrierung funktioniert laut aktueller Nutzerbestätigung**. Die fünf Relais gehören zum Leistungsgehäuse; ihre C3-Ansteuerung, die WLAN-Kommunikation zwischen beiden ESP32 und die sichere Ausfallbehandlung sind noch nicht implementiert bzw. getestet. Die einzelnen Sensoren und der neue RGB-GPIO4 sind nicht allein durch die Pinliste als erfolgreich getestet anzusehen.
 
 > Dieser Plan behandelt ausschliesslich die Kleinspannungs-Sensorplatine und die logische Rollenverteilung. Die 230-V-Seite ist nicht Gegenstand des Plans; Montage/Pruefung gehoeren in fachkundige Haende.
 
@@ -16,7 +16,7 @@
 | Sensor-ESP32 + OLED    |    | ESP32-C3 SuperMini       |
 | 26 x 30 Lochraster     |    | separates Leistungsgeh.  |
 | - ADS1115 pH/EC        |    | - Aktorcontroller        |
-| - 3 x DHT22            |    | - Relaisansteuerung      |
+| - 3 x DHT22            |    | - Ansteuerung 5 Relais    |
 | - 1× DS18B20 (Wasser)|    |   noch NICHT integriert  |
 | - BH1750 (geplant)     |    | - Fail-safe: zu planen   |
 | - MLX90640 Kamera      |    |                          |
@@ -27,7 +27,7 @@
                      CYD / Dashboard
 ```
 
-**Keine SSR-/Relaisleitungen auf der 26×30-Sensorplatine.** Der ESP32-C3 ist ein zweites Gerät, kein Aufsteckmodul dieser Platine. Die alte Einzel-ESP32-Zeichnung und die Zuordnung GPIO17/18/19/33 zu den Relais sind überholt. Die bisherige direkte GPIO17/18/19/33-Relaiszuordnung ist hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt. Physische Zuordnung: Taster D19, deaktivierter pH-Buzzer D16.**
+**Keine der fünf Relaisleitungen gehört auf die 26×30-Sensorplatine.** Der ESP32-C3 ist ein eigenes Board im Leistungsgehäuse; frühere direkte SSR-Pinbelegungen des Sensor-ESP32 sind hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt.** Am Sensor-ESP32: Taster D19, Buzzer-Signal D16 (in der Firmware noch deaktiviert).
 
 ## Sensor-ESP32: bestätigte Stiftkontakte und Signalzuordnung
 
@@ -37,7 +37,7 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 |---|---|---|---|
 | Internes OLED | **GPIO21 SDA / GPIO22 SCL** | I2C-Bus A, Adresse 0x3C | vorhanden |
 | ADS1115 | **GPIO21 (D21) SDA / GPIO22 (D22) SCL**, 3V3, GND | I²C-Bus A gemeinsam mit internem OLED, Adresse 0x48 (ADDR=GND) | ursprüngliche Zuordnung wiederhergestellt |
-| PH4502C PO | ADS1115 **A0** | pH-Messung, vorhandene kalibrierte Signalkette **nicht umbauen** | kalibriert |
+| PH4502C PO | ADS1115 **A0** | pH-Messung; bei pH-7-/pH-4-Erfassung wird die aktuelle DS18B20-Wassertemperatur gespeichert | **Kalibrierung funktioniert laut Nutzer** |
 | CQRobot TDS/EC analog | ADS1115 **A1** | EC-Spannung, vorhandene Signalkette erhalten | bereits angeschlossen |
 | DS18B20 | **GPIO23 (D23)** | Wasser-Temperatur, 1-Wire, ein Sensor | Erkennung vom Nutzer bestätigt (vor Pinrückverlegung) |
 | DHT22 #1 | **GPIO25 (D25)** | Pflanzenzone | vorgesehen |
@@ -50,7 +50,7 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 | Dieselbe RGB-LED: Rot | **GPIO33 (D33)** über **440 Ω (2×220 Ω in Reihe)** | Blauer LED-Kanal bleibt frei | gemeinsame Kathode bestätigt |
 | pH-Buzzer | **GPIO16 (D16)** als reservierter Steuersignalpin | 2-poliger Buzzer; Bauart/Strom/Spannung unbekannt; über Treiber vorsehen, Firmware deaktiviert | noch nicht anschließen |
 
-**Ausdrücklich nicht verdrahten:** PH4502C **TO -> ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO -> GPIO23** (GPIO23 ist für den DS18B20 reserviert, DO wird nicht benötigt). GPIO17/18/19/33 als Relaisleitungen am Sensor-ESP entfallen. GPIO33 bleibt für den RGB-Rotkanal, GPIO19 ist der Taster, GPIO16 die deaktivierte Buzzer-Reserve; RGB-Grün ist GPIO4.
+**Nicht verbinden:** PH4502C **TO → ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO → GPIO23** (D23 ist für den DS18B20). Frühere Relaisleitungen am Sensor-ESP entfallen. **D4 Grün, D33 Rot, D19 Taster, D16 Buzzer-Signal (deaktiviert), D23 DS18B20.**
 
 ## 26 × 30 Lochraster — konkreter Bestückungsplan (Kleinspannung)
 
@@ -76,7 +76,7 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 
 ### Versorgung
 
-ADS1115, DS18B20, DHT22 und BH1750: geplante **3,3-V-Logik**. **MLX90640: Versorgung gemäß Datenblatt des tatsächlich verbauten Breakout-Moduls; der VCC/VIN-Kontakt bleibt bis dahin unbeschaltet.** Versorgung von konkretem Breakout abhängig; prüfen, ob der 3,3-V-Regler des ESP32 den gesamten Strom liefern kann. PH4502C VCC wurde mit **4,7 V** gemessen; ihre bisher funktionierende Versorgung und A0-Messkette nicht ohne Grund verändern. Alle beteiligten Kleinspannungs-Sensoren benötigen eine passende gemeinsame Signalmasse.
+ADS1115, DS18B20, DHT22 und BH1750: vorgesehene **3,3-V-Logik**. **MLX90640: Versorgung gemäß Datenblatt des tatsächlich verbauten Breakout-Moduls; VCC/VIN bis dahin unbeschaltet lassen.** Prüfen, ob die ESP32-3V3-Versorgung für die gesamte Sensorlast ausreicht. PH4502C VCC wurde mit **4,7 V** gemessen; die laut Nutzer funktionierende pH-Messkette nicht eigenmächtig umbauen. Alle Kleinspannungs-Sensoren benötigen eine gemeinsame Signalmasse.
 
 ## Bedienfeld: EIN 4-Pin-Taster, EINE 4-Pin-RGB-LED und 2-Pin-Buzzer
 
@@ -129,11 +129,23 @@ pH-Alarm ist fest **unter 5,5** bzw. **über 6,2** (inklusive Grenzen als Normal
 
 Die Wochenzahl wird auf dem Sensor-ESP32 getrennt von der Phasentaster-Auswahl gespeichert. Ohne festgelegtes Startdatum wird die Woche **nicht automatisch hochgezählt**. Manuell `k1` bis `k12` über seriell oder per `POST /api/local/control/week`. Für diese Werte sind **keine weiteren Pins oder Lötstellen** erforderlich.
 
-## ESP32-C3 SuperMini — eigener Aufbau
+## ESP32-C3 SuperMini — fünf Relais im separaten Leistungsgehäuse
 
-Der C3 liegt **im separaten Leistungsgehäuse**. Die Vier-Kanal-Zuordnung bleibt funktional **Licht / Umluft / Abluft / Heizstrahler**, aber sie ist **nicht** auf dem Sensor-ESP32 zu verlöten. Konkrete C3-GPIOs, Eingangsstrom-/Pegel-Kompatibilität der eingesetzten Relais und die vollständige Fail-safe-Strategie sind noch zu verifizieren; darum enthält dieser Plan absichtlich **keine erfundene C3-Pinbelegung oder Lastverdrahtung**.
+**Bestätigt sind insgesamt fünf Relais, nicht vier.** Aus der bisherigen Planung sind nur vier Funktionen eindeutig beschrieben. Die Funktion des fünften Kanals ist offen und wird **nicht erfunden**:
 
-Geplante Kommunikation: über WLAN, mit getrennten Zuständen **angefordert**, **vom C3 bestätigt**, **Kommunikation verloren**. Bei Kommunikationsfehlern muss das System einen eindeutig definierten sicheren Zustand annehmen. Ohne überprüfte Umsetzung gibt es noch keine funktionsfähige Relaissteuerung.
+| Bisherige Kanalbezeichnung | Bekannte Funktion | Status der Zuordnung |
+|---|---|---|
+| Relais 1 | Beleuchtung | Funktion dokumentiert; C3-GPIO noch nicht verifiziert |
+| Relais 2 | Umluft | Funktion dokumentiert; ob **zwei Umluftventilatoren zusammen oder getrennt** geschaltet werden, ist nicht abschließend geklärt |
+| Relais 3 | Abluft | Funktion dokumentiert; C3-GPIO noch nicht verifiziert |
+| Relais 4 | Heizstrahler | Funktion dokumentiert; C3-GPIO noch nicht verifiziert |
+| **Relais 5** | **Noch nicht festgelegt** | Nicht als Pumpe, Lüfter oder anderes Gerät ohne Entscheidung zuweisen |
+
+**Keine Wasserpumpe:** Eine Wasserpumpe gehört ausdrücklich nicht zur bestätigten Ausstattung.
+
+Die fünf Relais werden **nicht** am Sensor-ESP32 angeschlossen. Für den separaten ESP32-C3 sind die **konkreten GPIO-Zuweisungen zu allen fünf Kanälen** und die Eingangs-/Treiberanforderungen der verwendeten Relais **noch zu prüfen**. Die obigen Nummern sind Funktionsbezeichnungen, keine geprüfte Klemmenbelegung.
+
+Die zwei ESP32 sollen später über **WLAN** kommunizieren. Geplante Zustände: **angefordert**, **vom C3 bestätigt**, **Kommunikation verloren**. Die tatsächliche Umsetzung, ein definierter sicherer Zustand bei Ausfall und ein Funktionstest fehlen. Dieser Plan legt bewusst **keine 230-V-Leitungen, C3-GPIOs oder unbestätigten Relaisanschlüsse** fest.
 
 ## Softwarestand und nächste Schritte
 
@@ -141,6 +153,6 @@ Geplante Kommunikation: über WLAN, mit getrennten Zuständen **angefordert**, *
 - `firmware/growroom_telemetry_client/growroom_telemetry_client.ino`: Sensor-Messwerte, WLAN, lokaler API-Endpunkt und Sollwertverwaltung; alte lokale Relais-GPIO-Schaltung **entfernt**. C3 ist noch nicht angebunden. API meldet für Aktoren `esp32_c3_not_connected`.
 - `firmware/ds18b20_diagnostic/ds18b20_diagnostic.ino`: DS18B20-Prüfung auf GPIO23 (nach physischer Umverdrahtung erneut testen).
 - Das separate C3-Programm sowie die WLAN-Anbindung und ihre Hardwaretests stehen noch aus.
-- Sensorplatine erst vollständig mit Beschriftungen/Kontinuitätsmessungen prüfen; keine Netzspannungsseite während der Sensor-Diagnose.
+- Sensorplatine vollständig anhand der obigen Liste auf Beschriftung/Kontinuität prüfen. **Die pH-Kalibrierung ist laut Nutzer funktionsfähig**; übrige Sensoren, RGB an D4 und die fünf C3-Relais müssen jeweils gesondert geprüft werden.
 
 **Nicht mehr verwenden:** alter Ein-ESP32-Wiringplan, alte direkte SSR-Pinbelegung am Sensorboard und `firmware/powerbox_actuator/` als vermeintliche fertige ESP32-C3-Firmware.
