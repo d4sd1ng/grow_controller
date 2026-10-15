@@ -175,6 +175,8 @@ struct AirReading {
   float rh = NAN;
   bool ok = false;
 };
+// Deklaration nach Typdefinition: verhindert ungueltige Arduino-Autoprototypen.
+static AirReading readDht(DHT &dht);
 
 struct SensorData {
   AirReading dht[3];
@@ -228,6 +230,9 @@ struct PhaseProfile {
   float targetHumidityPct;
   bool configured;
 };
+static const char *phaseName(GrowPhase p);
+static const PhaseProfile &phaseProfile();
+static void setGrowPhase(GrowPhase next);
 static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true};
 static constexpr PhaseProfile BLUETE_PROFILE = {NAN, NAN, false};
 static constexpr char PHASE_NVS[] = "growphase_v1";
@@ -315,6 +320,7 @@ struct NutrientTargets {
   float ph;
   float ecMsCm;
 };
+static const NutrientTargets *activeNutrientTargets();
 static constexpr NutrientTargets NUTRIENT_WEEK_TARGETS[12] = {
     {6.0f, 1.6f}, // Woche 1
     {5.8f, 1.8f}, // Woche 2
@@ -380,6 +386,11 @@ static void writeNutrientTargets(JsonObject obj) {
 }
 
 enum class PhAlarm : uint8_t { Normal, Low, High, Fault };
+static const char *phCode(PhAlarm status);
+static const char *phMessage(PhAlarm status);
+static void setPhAlarm(PhAlarm next);
+static PhAlarm evaluatePhAlarm(float v, bool measurementValid,
+                               PhAlarm current, PhAlarm &pending, uint8_t &samples);
 PhAlarm phAlarm = PhAlarm::Fault, phPending = PhAlarm::Fault;
 uint8_t phSamples = 0;
 bool phAlertPending = true; // initial sensor fault is an alert
