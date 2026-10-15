@@ -10,8 +10,8 @@
 |---|---|
 | GPIO21/22 | I²C Bus A: ADS1115 (0x48), integriertes OLED (0x3C) + MLX90640 (0x33; noch nicht angeschlossen) |
 | GPIO13/14 | I²C Bus B: nur BH1750 (0x23, ADDR an GND), unabhängig vom ADS1115 |
-| ADS1115 A0 | PH4502C PO – bestehende kalibrierte pH-Messkette |
-| ADS1115 A1 | CQRobot EC/TDS-Analogsignal |
+| ADS1115 A0 | **PH4502C PO → 10 kΩ (in Reihe) → ADS A0; ADS A0 → 20 kΩ → GND**. Bestehenden Spannungsteiler der kalibrierten pH-Messkette beibehalten. |
+| ADS1115 A1 | CQRobot EC/TDS-Analogsignal **ohne den pH-10k/20k-Teiler**; zulässige Analogspannung prüfen |
 | **GPIO23** | **1× DS18B20-Wassertemperatur**, 1-Wire DATA, **4,7-kΩ-Pull-up nach 3V3** |
 | GPIO25/26/27 | 3× DHT22 (Pflanzenzone, Zuluft, Abluft/oben) |
 | GPIO16 | Zweipoliger pH-Buzzer: Steuersignal reserviert; Treiber/Spannung unbekannt, Firmware deaktiviert |
