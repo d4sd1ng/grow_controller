@@ -135,6 +135,12 @@ uint8_t oneWireCount = 0;
 struct AirData { float tempC = NAN; float humidity = NAN; bool ok = false; };
 AirData air[3];
 float bhLux = NAN;
+// Gewaehlte Kulturflaeche ist 1,00 x 1,00 m, auch wenn Blaetter sie erst spaeter bedecken.
+// Lichtstrom auf der Flaeche nur aus punktueller BH1750-Luxmessung geschaetzt.
+static constexpr float GROW_LIGHT_AREA_M2 = 1.00f;
+static float estimatedAreaLumens(float lux) {
+  return isfinite(lux) && lux >= 0.0f ? lux * GROW_LIGHT_AREA_M2 : NAN;
+}
 bool mlx90640Ok = false;
 float thermalRoiTempC = NAN; // nur mittlere Bildregion, nicht als Blatt verifiziert
 float leafVpdCandidate = NAN;
@@ -801,7 +807,8 @@ static void printHardwareStatus() {
   Serial.printf("MLX90640 0x33: %s | ROI %.2f C | VPD-Blatt-Kandidat %.3f kPa\n",
                 mlx90640Ok ? "OK" : "AUS / NICHT ERKANNT / NOCH NICHT MONTIERT",
                 thermalRoiTempC, leafVpdCandidate);
-  if (bhOk && isfinite(bhLux)) Serial.printf("BH1750: %.0f lux\n", bhLux);
+  if (bhOk && isfinite(bhLux)) Serial.printf("BH1750: %.0f lx | ~%.0f lm auf %.2f m2 (punktuelle Schaetzung)\n",
+                                       bhLux, estimatedAreaLumens(bhLux), GROW_LIGHT_AREA_M2);
   else Serial.println(F("BH1750: NICHT ERKANNT / NOCH NICHT VERKABELT"));
   Serial.println(F("Aktoren: ESP32-C3 separat, hier keine Ausgangssignale"));
 }
@@ -1346,12 +1353,22 @@ static void drawOled() {
     display.print(phFromInputVoltage(liveInputV), 2);
   } else display.print(F("pH:--"));
   display.setCursor(0, 40);
-  uint8_t dhtCount = 0;
-  for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++dhtCount;
-  display.print(F("DHT:"));
-  display.print(dhtCount);
-  display.print(F("/3 BH:"));
-  display.print(bhOk && isfinite(bhLux) ? F("OK") : F("--"));
+  // Alle 5 s zwischen alter Sensor-Statuszeile und Lux / geschaetztem lm wechseln.
+  if ((millis() / 5000UL) % 2UL == 1UL) {
+    if (bhOk && isfinite(bhLux)) {
+      display.print(bhLux, 0);
+      display.print(F(" lx ~"));
+      display.print(estimatedAreaLumens(bhLux), 0);
+      display.print(F(" lm"));
+    } else display.print(F("BH1750 --"));
+  } else {
+    uint8_t dhtCount = 0;
+    for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++dhtCount;
+    display.print(F("DHT:"));
+    display.print(dhtCount);
+    display.print(F("/3 BH:"));
+    display.print(bhOk && isfinite(bhLux) ? F("OK") : F("--"));
+  }
   display.setCursor(0, 52);
   display.print(phSimulationActive ? F("TEST ") : F("pH "));
   display.print(F("ALARM:"));
@@ -1556,6 +1573,8 @@ void loop() {
     Serial.printf(" | DHT %u/3 | BH %s",
                   static_cast<unsigned>(n),
                   bhOk && isfinite(bhLux) ? "OK" : "--");
+    if (bhOk && isfinite(bhLux))
+      Serial.printf(" | %.0f lx | ~%.0f lm/1m2", bhLux, estimatedAreaLumens(bhLux));
     Serial.printf(" | %s pH-ALARM %s",
                   phSimulationActive ? "TEST" : "LIVE", phAlarmLabel(livePhAlarm.alarm));
     if (phSimulationActive) Serial.printf(" | TEST pH %.2f", phSimulatedValue);
