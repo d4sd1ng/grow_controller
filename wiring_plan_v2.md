@@ -9,23 +9,22 @@
 ## Architektur
 
 ```text
-                       WLAN
-        +--------------------------------+
-        |                                |
-+-------v----------------+    +----------v--------------+
-| Sensor-ESP32 + OLED    |    | ESP32-C3 SuperMini       |
-| 26 x 30 Lochraster     |    | separates Leistungsgeh.  |
-| - ADS1115 pH/EC        |    | - Aktorcontroller        |
-| - 3 x DHT22            |    | - 5 Relais: Licht (2x),     |
-| - 1× DS18B20 (Wasser)|    |   Ab-/Umluft, Heizung,     |
-                                |   Pumpe; noch offen       |
-| - BH1750 (geplant)     |    | - Fail-safe: zu planen   |
-| - MLX90640 Kamera      |    |                          |
-+----------+-------------+    +-----------+-------------+
-           | WLAN                         | WLAN
-           +----------> Raspberry Pi <----+
-                            |
-                     CYD / Dashboard
+                         WLAN
+        +-------------------+-------------------+
+        |                                       |
++-------v----------------+          +-----------v-----------------+
+| Sensor-ESP32 + OLED    |          | ESP32-C3 SuperMini          |
+| 26 x 30 Lochraster     |          | separates Leistungsgehaeuse |
+| - ADS1115: pH / EC     |          | - 5 Relais (geplant):        |
+| - DS18B20: Wasser      |          |   Licht fuer 2 Lampen       |
+| - DHT22, BH1750        |          |   Abluft / Umluft           |
+| - Kamera: geplant      |          |   Heizung / Pumpe           |
+| - Phasentaster D19     |          | - extra Pumpen-Wartungstaster|
++-----------+------------+          +-------------+--------------+
+            | WLAN                                | WLAN
+            +--------------> Raspberry Pi <--------+
+                                 |
+                            CYD / Dashboard
 ```
 
 **Keine der fünf Relaisleitungen gehört auf die 26×30-Sensorplatine.** Der ESP32-C3 ist ein eigenes Board im Leistungsgehäuse; frühere direkte SSR-Pinbelegungen des Sensor-ESP32 sind hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt.** Am Sensor-ESP32: bestehender Phasentaster D19, Buzzer-Signal D16 (in der Firmware noch deaktiviert). Ein **zweiter, unabhängiger Pumpen-Wartungstaster** ist vorgesehen; Platzierung und Anschluss am C3 sind noch festzulegen.
