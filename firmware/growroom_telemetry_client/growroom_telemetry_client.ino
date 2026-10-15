@@ -193,7 +193,7 @@ struct SensorData {
   bool phDoHigh = false;
   float tdsInputV = NAN;
   float tdsPpm = NAN;
-  float ec = NAN; // mS/cm, bezogen auf 25 C mit DS18B20-Kompensation
+  float ec = NAN; // mS/cm bei der aktuell gemessenen DS18B20-Wassertemperatur
 
   float vpd = NAN; // bestehender Luft-VPD (DHT1), unveraendert
   float thermalRoiTempC = NAN; // mittlere Bildregion, NOCH NICHT als Blatt validiert
@@ -667,8 +667,13 @@ static float cqrobotTdsPpm(float inputV, float temperatureC) {
 }
 static float cqrobotEcMs(float inputV, float waterTempC) {
   if (!ecCalibrated || !validDsTempC(waterTempC)) return NAN;
-  const float ppm = cqrobotTdsPpm(inputV, waterTempC);
-  return isfinite(ppm) ? ppm * ecFactor / 500.0f : NAN;
+  // cqrobotTdsPpm und ecFactor liefern die Referenzleitfaehigkeit bei 25 C.
+  // Ausgabe dagegen stets bei tatsaechlicher DS18B20-Temperatur, ohne
+  // die reale Wassertemperatur jemals als 25 C anzunehmen.
+  const float ppmAt25C = cqrobotTdsPpm(inputV, waterTempC);
+  const float tempFactor = 1.0f + 0.02f * (waterTempC - 25.0f);
+  if (!isfinite(ppmAt25C) || tempFactor <= 0.1f) return NAN;
+  return (ppmAt25C * ecFactor / 500.0f) * tempFactor;
 }
 /* CQRobot-Abtastung: 30 ADS1115-A1-Werte im Abstand von 40 ms.
  * Ringpuffer verhindert 1.2 s blockierendes Lesen im Regel-/HTTP-Loop.
@@ -1072,7 +1077,8 @@ static void handleSummary() {
     reading["ph_alarm_test_status"] = phCode(phTestAlarm);
     reading["ph_alarm_test_value"] = phTestValue;
   }
-  setJsonFloat(reading, "ec", sensors.ec); // mS/cm
+  setJsonFloat(reading, "ec", sensors.ec); // mS/cm bei aktueller Wassertemperatur
+  setJsonFloat(reading, "ec_measurement_temperature_c", sensors.waterTempC);
   reading["ec_calibrated"] = ecCalibrated;
   reading["ec_reference_temp_verified"] = validDsTempC(ecCalTempC);
   setJsonFloat(reading, "ec_reference_voltage", ecReferenceInputV);
@@ -1222,7 +1228,8 @@ static bool sendTelemetry() {
   }
   root["light_area_m2"] = GROW_LIGHT_AREA_M2;
   root["lumens_estimated"] = true;
-  setJsonFloat(root, "ec", sensors.ec); // mS/cm
+  setJsonFloat(root, "ec", sensors.ec); // mS/cm bei aktueller Wassertemperatur
+  setJsonFloat(root, "ec_measurement_temperature_c", sensors.waterTempC);
   root["ec_calibrated"] = ecCalibrated;
   root["ec_reference_temp_verified"] = validDsTempC(ecCalTempC);
   setJsonFloat(root, "ec_reference_voltage", ecReferenceInputV);
@@ -1273,7 +1280,7 @@ static bool sendTelemetry() {
   dev["ph_to_configured"] = PH_TO_WIRED;
   dev["ph_to_type"] = "raw_voltage_uncalibrated";
   dev["ec_reference_us_cm"] = 1413;
-  dev["ec_temp_compensation"] = "ds18b20_to_25C_or_null";
+  dev["ec_temp_compensation"] = "ds18b20_live_temperature_or_null";
   dev["water_ds_rom_selected"] = waterSensorRomSelected;
   dev["to_case_calibrated"] = toCalibrated;
   dev["actuator_controller"] = "esp32_c3_not_connected";
