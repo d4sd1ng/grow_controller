@@ -1498,6 +1498,17 @@ void setup() {
   autoControl();
   applyActuators();
   setupLocalApi();
+  // LED-Regressionstest nach ALLEN Initialisierungen (einschl. neuer D18-Taster).
+  // Gleiches Pinout und gleiche Phasenlogik wie zuvor; keine Fremd-Pins aendern.
+#if GROW_ENABLE_PHASE_RGB
+  pinMode(PIN_RGB_GREEN, OUTPUT);
+  pinMode(PIN_RGB_RED, OUTPUT);
+  refreshPhaseRgb();
+  Serial.printf("RGB STARTTEST (Produktions-Sketch): PHASE %s | GPIO4 GRUEN=%d | GPIO33 ROT=%d | gemeinsame Kathode GND\n",
+                phaseName(growPhase),
+                digitalRead(PIN_RGB_GREEN), digitalRead(PIN_RGB_RED));
+#endif
+
 }
 
 void loop() {
