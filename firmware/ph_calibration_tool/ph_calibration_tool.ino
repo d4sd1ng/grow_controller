@@ -231,6 +231,8 @@ static bool setGrowWeek(int week) {
  * Gemeinsame Kathode GND bestaetigt, aktiv nach physischer Umverdrahtung.
  */
 enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
+// Expliziter Prototyp: Arduino soll ihn nicht vor der Typdefinition generieren.
+static void setGrowPhase(GrowPhase next);
 static GrowPhase growPhase = GrowPhase::Wuchs;
 static constexpr char PHASE_NVS[] = "growphase_v1";
 static bool phaseRaw = false;
@@ -308,6 +310,9 @@ struct EcWindowStats {
   float rawMaxV;
   float rawStdV;
 };
+// Explizite Prototypen nach den Typdefinitionen (Arduino-Preprocessor).
+static EcWindowStats sampleEcWindow();
+static SampleStats sampleChannel(uint8_t channel, uint16_t count, uint16_t delayMs);
 static EcWindowStats sampleEcWindow() {
   const EcWindowStats invalid{NAN, NAN, NAN, NAN};
   if (!adsOk) return invalid;
@@ -1188,6 +1193,8 @@ struct PhTestMachine {
     if (samples >= 3) { samples = 0; alarm = next; }
   }
 };
+// Explizite Deklaration nach PhTestAlarm (verhindert ungueltige Autoprototypen).
+static const char *phAlarmLabel(PhTestAlarm a);
 
 /* Live-Alarm und manuell ausloesbarer Test verwenden dieselbe Zustandslogik
  * wie der automatisierte p-Selbsttest. Testwerte ersetzen keine Sensorwerte,
