@@ -1,198 +1,135 @@
-# Grow Controller — Wiring Plan V2: Sensor-ESP32 und 5 Relais (Stand 15.10.2026)
+# Grow-Controller – Wiring Plan V2: Anschlüsse und Widerstände
+**Stand:** 15.10.2026 · **Gültiger Firmware-Branch:** feature/ph-calibration-service-esp
 
-**Stand:** 2026-10-15  
-**Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** im separaten Leistungsgehäuse für **genau fünf Relais**: zwei Lampen gemeinsam, Abluft, Umluft, Heizung und geplante Filter-/Umwälzpumpe. (3) **4×4-Matrix-Tastatur ausschließlich als spätere Option vorgemerkt**, da derzeit keine Befestigungsmöglichkeit vorhanden ist. PCF8574-I²C-Portexpander am C3 nur als Entwurf; keine Montage, Verkabelung oder Implementierung jetzt. Der vorhandene Phasentaster D19 und der separat geplante Pumpen-Drucktaster bleiben vorgesehen.  
-**Status:** Die **pH-Kalibrierung funktioniert laut aktueller Nutzerbestätigung**. Die Funktionen der fünf Relais sind benannt. **4×4-Tastatur und vollständige Menübedienung sind lediglich für später vorgemerkt: derzeit fehlt eine Befestigungsmöglichkeit; kein Einbau und keine Programmierung vorgesehen.** C3-GPIO-Zuordnung, Leistungsansteuerung, C3-I²C-Zusatzbus, WLAN-Kommunikation und Pumpen-Wartungssperre sind noch nicht implementiert oder getestet. Einzelne Sensoren und RGB-GPIO4 sind nicht allein durch die Pinliste als erfolgreich getestet anzusehen.
+## 0. Geltungsbereich und aktuelle Bestätigung
+- **Sensor-ESP32 mit 0,96-Zoll-OLED** auf der 26×30-Lochrasterplatine: hier werden ausschließlich Kleinspannungs-Sensoren und das kleine Bedienfeld angeschlossen.
+- **ESP32-C3 SuperMini** im separaten Leistungsgehäuse: fünf Relaisfunktionen sind geplant, **GPIO-Zuordnung/Relais-Firmware und Netzinstallation noch nicht freigegeben**.
+- **Die pH-Kalibrierung funktioniert laut Nutzer. Die bestehende pH-Spannungsteiler-Verdrahtung mit 10 kΩ + 20 kΩ ist beizubehalten.** Die zuvor im Plan notierte Angabe „kein Spannungsteiler“ war falsch.
+- Ein Widerstand steht **immer direkt beim betroffenen Modul** in dessen Tabelle. „Keiner“ bedeutet ausdrücklich kein zusätzlicher externer Widerstand an dieser Verbindung; integrierte Modulbauteile sind davon unberührt.
+- **Keine 230-V-Anschlussanleitung.** Die Netzspannungsseite und die Schaltlasten sind von einer Elektrofachkraft zu planen und zu prüfen. Nur im spannungsfreien Zustand an der Kleinspannungsverdrahtung arbeiten.
 
-> Dieser Plan behandelt ausschliesslich die Kleinspannungs-Sensorplatine und die logische Rollenverteilung. Die 230-V-Seite ist nicht Gegenstand des Plans; Montage/Pruefung gehoeren in fachkundige Haende.
+## 1. ADS1115 + PH4502C-pH-Sensor – BESTEHENDEN Spannungsteiler beibehalten
+Der ADS1115 hängt mit dem OLED am I²C-Bus **D21/D22**, Adresse **0x48**. Seine Versorgung ist **3,3 V**, nicht 5 V. pH wird an **A0**, EC an **A1** gemessen.
 
-## Architektur
-
-```text
-                         WLAN
-        +-------------------+-------------------+
-        |                                       |
-+-------v----------------+          +-----------v-----------------+
-| Sensor-ESP32 + OLED    |          | ESP32-C3 SuperMini          |
-| 26 x 30 Lochraster     |          | separates Leistungsgehaeuse |
-| - ADS1115: pH / EC     |          | - 5 Relais (geplant):        |
-| - DS18B20: Wasser      |          |   Licht fuer 2 Lampen       |
-| - DHT22, BH1750        |          |   Abluft / Umluft           |
-| - Kamera: geplant      |          |   Heizung / Pumpe           |
-| - Phasentaster D19     |          | - extra Pumpen-Wartungstaster|
-+-----------+------------+          +-------------+--------------+
-            | WLAN                                | WLAN
-            +--------------> Raspberry Pi <--------+
-                                 |
-                            CYD / Dashboard
-```
-
-**Keine der fünf Relaisleitungen gehört auf die 26×30-Sensorplatine.** Der ESP32-C3 ist ein eigenes Board im Leistungsgehäuse; frühere direkte SSR-Pinbelegungen des Sensor-ESP32 sind hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt.** Am Sensor-ESP32: bestehender Phasentaster D19, Buzzer-Signal D16 (in der Firmware noch deaktiviert). Ein **zweiter, unabhängiger, nicht rastender Pumpen-Drucktaster** ist vorgesehen: einmal drücken = Pumpe AUS, erneut drücken = Pumpe EIN; Platzierung und Anschluss am C3 sind noch festzulegen.
-
-## Sensor-ESP32: bestätigte Stiftkontakte und Signalzuordnung
-
-Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-Pins**, nicht nach einem generischen ESP32-DevKit-Pinout. Ein endgültiger Loch-für-Loch-Aufbau setzt den realen Lochabstand und die Modulmaße voraus.
-
-| Sensor/Modul | Anschluss am Sensor-ESP32 | Zweck | Bauzustand |
+| Von | Über Widerstand | Nach | Hinweis |
 |---|---|---|---|
-| Internes OLED | **GPIO21 SDA / GPIO22 SCL** | I2C-Bus A, Adresse 0x3C | vorhanden |
-| ADS1115 | **GPIO21 (D21) SDA / GPIO22 (D22) SCL**, 3V3, GND | I²C-Bus A gemeinsam mit internem OLED, Adresse 0x48 (ADDR=GND) | ursprüngliche Zuordnung wiederhergestellt |
-| PH4502C PO | ADS1115 **A0** | pH-Messung; bei pH-7-/pH-4-Erfassung wird die aktuelle DS18B20-Wassertemperatur gespeichert | **Kalibrierung funktioniert laut Nutzer** |
-| CQRobot TDS/EC analog | ADS1115 **A1** | EC-Spannung, vorhandene Signalkette erhalten | bereits angeschlossen |
-| DS18B20 | **GPIO23 (D23)** | Wasser-Temperatur, 1-Wire, ein Sensor | Erkennung vom Nutzer bestätigt (vor Pinrückverlegung) |
-| DHT22 #1 | **GPIO25 (D25)** | Pflanzenzone | vorgesehen |
-| DHT22 #2 | **GPIO26 (D26)** | Zuluft-/Unterzone | vorgesehen |
-| DHT22 #3 | **GPIO27 (D27)** | obere Zone | vorgesehen |
-| BH1750 | **GPIO13 (D13) SDA**, **GPIO14 (D14) SCL**, ADDR an GND | separater I²C-Bus B, Adresse 0x23 | vorgesehen |
-| MLX90640 Infrarotkamera | **GPIO21 (D21) SDA**, **GPIO22 (D22) SCL** | Bus A mit OLED, Adresse 0x33, Kamerastecker vorbereiten | Anschluss einplanen, Modul noch nicht geprüft |
-| Ein 4-Pin-Phasentaster | **GPIO19 (D19)** nach GND, `INPUT_PULLUP` | Je ein Pin aus den beiden Schaltpaaren; 50 ms Entprellung, jeder Tastendruck wechselt den Modus | vorgesehen |
-| Eine 4-Pin-RGB-LED: Grün | **GPIO4 (D4)** über **440 Ω (2×220 Ω in Reihe)** | WUCHS = Grün, BLÜTE = Rot und Grün gleichzeitig | gemeinsame Kathode bestätigt |
-| Dieselbe RGB-LED: Rot | **GPIO33 (D33)** über **440 Ω (2×220 Ω in Reihe)** | Blauer LED-Kanal bleibt frei | gemeinsame Kathode bestätigt |
-| pH-Buzzer | **GPIO16 (D16)** als zugeordneter Steuersignalpin | 2-poliger Buzzer; Bauart/Strom/Spannung und benötigter Treiber noch prüfen; Firmware deaktiviert | Pinzuordnung vom Nutzer bestätigt, elektrischer Aufbau noch nicht verifiziert |
+| ESP32 **3V3** | keiner | ADS1115 **VDD** | ADS-Versorgung 3,3 V |
+| ESP32 **GND** | keiner | ADS1115 **GND** | Gemeinsame Signalmasse |
+| ESP32 **D21 (GPIO21, SDA)** | keiner in Reihe | ADS1115 **SDA** | Gemeinsamer I²C-Bus mit internem OLED |
+| ESP32 **D22 (GPIO22, SCL)** | keiner in Reihe | ADS1115 **SCL** | Gemeinsamer I²C-Bus mit internem OLED |
+| ADS1115 **ADDR** | keiner | **GND** | Geräteadresse 0x48 |
+| **PH4502C PO** | **10 kΩ in Reihe** | **ADS1115 A0** | **OBERER** Widerstand des Spannungsteilers, bereits festgelegt/verbaut |
+| **ADS1115 A0** | **20 kΩ** | **GND** | **UNTERER** Widerstand des Spannungsteilers, vom Nutzer zuvor als eingesetzt bestätigt |
+| **CQRobot EC/TDS-Analogausgang** | **kein 10k/20k-Teiler** | **ADS1115 A1** | Nur verwenden, sofern die Analogspannung im ADS-Versorgungsbereich liegt |
+| ADS1115 **A2**, **A3**, **ALRT/RDY** | keiner | **offen** | Nicht gebraucht |
 
-**Nicht verbinden:** PH4502C **TO → ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO → GPIO23** (D23 ist für den DS18B20). Frühere Relaisleitungen am Sensor-ESP entfallen. **D4 Grün, D33 Rot, D19 Taster, D16 Buzzer-Signal (deaktiviert), D23 DS18B20.**
+**Exakter pH-Spannungsteiler:** PH4502C PO → 10 kΩ → KNOTEN A0 → 20 kΩ → GND. Vom **KNOTEN A0** geht **ohne weiteren Widerstand** die Messleitung zum Pin **ADS A0**. PO und ADS müssen die gleiche Masse besitzen. Der ADC sieht nominell **2/3 der PO-Spannung**: z. B. 3,0 V PO → 2,0 V an A0. Die Software-Kalibrierpunkte beziehen sich **direkt auf die gemessene ADS-A0-Spannung**, deshalb den Teiler nicht entfernen und in der Firmware nicht noch einmal pauschal mit 1,5 multiplizieren.
 
-## 26 × 30 Lochraster — konkreter Bestückungsplan (Kleinspannung)
+**Spannungsgrenze:** Bei ADS-VDD = 3,3 V ist der spezifizierte **Betriebsbereich** der Analogeingänge **GND bis VDD**. Der 10k/20k-Teiler würde bei **5,0 V an PO theoretisch 3,33 V an A0** ergeben – knapp **oberhalb** dieses Betriebsbereichs. Dass der Teiler derzeit funktioniert, ist kein Freibrief für alle denkbaren PO-Spannungen; den maximal tatsächlich an A0 auftretenden Wert vor verändertem Betrieb prüfen. **Nicht ohne neue Messung die Widerstände tauschen**, denn dadurch würden die gespeicherten pH-Kalibrierpunkte nicht mehr passen.
 
-**Achtung:** 26×30 bezeichnet 26 × 30 **Bohrungen**, nicht Millimeter. Bei 2,54-mm-Raster beträgt der **Abstand zwischen den äußersten Lochmittelpunkten** 63,50 × 73,66 mm; die Außenmaße der Leiterplatte können davon abweichen. Bestueckung erst trocken auflegen, da genaue OLED-ESP32-/ADS1115-Modulabmessungen und Reihenabstände nicht zuverlässig vorliegen.
+**I²C-Pull-ups nur prüfen, nicht blind doppelt einbauen:** Falls der gemeinsame Bus D21/D22 durch die vorhandenen OLED-/ADS-Breakouts **noch keine ausreichenden Pull-ups** besitzt, kommt jeweils **ein 4,7-kΩ-Widerstand D21 → 3V3 und D22 → 3V3**. Beide liegen **zwischen Datenleitung und 3V3**, niemals in Reihe zu SDA/SCL. Vorhandene Pull-ups mitberücksichtigen; deren Bestückung am konkreten Breakout ist noch zu überprüfen. Ein Abblockkondensator von 100 nF VDD–GND ist im TI-Datenblatt vorgesehen; prüfen, ob er bereits auf dem ADS-Breakout bestückt ist.
 
-| Bauteil / Anschluss | Auf der Sensorplatine vorbereiten | Bemerkung |
+### PH4502C separat
+| PH4502C-Pin | Verbindung | Zusätzlicher Widerstand |
 |---|---|---|
-| Sensor-ESP32 mit OLED | **2 × 15-polige Buchsenleiste**, nur wenn der reale ESP32 die bestätigten 15 Kontakte je Seite und passendes Raster besitzt | USB und OLED müssen erreichbar bleiben |
-| ADS1115-Modul | passende **Buchsenleisten / Stiftadapter** für die tatsächlich vorhandenen Modul-Pins | pH A0/EC A1; A2/A3 frei |
-| DS18B20-Bus | **1 × 3-poliger Anschluss: 3V3, GND, DATA D23** | genau ein Wassertemperatursensor |
-| DS-Pull-up | **1 × 4,7 kOhm** zwischen DATA D23 und 3V3 | genau EIN Pull-up am Bus |
-| DHT22 #1–#3 | **3 × 3-poliger Anschluss: 3V3, GND, DATA** | DATA D25/D26/D27 |
-| DHT-Pull-ups | **bis zu 3 × 4,7 kOhm**, jeweils DATA gegen 3V3 | nur falls das konkrete DHT22-Modul keinen eigenen Pull-up hat |
-| BH1750 | **1 × 5-poliger Anschluss: 3V3, GND, SDA D13, SCL D14, ADDR** | ADDR an GND: Adresse 0x23; Board-Aufdruck ggf. „SCA“ für SDA prüfen |
-| pH-/EC-Signale | PO an ADS A0 (pH-Kalibrierung funktioniert); EC-Analogausgang an ADS A1 (EC-Kalibrierstatus separat prüfen) | keine neue, unbelegte 10k/20k-Teilerannahme |
-| Spannungs-/Masseverteilung | getrennte **3V3- und GND-Verbindungen** auf Lochraster mit isoliertem Draht | Lochraster hat keine automatischen Stromschienen |
-| **MLX90640 Infrarotkamera** | **1 × 4-poliger Anschluss: GND, SDA D21, SCL D22, VCC/VIN** | Kamera außerhalb des Controllergehäuses, Versorgung erst nach Abgleich der Modulvariante festlegen |
-| **Ein 4-Pin-Taster** | **D19/GND:** je einen Pin aus zwei unterschiedlichen Kontaktpaaren verwenden, die nur beim Drücken verbunden werden | Kontaktpaare vor dem Verlöten mit Durchgangsprüfer identifizieren |
-| **Eine 4-Pin-RGB-LED** | **Grün D4 über 440 Ω**, **Rot D33 über 440 Ω**, Blau frei, gemeinsame Kathode → GND | Jeder 440-Ω-Vorwiderstand besteht aus **2 × 220 Ω in Reihe** |
-| **Buzzer-/Treiber-Reserve** | **D16 als Steuersignal, Platz für 2-poligen Buzzer-Anschluss und Transistor-Treiber vorsehen** | Kein unbekannter Buzzer direkt an GPIO; Versorgung und aktiver/passiver Typ prüfen |
+| **PO** | → **10 kΩ** → ADS **A0**; von A0 **20 kΩ → GND** | **10 kΩ + 20 kΩ wie oben** |
+| **GND** | → gemeinsame Masse mit ESP32 und ADS | keiner |
+| **VCC** | → **bestehende, funktionierende Sensorversorgung nicht verändern** (zuvor ca. 4,7 V gemessen) | keiner neu vorgesehen |
+| **TO** | **nicht anschließen** | keiner |
+| **DO** | **nicht anschließen** | keiner |
 
-**Mechanische Reihenfolge:** zuerst ESP32 und ADS1115 probeweise positionieren; USB-/OLED-Freiraum und Sensor-Steckverbinder prüfen; dann Buchsenleisten und Pull-up-Widerstände verlöten; anschließend Kleinspannungs-Signale und Masse einzeln durchmessen. Steckverbinder nach Signalname und Spannung beschriften. Die DHT22-/BH1750-/DS-Sensoren und die MLX90640-Kamera messen außerhalb des warmen Gehäuses; daher **nur ihre Anschlüsse**, nicht die Messköpfe selbst, auf der Lochrasterplatine anordnen. Für Kamera und Bus A die Leitung möglichst kurz halten; I2C-Betrieb mit 400 kHz ist mit längeren Kabeln nicht garantiert.
-
-### Versorgung
-
-ADS1115, DS18B20, DHT22 und BH1750: vorgesehene **3,3-V-Logik**. **MLX90640: Versorgung gemäß Datenblatt des tatsächlich verbauten Breakout-Moduls; VCC/VIN bis dahin unbeschaltet lassen.** Prüfen, ob die ESP32-3V3-Versorgung für die gesamte Sensorlast ausreicht. PH4502C VCC wurde mit **4,7 V** gemessen; die laut Nutzer funktionierende pH-Messkette nicht eigenmächtig umbauen. Alle Kleinspannungs-Sensoren benötigen eine gemeinsame Signalmasse.
-
-## Sensor-Bedienfeld: Phasentaster, RGB-LED und Buzzer; zusätzlicher Pumpen-Drucktaster am Leistungsteil geplant
-
-**Bestehender 4-Pin-Phasentaster (momentaner Schließer, NICHT der neue Pumpentaster):** Bei üblichen Tact-Switches sind zwei Kontakte je Seite intern dauerhaft verbunden. **Nicht nach Orientierung raten:** Mit dem Multimeter ein Kontaktpaar ermitteln, das ohne Druck **offen** und nur beim Drücken leitend ist. **Einen Kontakt an D19**, den anderen an **GND**. Die zwei übrigen Kontakte werden nicht verbunden. `INPUT_PULLUP`, softwareseitig 50 ms Entprellung. **Jeder Tastendruck wechselt WUCHS ↔ BLÜTE.** Auswahl im ESP32-NVS `growphase_v1`.
-
-**4-Pin-RGB-LED:** Vier Kontakte entsprechen gemeinsamem Anschluss, Rot, Grün und Blau. Der Nutzer hat **gemeinsame Kathode** bestätigt: gemeinsamen Kontakt an GND. Rot- und Grünanschluss über die beiden Vorwiderstände; Blau bleibt frei.
-
-- **D4 → 440 Ω (2 × 220 Ω in Reihe) → Grün**
-- **D33 → 440 Ω (2 × 220 Ω in Reihe) → Rot**
-- Blau bleibt unbenutzt.
-- **Gemeinsame Kathode: gemeinsam an GND**, HIGH schaltet jeweilige Farbe ein.
-
-Die Firmware ist auf **Grün = WUCHS** und **Rot + Grün = Gelb = BLÜTE** umgestellt. **Gemeinsame Kathode steht fest** (`GROW_RGB_COMMON_ANODE=0`); RGB-Ausgänge sind im jetzt aktualisierten Sketch aktiviert (`GROW_ENABLE_PHASE_RGB=1`). **Vor dem Flashen DS-DATA auf D23 und RGB-Grün vom nicht funktionierenden D32 auf D4 anschließen.**
-
-**Zweipoliger pH-Buzzer:** Der Nutzer ordnet das Steuersignal **D16** zu. **Die Firmware hält die Buzzer-Ansteuerung mit `GROW_ENABLE_PH_BUZZER=0` deaktiviert.** Die elektrische Beschaltung, Versorgung, Stromaufnahme sowie aktiv/passiv müssen am konkreten Buzzer geprüft werden; eine erforderliche Treiberstufe darf nicht erraten werden. **D18 nicht verwenden:** am vorhandenen Board nicht herausgeführt.
-
-**pH-Alarm:** LOW bei pH unter **5,5**; HIGH bei pH über **6,2**; Normalbereich 5,5–6,2 inklusive (bei Statuswechseln weiterhin 0,1 pH Hysterese und drei Messungen). Vorbereitete Tonsignale für aktiven Buzzer: LOW zweimal kurz alle 5 s, HIGH dreimal kurz alle 5 s, Sensorfehler einmal alle 10 s.
-
-**Software/Phasensteuerung:** Die Phase wird weiterhin auf OLED, API und Telemetrie ausgegeben. BLÜTE-Klimasollwerte sind noch nicht abgestimmt; die automatische Klimaregelung für BLÜTE bleibt gesperrt. Die pH-/EC-Wochensollwerte und pH-Alarmgrenzen werden durch den Tasterwechsel nicht verändert.
-
-## MLX90640-Kameraanschluss (jetzt reserviert)
-
-**Für die 26×30-Lochrasterplatine einen 4-poligen Stecker vorsehen:**
-
-| Kontakt | Verbindung | Bus |
+### CQRobot EC/TDS separat
+| Modulanschluss | Verbindung | Zusätzlicher Widerstand |
 |---|---|---|
-| SDA | ESP32 D21 / GPIO21 | I²C A, gemeinsam mit OLED |
-| SCL | ESP32 D22 / GPIO22 | I²C A, gemeinsam mit OLED |
-| GND | Signalmasse | gemeinsame Kleinspannungsmasse |
-| VCC/VIN | **noch offen – Modulversorgung prüfen** | nicht ohne Modulprüfung mit 3,3 V oder 5 V verbinden |
+| **Analoger Signalausgang** | → ADS **A1** | **kein 10k/20k-Spannungsteiler**; zulässige Maximalspannung vor Änderungen prüfen |
+| **GND** | → gemeinsame Masse | keiner |
+| **Versorgung** | → entsprechend Aufdruck/Datenblatt der tatsächlichen CQRobot-Modulvariante | **keine unbestätigte Versorgungsspannung oder Beschaltung erfinden** |
 
-Die MLX90640 hat standardmäßig die I²C-Adresse **0x33**; das OLED **0x3C**. Der ADS1115 (**0x48**) teilt sich den Bus A auf **D21/D22** mit OLED und geplanter Kamera. Der BH1750 (**0x23**) bleibt allein auf **Bus B D13/D14**. Dafür sind keine weiteren ESP32-GPIOs nötig. Falls das Kameramodul I²C-Pull-ups hat, deren Spannung und Gesamtwirkung mit dem OLED-Modul prüfen; alle Datenleitungen müssen **3,3-V-kompatibel** bleiben.
+EC wird in der Firmware mit der tatsächlichen DS18B20-Wassertemperatur kompensiert. An A1 keine pH-Kalibrierwerte verwenden.
 
-Die **Wärmebildkamera** benötigt freie Sicht auf die Blätter; nicht hinter gewöhnliches Glas/Acryl oder in das geschlossene Sensorgehäuse montieren. Kamera-Bildfeld und Ausrichtung erst am aufgebauten Salatbeet festlegen. Eine längere I²C-Leitung muss elektrisch validiert werden, bevor die Firmware mit 400 kHz arbeitet.
-
-**Software:** MLX90640 ist in Diagnose- und Produktionssketch bereits vorbereitet (`GROW_ENABLE_MLX90640=0` bis Einbau und Bibliotheksinstallation). Daten werden zunächst als thermische ROI und möglicher Blatt-VPD-Kandidat erhoben, **ohne automatische Aktorregelung**.
-
-## Festgelegte pH-/EC-Wochenprofile (Firmware, keine Zusatzverkabelung)
-
-pH-Alarm ist fest **unter 5,5** bzw. **über 6,2** (inklusive Grenzen als Normalbereich, bestehende Hysterese). EC steht für **elektrische Leitfähigkeit in mS/cm** und ist als Wochen-Sollwert vorgesehen, noch nicht als EC-Alarm.
-
-| Anbauwoche | pH-Soll | EC-Soll in mS/cm |
-|---|---:|---:|
-| 1 | 6,0 | 1,6 |
-| 2 | 5,8 | 1,8 |
-| 3–7 | 5,5 | 2,0 |
-| 8 | 5,5 | 2,5 |
-| 9–10 | 5,5 | 1,8 |
-| 11–12 | 5,5 | 0,2 |
-
-Die Wochenzahl wird auf dem Sensor-ESP32 getrennt von der Phasentaster-Auswahl gespeichert. Ohne festgelegtes Startdatum wird die Woche **nicht automatisch hochgezählt**. Manuell `k1` bis `k12` über seriell oder per `POST /api/local/control/week`. Für diese Werte sind **keine weiteren Pins oder Lötstellen** erforderlich.
-
-## ESP32-C3 SuperMini — fünf Relais im separaten Leistungsgehäuse
-
-**Endgültig als Funktionen zugeordnet: genau fünf Relais.** Die **beiden Lampen gehören gemeinsam an EINEN Lichtkanal** (nicht zwei oder drei Lichtrelais). Die untenstehenden Kanalnummern benennen Funktionen, **noch keine geprüften GPIOs, Klemmen oder elektrischen Anschlüsse**.
-
-| Relais / Funktionskanal | Geschaltete Funktion | Steuerungsstatus |
+## 2. DS18B20 – ein Wassertemperatursensor
+| Von | Über Widerstand | Nach |
 |---|---|---|
-| 1 – Licht | **Beide Pflanzenlampen gemeinsam** | Gemeinsames Ein/Aus; Leistungs- und Einschaltstrom beider Treiber vor Auswahl und Freigabe der Schaltstufe prüfen |
-| 2 – Abluft | Abluftventilator | Eigenständiger Kanal |
-| 3 – Umluft | Umluftventilation | Eigenständiger Kanal; konkrete Anzahl/Anordnung der Ventilatoren nicht aus der Relaisanzahl ableiten |
-| 4 – Heizung | Heizstrahler | Eigenständiger Kanal; unabhängige Schutz-/Temperaturbegrenzung erforderlich |
-| 5 – Pumpe | **Geplante Filter-/Umwälzpumpe** | Eigenständiger Kanal; Pumpe kommt neu hinzu, technische Daten und Anschluss noch offen |
+| ESP32 **3V3** | keiner | DS18B20 **VDD** |
+| ESP32 **GND** | keiner | DS18B20 **GND** |
+| DS18B20 **DATA** | keiner in Reihe | ESP32 **D23 / GPIO23** |
+| **D23 / DATA** | **4,7 kΩ (Pull-up)** | **ESP32 3V3** |
 
-### Zusätzlicher Pumpen-Drucktaster für Filterreinigung
+Der **4,7-kΩ-Widerstand liegt zwischen DATA und 3V3**, nicht zwischen DATA und dem ESP32-Pin. Genau **ein** Pull-up auf diesem 1-Wire-Bus.
 
-- **Bauart: normaler, nicht rastender Drucktaster (Schließer).** Er ist unabhängig vom **WUCHS/BLÜTE-Phasentaster D19** und vom Buzzer D16.
-- **Erster Tastendruck:** Pumpenrelais AUS; Zustand **„Wartung / Pumpe gesperrt“** aktiv. Automatik und WLAN-Befehle dürfen die Pumpe in diesem Zustand nicht erneut starten.
-- **Zweiter Tastendruck:** Wartungssperre wird aufgehoben; die Pumpe kehrt in den normalen EIN-Betrieb zurück, sofern dessen Betriebsfreigaben vorliegen. Bei jedem weiteren Tastendruck wechselt der Modus zwischen AUS und EIN.
-- **Bedienlogik:** Eine entprellte Flankenerkennung je Tastendruck, kein Dauersignal und keine Rastfunktion am Taster. Während eines Pumpenstopps darf kein anderer Steuerpfad den Wartungszustand überstimmen. Nach einem Neustart oder Kommunikationsausfall darf die Pumpe nicht allein durch diesen Umstand wieder anlaufen; der Ausfallzustand ist sicher auszuführen.
-- **Anschluss:** Als Niederspannungs-Bedieneingang am separaten Leistungsteil/C3 vorgesehen. **Der konkrete C3-GPIO und die Tasterposition sind noch nicht geprüft**; keine erfundene Pinzuordnung.
-- **Sicherheit:** Dieser elektronische EIN/AUS-Drucktaster ist **keine elektrische Freischaltung** für die Filterreinigung. Vor Eingriffen an Pumpe oder Filter muss die Energiezufuhr fachgerecht getrennt und unbeabsichtigter Wiederanlauf verhindert werden. Geeignetes Wartungs-AUS/Trennmittel und Netzspannungsanschlüsse sind durch eine Elektrofachkraft zu planen bzw. zu prüfen.
+## 3. Drei DHT22 – Widerstand je Sensor direkt an DATA
+| Sensor | Versorgung | Datenverbindung | Pull-up direkt am Sensor-DATA | Masse |
+|---|---|---|---|---|
+| **DHT22 Nr. 1** | 3V3 | **DATA → D25 / GPIO25** | **4,7 kΩ DATA → 3V3**, **nur wenn nicht auf Modul vorhanden** | GND |
+| **DHT22 Nr. 2** | 3V3 | **DATA → D26 / GPIO26** | **4,7 kΩ DATA → 3V3**, **nur wenn nicht auf Modul vorhanden** | GND |
+| **DHT22 Nr. 3** | 3V3 | **DATA → D27 / GPIO27** | **4,7 kΩ DATA → 3V3**, **nur wenn nicht auf Modul vorhanden** | GND |
 
-**Noch offen am C3:** GPIOs für fünf Relais, optionalen separaten Pumpen-Wartungstaster und PCF8574-SDA/SCL, aktive Relaispegel und Treiberkompatibilität, Größe/Typ der Pumpe, tatsächliche Lampentreiber-Last, Schutzkonzept und Rückmeldung des Pumpen-Wartungszustands.
+Keine 4,7 kΩ in Reihe zum Datenpin. Bei Breakout-Modulen mit integriertem Pull-up **keinen weiteren** Widerstand ohne Prüfung hinzufügen.
 
-Die zwei ESP32 sollen später über **WLAN** kommunizieren. Geplante Zustände: **angefordert**, **vom C3 bestätigt**, **Kommunikation verloren**. Die Umsetzung, sichere Fehlerzustände und Hardwaretests fehlen. Dieser Plan dokumentiert die Logik, nicht die 230-V-Verdrahtung.
+## 4. BH1750 – separater I²C-Bus, noch nicht montiert
+| BH1750-Pin | ESP32 | Externer Widerstand |
+|---|---|---|
+| **VCC** | **3V3**, soweit konkrete Modulvariante 3,3 V unterstützt | keiner |
+| **GND** | **GND** | keiner |
+| **SDA** | **D13 / GPIO13** | ggf. **4,7 kΩ D13 → 3V3** nur wenn Bus-Pull-up fehlt |
+| **SCL** | **D14 / GPIO14** | ggf. **4,7 kΩ D14 → 3V3** nur wenn Bus-Pull-up fehlt |
+| **ADDR** | **GND** für 0x23 | keiner |
 
-### 4×4-Matrix-Tastatur als zentrales Bedienfeld (nur vorgemerkt; Befestigung fehlt)
+Die Pull-ups liegen **parallel zum Bus**, nicht in Reihe. Vorhandene Widerstände auf dem BH1750-Breakout zuerst prüfen.
 
-Die vorhandene **4×4-Tastatur mit 16 Tasten (0–9, A–D, \*, #)** soll **alle Grow-Controller-Funktionen** bedienen: Betriebsstatus, fünf Relais, Temperatur/Feuchte/VPD, pH, EC, Wasser-Temperatur, Sollwerte, Wachstumsphase/Woche, Zeitpläne, Alarme und manuell ausgelöste Kalibrierungsdialoge. Das ist **nur ein späteres Bedienkonzept**, keine vorhandene Firmwarefunktion. **Derzeit keine Befestigungsmöglichkeit: Tastatur nicht montieren, nicht verdrahten und die PCF8574-Anbindung noch nicht umsetzen.**
+## 5. RGB-LED – zwei Vorwiderstandsketten
+| Von | Widerstandskette | Nach |
+|---|---|---|
+| ESP32 **D4 / GPIO4** | **220 Ω → 220 Ω in Reihe = 440 Ω** | **RGB Grün (Anode)** |
+| ESP32 **D33 / GPIO33** | **220 Ω → 220 Ω in Reihe = 440 Ω** | **RGB Rot (Anode)** |
+| **Gemeinsame Kathode** | keiner | **GND** |
+| **RGB Blau** | keiner | **nicht angeschlossen** |
 
-**Tastenbelegung – vorgeschlagen, nicht programmiert:**
+D32 wird **nicht mehr** für RGB benutzt, weil dort laut Nutzer kein Signal ankam. **Grün = WUCHS; Rot + Grün = Gelb = BLÜTE.** D4 ist in beiden aktuellen Sketches eingetragen; Hardwarefunktion erst nach dem Umstecken und Flashen bestätigen.
 
-| Taste | Hauptfunktion |
-|---|---|
-| 1 | Licht / beide Lampen: Zustand und manuelle Freigabe |
-| 2 | Abluft: Zustand und manueller Modus |
-| 3 | Umluft: Zustand und manueller Modus |
-| 4 | Heizung: Zustand und manueller Modus |
-| 5 | Pumpe: Zustand / Betriebsmodus |
-| 6 | Klima: Lufttemperatur, Luftfeuchte, VPD |
-| 7 | pH: Messung, Sollwert und Kalibrierungsmenü |
-| 8 | EC: Messung, Sollwert und Kalibrierungsmenü |
-| 9 | DS18B20-Wassertemperatur / Sensorübersicht |
-| 0 | Wachstumsphase und Anbauwoche |
-| A | **Pumpe AUS → EIN → AUS** je Tastendruck: Wartungssperre umschalten |
-| B | Automatik-/manuelle Betriebswahl im Menü |
-| C | Statusübersicht |
-| D | Einstellungen: Sollwerte, Zeitpläne, Alarme, Kalibrierung |
-| \* | Zurück / Abbrechen |
-| # | Auswahl bestätigen / Eingabe speichern |
+## 6. Phasentaster und Buzzer
+| Bauteil | Verbindung | Externer Widerstand |
+|---|---|---|
+| **Phasentaster / Schließer** | ESP32 **D19 / GPIO19 → Taster → GND** | **keiner**, Firmware verwendet **INPUT_PULLUP** |
+| **Buzzer-Steuersignal** | ESP32 **D16 / GPIO16** | kein Widerstand/Treiber pauschal festgelegt; **Buzzer deaktiviert** bis Bauart, Strom und Versorgung geprüft sind |
 
-**Bedienregel:** Die Zifferntasten 1–9 öffnen zunächst eine Funktion; sie schalten Heizung/Licht/Lüfter **nicht unmittelbar** ohne Statusanzeige und Bestätigung. Einstellungen über Zifferneingabe, \* zurück, # bestätigen. Die Kalibrierungsfunktionen übernehmen nur Bedienung und Anzeigen; Messung/Referenzlösungen und Plausibilitätsprüfung bleiben am jeweiligen Sensorcontroller.
+Ein Tasterdruck wechselt die Wachstumsphase; mechanische Tasterkontakte nach Durchgang prüfen. Einen unbekannten zweipoligen Buzzer nicht direkt als GPIO-Last behandeln.
 
-**A-Taste (Pumpe):** Wie vom Nutzer festgelegt **ein Tastendruck AUS, der nächste EIN**. Die Sperre muss am C3 lokal wirksam sein und darf während Wartung nicht durch andere Befehle übersteuert werden. Der **separate physische Pumpen-Drucktaster bleibt vorgesehen und ist für die aktuelle Planung maßgeblich**. Taste A ist lediglich eine spätere optionale Zweitbedienung, keine aktuell vorgesehene Ablösung. Eine der beiden Tasten ersetzt bei der Filterreinigung **keine sichere elektrische Trennung**.
+## 7. MLX90640 – vorbereitet, nicht montiert
+| Modulanschluss | Verbindung | Widerstand |
+|---|---|---|
+| **SDA** | ESP32 **D21**, gemeinsam mit ADS1115 und OLED | Kein zusätzlicher Pull-up, solange Busbestückung ungeprüft |
+| **SCL** | ESP32 **D22**, gemeinsam mit ADS1115 und OLED | Kein zusätzlicher Pull-up, solange Busbestückung ungeprüft |
+| **GND** | Gemeinsame Masse | keiner |
+| **VCC/VIN** | **Noch nicht festlegen** – Versorgung der tatsächlichen Breakout-Variante prüfen | keiner festgelegt |
 
-**Hardwarekonzept:** Eine typische passive 4×4-Matrix besitzt **vier Zeilen und vier Spalten, also acht Leitungen**. Statt acht direkte C3-GPIOs zu verbrauchen, ist ein **PCF8574-I²C-Portexpander** am separaten **ESP32-C3** vorgesehen. Der Expander nutzt einen C3-I²C-Bus (SDA und SCL sowie kompatible Versorgung/Masse); die acht Matrixleitungen werden vom PCF8574 ausgewertet. Die **acht tatsächlichen Tastaturkontakte** sind anhand der Rückseite/Leitungsprüfung zu identifizieren; die Reihenfolge wird nicht erfunden. Die I²C-Adresse (beispielsweise 0x20 bei geeigneter A0/A1/A2-Beschaltung) und die **konkreten zwei C3-GPIOs** sind vor Verdrahtung zu prüfen und erst dann festzulegen. Keine Änderung am Sensor-ESP32-Bus D21/D22 für ADS1115/OLED.
+MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus nicht ohne Prüfung mit 5-V-Pull-ups betreiben.
 
-**Anzeige und Kommunikation:** Die CYD-Oberfläche dient als bevorzugte ausführliche Menü-/Statusanzeige; das kleine Sensor-OLED kann Kurzstatus zeigen. Tastatureingaben am C3 müssen mit dem Sensor-ESP32 bzw. der CYD-Oberfläche über ein noch zu entwickelndes Protokoll abgeglichen werden. Ohne bestätigte Verbindung dürfen keine scheinbar erfolgreichen Aktorbefehle oder Sensor-Kalibrierungen angezeigt werden. Für die Tastatur fehlt derzeit eine geeignete Befestigung; Standort, Sichtbeziehung und mechanische Integration sind offen. Bis dahin bleiben CYD und vorhandene Bedienelemente maßgeblich.
+## 8. Separate Leistungsbox – fünf Funktionskanäle, KEINE 230-V-Verdrahtung
+| Kanal | Funktion | ESP32-C3-GPIO |
+|---|---|---|
+| 1 | **Beide Lampen gemeinsam** | offen |
+| 2 | **Abluft** | offen |
+| 3 | **Umluft** | offen |
+| 4 | **Heizstrahler** | offen |
+| 5 | **Filter-/Umwälzpumpe (geplant)** | offen |
 
-## Softwarestand und nächste Schritte
+**Pumpen-Drucktaster (separat):** Nicht rastender Schließer; **1× drücken = Pumpe AUS/Wartungssperre, erneut drücken = Pumpe EIN/freigegeben**. Ein C3-Niederspannungseingang wird gebraucht; **dessen GPIO noch offen**, deshalb hier **kein erfundener Widerstand oder Pin**. Die Sperre soll lokal am C3 gegen automatische Wiedereinschaltung wirken. Für tatsächliche Filterreinigung ist außerdem eine fachgerecht ausgeführte, gegen Wiederanlauf sichere **elektrische Trennung der Pumpenversorgung** erforderlich: Die Softwaretaste ersetzt sie nicht.
 
-- `firmware/ph_calibration_tool/ph_calibration_tool.ino`: Sensor-Hardwaretest, pH-Kalibrierung/Alarme; **keine Relais-GPIOs mehr**.
-- `firmware/growroom_telemetry_client/growroom_telemetry_client.ino`: Sensor-Messwerte, WLAN, lokaler API-Endpunkt und Sollwertverwaltung; alte lokale Relais-GPIO-Schaltung **entfernt**. C3 ist noch nicht angebunden. API meldet für Aktoren `esp32_c3_not_connected`.
-- `firmware/ds18b20_diagnostic/ds18b20_diagnostic.ino`: DS18B20-Prüfung auf GPIO23 (nach physischer Umverdrahtung erneut testen).
-- Das separate C3-Programm, die WLAN-Anbindung, **fünf** Relaisausgänge, die **4×4-Tastatur via geplantem PCF8574**, die vollständige Menü-/Statusschnittstelle und die **Pumpen-Wartungssperre** samt Hardwaretests stehen noch aus.
-- Sensorplatine vollständig anhand der obigen Liste auf Beschriftung/Kontinuität prüfen. **Die pH-Kalibrierung ist laut Nutzer funktionsfähig**; übrige Sensoren, RGB an D4, die fünf C3-Relais und die Pumpensperre müssen jeweils gesondert geprüft werden.
+Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Befestigung vorhanden). PCF8574 und Tastenpins sind **noch nicht** zu verdrahten. Die geplante C3-WLAN-Anbindung, Relaislogik und Pumpensperre sind noch nicht implementiert oder getestet.
 
-**Nicht mehr verwenden:** alter Ein-ESP32-Wiringplan, alte direkte SSR-Pinbelegung am Sensorboard und `firmware/powerbox_actuator/` als vermeintliche fertige ESP32-C3-Firmware.
+## 9. Widerstands-Einkauf-/Bestückungsübersicht
+| Bauteil | Widerstände unmittelbar am Bauteil | Status |
+|---|---|---|
+| **ADS A0 / PH4502C PO** | **1 × 10 kΩ PO→A0 und 1 × 20 kΩ A0→GND** | **Vorhandene Verdrahtung beibehalten** |
+| **ADS A1 / CQRobot EC** | **kein zusätzlicher Teiler** | Analogpegel prüfen |
+| **DS18B20** | **1 × 4,7 kΩ DATA(D23)→3V3** | vorgesehen/bereits bestätigt |
+| **RGB Grün** | **2 × 220 Ω in Reihe, D4→LED** | Firmware auf D4, physisch prüfen |
+| **RGB Rot** | **2 × 220 Ω in Reihe, D33→LED** | vorgesehen |
+| **DHT22 Nr. 1/2/3** | ggf. **je 1 × 4,7 kΩ DATA→3V3** | nur bei fehlendem Modul-Pull-up |
+| **ADS/OLED-I²C** | ggf. **1 × 4,7 kΩ D21→3V3 + 1 × 4,7 kΩ D22→3V3** | nur wenn Pull-ups fehlen |
+| **BH1750-I²C** | ggf. **1 × 4,7 kΩ D13→3V3 + 1 × 4,7 kΩ D14→3V3** | nur wenn Pull-ups fehlen |
+| **Phasentaster** | **0 Ω extern** (interner Pull-up) | D19 ↔ GND |
+| **Buzzer / geplante C3-Relais / Pumpentaster** | **nicht festgelegt**, solange Modul-/Treibertechnik nicht geprüft ist | nicht erraten |
+
+**Wichtig:** Der frühere Widerspruch „ADS A0 ohne Spannungsteiler“ ist hiermit korrigiert. Die bestehende **10-kΩ-/20-kΩ-Teilerverdrahtung** und die auf ihr beruhende pH-Kalibrierung sind maßgeblich. Nicht ohne Messungen verändern.
