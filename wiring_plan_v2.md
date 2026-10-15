@@ -1,4 +1,4 @@
-# Grow Controller — Verdrahtung V8: DS18B20 D23, RGB-Grün D32
+# Grow Controller — Verdrahtung V9: DS18B20 D23, RGB-Grün D4, Taster D19, Buzzer D16
 
 **Stand:** 2026-10-14  
 **Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** als separater Leistungscontroller.  
@@ -27,7 +27,7 @@
                      CYD / Dashboard
 ```
 
-**Keine SSR-/Relaisleitungen auf der 26×30-Sensorplatine.** Der ESP32-C3 ist ein zweites Gerät, kein Aufsteckmodul dieser Platine. Die alte Einzel-ESP32-Zeichnung und die Zuordnung GPIO17/18/19/33 zu den Relais sind überholt. Die bisherige direkte GPIO17/18/19/33-Relaiszuordnung ist hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt; der optionale, deaktivierte pH-Buzzer wird daher auf D19 reserviert.**
+**Keine SSR-/Relaisleitungen auf der 26×30-Sensorplatine.** Der ESP32-C3 ist ein zweites Gerät, kein Aufsteckmodul dieser Platine. Die alte Einzel-ESP32-Zeichnung und die Zuordnung GPIO17/18/19/33 zu den Relais sind überholt. Die bisherige direkte GPIO17/18/19/33-Relaiszuordnung ist hinfällig. **D18 ist am tatsächlich abgelesenen OLED-ESP32 nicht herausgeführt. Physische Zuordnung: Taster D19, deaktivierter pH-Buzzer D16.**
 
 ## Sensor-ESP32: bestätigte Stiftkontakte und Signalzuordnung
 
@@ -45,12 +45,12 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 | DHT22 #3 | **GPIO27 (D27)** | obere Zone | vorgesehen |
 | BH1750 | **GPIO13 (D13) SDA**, **GPIO14 (D14) SCL**, ADDR an GND | separater I²C-Bus B, Adresse 0x23 | vorgesehen |
 | MLX90640 Infrarotkamera | **GPIO21 (D21) SDA**, **GPIO22 (D22) SCL** | Bus A mit OLED, Adresse 0x33, Kamerastecker vorbereiten | Anschluss einplanen, Modul noch nicht geprüft |
-| Ein 4-Pin-Phasentaster | **GPIO16 (D16)** nach GND, `INPUT_PULLUP` | Je ein Pin aus den beiden Schaltpaaren; 50 ms Entprellung, jeder Tastendruck wechselt den Modus | vorgesehen |
-| Eine 4-Pin-RGB-LED: Grün | **GPIO32 (D32)** über **440 Ω (2×220 Ω in Reihe)** | WUCHS = Grün, BLÜTE = Rot und Grün gleichzeitig | gemeinsame Kathode bestätigt |
+| Ein 4-Pin-Phasentaster | **GPIO19 (D19)** nach GND, `INPUT_PULLUP` | Je ein Pin aus den beiden Schaltpaaren; 50 ms Entprellung, jeder Tastendruck wechselt den Modus | vorgesehen |
+| Eine 4-Pin-RGB-LED: Grün | **GPIO4 (D4)** über **440 Ω (2×220 Ω in Reihe)** | WUCHS = Grün, BLÜTE = Rot und Grün gleichzeitig | gemeinsame Kathode bestätigt |
 | Dieselbe RGB-LED: Rot | **GPIO33 (D33)** über **440 Ω (2×220 Ω in Reihe)** | Blauer LED-Kanal bleibt frei | gemeinsame Kathode bestätigt |
-| pH-Buzzer | **GPIO19 (D19)** als reservierter Steuersignalpin | 2-poliger Buzzer; Bauart/Strom/Spannung unbekannt; über Treiber vorsehen, Firmware deaktiviert | noch nicht anschließen |
+| pH-Buzzer | **GPIO16 (D16)** als reservierter Steuersignalpin | 2-poliger Buzzer; Bauart/Strom/Spannung unbekannt; über Treiber vorsehen, Firmware deaktiviert | noch nicht anschließen |
 
-**Ausdrücklich nicht verdrahten:** PH4502C **TO -> ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO -> GPIO23** (GPIO23 ist für den DS18B20 reserviert, DO wird nicht benötigt). GPIO17/18/19/33 als Relaisleitungen am Sensor-ESP entfallen. GPIO33 wird nun für den RGB-Rotkanal, GPIO19 als Buzzer-Reserve genutzt.
+**Ausdrücklich nicht verdrahten:** PH4502C **TO -> ADS A2** (TO wurde mit 3,3–3,4 V gemessen, bei ADS-VDD 3,3 V nicht zulässig); PH4502C **DO -> GPIO23** (GPIO23 ist für den DS18B20 reserviert, DO wird nicht benötigt). GPIO17/18/19/33 als Relaisleitungen am Sensor-ESP entfallen. GPIO33 bleibt für den RGB-Rotkanal, GPIO19 ist der Taster, GPIO16 die deaktivierte Buzzer-Reserve; RGB-Grün ist GPIO4.
 
 ## 26 × 30 Lochraster — konkreter Bestückungsplan (Kleinspannung)
 
@@ -68,9 +68,9 @@ Die Beschriftungen richten sich nach den **vom Nutzer direkt abgelesenen Board-P
 | pH-/EC-Signale | vorhandene kalibrierte/verifizierte Verbindungen A0/A1 sauber übernehmen; geeignete Steckklemmen | keine neue, unbelegte 10k/20k-Teilerannahme |
 | Spannungs-/Masseverteilung | getrennte **3V3- und GND-Verbindungen** auf Lochraster mit isoliertem Draht | Lochraster hat keine automatischen Stromschienen |
 | **MLX90640 Infrarotkamera** | **1 × 4-poliger Anschluss: GND, SDA D21, SCL D22, VCC/VIN** | Kamera außerhalb des Controllergehäuses, Versorgung erst nach Abgleich der Modulvariante festlegen |
-| **Ein 4-Pin-Taster** | **D16/GND:** je einen Pin aus zwei unterschiedlichen Kontaktpaaren verwenden, die nur beim Drücken verbunden werden | Kontaktpaare vor dem Verlöten mit Durchgangsprüfer identifizieren |
-| **Eine 4-Pin-RGB-LED** | **Grün D32 über 440 Ω**, **Rot D33 über 440 Ω**, Blau frei, gemeinsame Kathode → GND | Jeder 440-Ω-Vorwiderstand besteht aus **2 × 220 Ω in Reihe** |
-| **Buzzer-/Treiber-Reserve** | **D19 als Steuersignal, Platz für 2-poligen Buzzer-Anschluss und Transistor-Treiber vorsehen** | Kein unbekannter Buzzer direkt an GPIO; Versorgung und aktiver/passiver Typ prüfen |
+| **Ein 4-Pin-Taster** | **D19/GND:** je einen Pin aus zwei unterschiedlichen Kontaktpaaren verwenden, die nur beim Drücken verbunden werden | Kontaktpaare vor dem Verlöten mit Durchgangsprüfer identifizieren |
+| **Eine 4-Pin-RGB-LED** | **Grün D4 über 440 Ω**, **Rot D33 über 440 Ω**, Blau frei, gemeinsame Kathode → GND | Jeder 440-Ω-Vorwiderstand besteht aus **2 × 220 Ω in Reihe** |
+| **Buzzer-/Treiber-Reserve** | **D16 als Steuersignal, Platz für 2-poligen Buzzer-Anschluss und Transistor-Treiber vorsehen** | Kein unbekannter Buzzer direkt an GPIO; Versorgung und aktiver/passiver Typ prüfen |
 
 **Mechanische Reihenfolge:** zuerst ESP32 und ADS1115 probeweise positionieren; USB-/OLED-Freiraum und Sensor-Steckverbinder prüfen; dann Buchsenleisten und Pull-up-Widerstände verlöten; anschließend Kleinspannungs-Signale und Masse einzeln durchmessen. Steckverbinder nach Signalname und Spannung beschriften. Die DHT22-/BH1750-/DS-Sensoren und die MLX90640-Kamera messen außerhalb des warmen Gehäuses; daher **nur ihre Anschlüsse**, nicht die Messköpfe selbst, auf der Lochrasterplatine anordnen. Für Kamera und Bus A die Leitung möglichst kurz halten; I2C-Betrieb mit 400 kHz ist mit längeren Kabeln nicht garantiert.
 
@@ -80,18 +80,18 @@ ADS1115, DS18B20, DHT22 und BH1750: geplante **3,3-V-Logik**. **MLX90640: Versor
 
 ## Bedienfeld: EIN 4-Pin-Taster, EINE 4-Pin-RGB-LED und 2-Pin-Buzzer
 
-**4-Pin-Taster (momentaner Schließer):** Bei üblichen Tact-Switches sind zwei Kontakte je Seite intern dauerhaft verbunden. **Nicht nach Orientierung raten:** Mit dem Multimeter ein Kontaktpaar ermitteln, das ohne Druck **offen** und nur beim Drücken leitend ist. **Einen Kontakt an D16**, den anderen an **GND**. Die zwei übrigen Kontakte werden nicht verbunden. `INPUT_PULLUP`, softwareseitig 50 ms Entprellung. **Jeder Tastendruck wechselt WUCHS ↔ BLÜTE.** Auswahl im ESP32-NVS `growphase_v1`.
+**4-Pin-Taster (momentaner Schließer):** Bei üblichen Tact-Switches sind zwei Kontakte je Seite intern dauerhaft verbunden. **Nicht nach Orientierung raten:** Mit dem Multimeter ein Kontaktpaar ermitteln, das ohne Druck **offen** und nur beim Drücken leitend ist. **Einen Kontakt an D19**, den anderen an **GND**. Die zwei übrigen Kontakte werden nicht verbunden. `INPUT_PULLUP`, softwareseitig 50 ms Entprellung. **Jeder Tastendruck wechselt WUCHS ↔ BLÜTE.** Auswahl im ESP32-NVS `growphase_v1`.
 
 **4-Pin-RGB-LED:** Vier Kontakte entsprechen gemeinsamem Anschluss, Rot, Grün und Blau. Der Nutzer hat **gemeinsame Kathode** bestätigt: gemeinsamen Kontakt an GND. Rot- und Grünanschluss über die beiden Vorwiderstände; Blau bleibt frei.
 
-- **D32 → 440 Ω (2 × 220 Ω in Reihe) → Grün**
+- **D4 → 440 Ω (2 × 220 Ω in Reihe) → Grün**
 - **D33 → 440 Ω (2 × 220 Ω in Reihe) → Rot**
 - Blau bleibt unbenutzt.
 - **Gemeinsame Kathode: gemeinsam an GND**, HIGH schaltet jeweilige Farbe ein.
 
-Die Firmware ist auf **Grün = WUCHS** und **Rot + Grün = Gelb = BLÜTE** umgestellt. **Gemeinsame Kathode steht fest** (`GROW_RGB_COMMON_ANODE=0`); RGB-Ausgänge sind im jetzt aktualisierten Sketch aktiviert (`GROW_ENABLE_PHASE_RGB=1`). **Vor dem Flashen zuerst DS-DATA auf D23 und RGB-Grün auf D32 umverdrahten.**
+Die Firmware ist auf **Grün = WUCHS** und **Rot + Grün = Gelb = BLÜTE** umgestellt. **Gemeinsame Kathode steht fest** (`GROW_RGB_COMMON_ANODE=0`); RGB-Ausgänge sind im jetzt aktualisierten Sketch aktiviert (`GROW_ENABLE_PHASE_RGB=1`). **Vor dem Flashen DS-DATA auf D23 und RGB-Grün vom nicht funktionierenden D32 auf D4 anschließen.**
 
-**Zweipoliger pH-Buzzer aus Sensor-Pack:** Auf der Platine **D19 als Buzzer-Steuersignal und Platz für einen 2-poligen Buzzer-Anschluss sowie einen geeigneten Transistortreiber** vorsehen. Bei unbekanntem Typ/Strom/Spannung ist **kein direkter GPIO-Anschluss freigegeben**. Auch ein 2-Pin-Bauteil kann aktiv (Gleichspannung) oder passiv (Tonerzeugung via PWM erforderlich) sein. Die Versorgung und der Treiber werden **erst nach Identifizierung** des Bauteils festgelegt; der aktuell implementierte Buzzer-Code ist für ein aktives, logikgesteuertes Modul und bleibt deaktiviert (`GROW_ENABLE_PH_BUZZER=0`). **D18 nicht verwenden:** am konkret vorhandenen ESP32-Board nicht herausgeführt.
+**Zweipoliger pH-Buzzer aus Sensor-Pack:** Auf der Platine **D16 als Buzzer-Steuersignal und Platz für einen 2-poligen Buzzer-Anschluss sowie einen geeigneten Transistortreiber** vorsehen. Bei unbekanntem Typ/Strom/Spannung ist **kein direkter GPIO-Anschluss freigegeben**. Auch ein 2-Pin-Bauteil kann aktiv (Gleichspannung) oder passiv (Tonerzeugung via PWM erforderlich) sein. Die Versorgung und der Treiber werden **erst nach Identifizierung** des Bauteils festgelegt; der aktuell implementierte Buzzer-Code ist für ein aktives, logikgesteuertes Modul und bleibt deaktiviert (`GROW_ENABLE_PH_BUZZER=0`). **D18 nicht verwenden:** am konkret vorhandenen ESP32-Board nicht herausgeführt.
 
 **pH-Alarm:** LOW bei pH unter **5,5**; HIGH bei pH über **6,2**; Normalbereich 5,5–6,2 inklusive (bei Statuswechseln weiterhin 0,1 pH Hysterese und drei Messungen). Vorbereitete Tonsignale für aktiven Buzzer: LOW zweimal kurz alle 5 s, HIGH dreimal kurz alle 5 s, Sensorfehler einmal alle 10 s.
 
