@@ -504,8 +504,13 @@ static float ecUncalibratedMs(float v) {
   return (133.42f*v*v*v - 255.86f*v*v + 857.39f*v) / 1000.0f;
 }
 static float ecFromVoltage(float v, float waterTempC) {
+  // EC-Kalibrierfaktor aus 1413-uS/cm-Referenz @25C beibehalten.
+  // Zur Ausgabe den EC-Wert bei der realen DS18B20-Wassertemperatur bestimmen.
+  if (!validTemperature(waterTempC)) return NAN;
   const float base = ecUncalibratedMs(ecCompensatedVoltage(v, waterTempC));
-  return ecCalibrated && isfinite(base) ? base * ecFactor : NAN;
+  if (!ecCalibrated || !isfinite(base)) return NAN;
+  const float tempFactor = 1.0f + 0.02f * (waterTempC - 25.0f);
+  return tempFactor > 0.1f ? base * ecFactor * tempFactor : NAN;
 }
 static void loadEcCalibration() {
   ecCalibrated = false;
@@ -781,8 +786,8 @@ static void printHardwareStatus() {
                   liveInputV, liveStdV * 1000.0f, PH7_PO_REFERENCE_V);
     Serial.printf("ADS A1 TDS: %.5f V | Std %.2f mV\n", liveTdsV, liveTdsStdV * 1000.0f);
     if (ecCalibrated && validTemperature(liveWaterTempC))
-      Serial.printf("EC auf 25C normiert: %.3f mS/cm | DS %.2f C\n",
-                    ecFromVoltage(liveTdsV, liveWaterTempC), liveWaterTempC);
+      Serial.printf("EC bei DS18B20 %.2f C: %.3f mS/cm\n",
+                    liveWaterTempC, ecFromVoltage(liveTdsV, liveWaterTempC));
     else Serial.println(F("EC: NICHT KALIBRIERT (e = 1413 uS/cm Referenz erfassen)"));
     if (PH_TO_WIRED) {
       Serial.printf("ADS A2 TO: %.5f V | Std %.2f mV\n", liveToV, liveToStdV * 1000.0f);
@@ -1562,7 +1567,7 @@ void loop() {
     uint8_t n = 0;
     for (uint8_t i = 0; i < 3; ++i) if (air[i].ok) ++n;
     if (ecCalibrated && validTemperature(liveWaterTempC))
-      Serial.printf(" | EC %.3f mS/cm@25C (DS %.2fC)", ecFromVoltage(liveTdsV, liveWaterTempC), liveWaterTempC);
+      Serial.printf(" | EC %.3f mS/cm bei DS %.2fC", ecFromVoltage(liveTdsV, liveWaterTempC), liveWaterTempC);
     else Serial.print(F(" | EC -- (Kalibrierung/DS fehlt)"));
     Serial.printf(" | A1 RohStd %.1f mV | pH-TK %s",
       liveTdsStdV * 1000.0f,
