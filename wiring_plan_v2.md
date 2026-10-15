@@ -118,7 +118,7 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 
 | Vom C3 | Widerstand | Zum Taster | Gegenstelle |
 |---|---|---|---|
-| **ESP32-C3: GPIO noch nicht bestätigt** | **externer Widerstand abhängig von tatsächlichem GPIO/Schaltung; mit geeignetem INPUT_PULLUP keiner vorgesehen** | **Kontakt 1** des separaten, nicht rastenden Drucktasters | **Kontakt 2 → GND desselben C3** |
+| **Leistungscontroller: PIN OFFEN** | **Widerstand/Pull-up OFFEN – Board und Eingang noch nicht geprüft** | **Tasterkontakt 1: nicht anschließen** | **Tasterkontakt 2: nicht anschließen** |
 
 **Funktion:** 1× drücken = Pumpe AUS/Wartungssperre, erneut drücken = Pumpe EIN/normaler Betrieb freigegeben. Entprellung in der noch zu entwickelnden C3-Firmware; automatische Pumpensteuerung darf eine aktive Wartungssperre nicht überstimmen. Für den Taster **keine Versorgung 3V3/5V auf einen Kontakt** und keine Verbindung zum Sensor-ESP32-D19 vorsehen. Bei einem vierbeinigen Taster müssen die zwei gewählten Pins **nur während des Drückens leitend sein**; die zwei intern dauerhaft verbundenen Pins sind dafür ungeeignet.
 
@@ -140,7 +140,7 @@ Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Bef
 | **ADS/OLED-I²C** | ggf. **1 × 4,7 kΩ D21→3V3 + 1 × 4,7 kΩ D22→3V3** | nur wenn Pull-ups fehlen |
 | **BH1750-I²C** | ggf. **1 × 4,7 kΩ D13→3V3 + 1 × 4,7 kΩ D14→3V3** | nur wenn Pull-ups fehlen |
 | **Taster 1: Phasenwechsel am Sensor-ESP32** | **kein externer Widerstand** (interner Pull-up) | **D19 → Taster → GND** |
-| **Taster 2: Pumpenpause am ESP32-C3** | **noch nicht endgültig festgelegt; bei INPUT_PULLUP kein externer Widerstand geplant** | **C3-GPIO NOCH OFFEN → separater Drucktaster → C3-GND; Pinbeschriftung und Firmware prüfen** |
+| **Taster 2: Pumpenpause am Leistungscontroller** | **Widerstand/Pull-up OFFEN bis Boardprüfung** | **Beide Kontakte NOCH NICHT VERDRAHTEN; PIN OFFEN, Firmware fehlt** |
 | **Buzzer / geplante C3-Relais** | **Widerstände/Treiber erst nach Prüfung der konkreten Module festlegen** | nicht erraten |
 
 **Wichtig:** Der frühere Widerspruch „ADS A0 ohne Spannungsteiler“ ist hiermit korrigiert. Die bestehende **10-kΩ-/20-kΩ-Teilerverdrahtung** und die auf ihr beruhende pH-Kalibrierung sind maßgeblich. Nicht ohne Messungen verändern.
