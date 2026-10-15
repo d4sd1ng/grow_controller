@@ -1,8 +1,8 @@
 # Grow Controller — Wiring Plan V2: Sensor-ESP32 und 5 Relais (Stand 15.10.2026)
 
 **Stand:** 2026-10-15  
-**Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** im separaten Leistungsgehäuse für **genau fünf Relais**: zwei Lampen gemeinsam, Abluft, Umluft, Heizung und geplante Filter-/Umwälzpumpe. Der Pumpen-Wartungstaster kommt zusätzlich zum Phasentaster.  
-**Status:** Die **pH-Kalibrierung funktioniert laut aktueller Nutzerbestätigung**. Die Funktionen der fünf Relais sind nun benannt, jedoch sind ihre C3-GPIO-Zuordnung, die Leistungsansteuerung, die WLAN-Kommunikation zwischen beiden ESP32 und die Pumpen-Wartungssperre noch nicht implementiert oder getestet. Die einzelnen Sensoren und der neue RGB-GPIO4 sind nicht allein durch die Pinliste als erfolgreich getestet anzusehen.
+**Hardware:** (1) Sensor-ESP32 mit integriertem 0,96"-OLED auf **26 × 30 Lochraster**, (2) **ESP32-C3 SuperMini** im separaten Leistungsgehäuse für **genau fünf Relais**: zwei Lampen gemeinsam, Abluft, Umluft, Heizung und geplante Filter-/Umwälzpumpe. (3) **4×4-Matrix-Tastatur als zentrales Bedienfeld für alle Funktionen**; PCF8574-I²C-Portexpander am C3 als Entwurf. Der bisherige Phasentaster D19 und der geplante separate Pumpen-Drucktaster bleiben bis zur Entscheidung über die endgültige mechanische Bedienanordnung dokumentiert.  
+**Status:** Die **pH-Kalibrierung funktioniert laut aktueller Nutzerbestätigung**. Die Funktionen der fünf Relais sind benannt. **4×4-Tastatur und vollständige Menübedienung sind neu beschlossen, aber noch nicht angeschlossen oder programmiert.** C3-GPIO-Zuordnung, Leistungsansteuerung, C3-I²C-Zusatzbus, WLAN-Kommunikation und Pumpen-Wartungssperre sind noch nicht implementiert oder getestet. Einzelne Sensoren und RGB-GPIO4 sind nicht allein durch die Pinliste als erfolgreich getestet anzusehen.
 
 > Dieser Plan behandelt ausschliesslich die Kleinspannungs-Sensorplatine und die logische Rollenverteilung. Die 230-V-Seite ist nicht Gegenstand des Plans; Montage/Pruefung gehoeren in fachkundige Haende.
 
@@ -150,16 +150,49 @@ Die Wochenzahl wird auf dem Sensor-ESP32 getrennt von der Phasentaster-Auswahl g
 - **Anschluss:** Als Niederspannungs-Bedieneingang am separaten Leistungsteil/C3 vorgesehen. **Der konkrete C3-GPIO und die Tasterposition sind noch nicht geprüft**; keine erfundene Pinzuordnung.
 - **Sicherheit:** Dieser elektronische EIN/AUS-Drucktaster ist **keine elektrische Freischaltung** für die Filterreinigung. Vor Eingriffen an Pumpe oder Filter muss die Energiezufuhr fachgerecht getrennt und unbeabsichtigter Wiederanlauf verhindert werden. Geeignetes Wartungs-AUS/Trennmittel und Netzspannungsanschlüsse sind durch eine Elektrofachkraft zu planen bzw. zu prüfen.
 
-**Noch offen am C3:** GPIOs für fünf Relais plus Pumpen-Wartungstaster, aktive Relaispegel und Treiberkompatibilität, Größe/Typ der Pumpe, tatsächliche Lampentreiber-Last, Schutzkonzept und Rückmeldung des Pumpen-Wartungszustands.
+**Noch offen am C3:** GPIOs für fünf Relais, optionalen separaten Pumpen-Wartungstaster und PCF8574-SDA/SCL, aktive Relaispegel und Treiberkompatibilität, Größe/Typ der Pumpe, tatsächliche Lampentreiber-Last, Schutzkonzept und Rückmeldung des Pumpen-Wartungszustands.
 
 Die zwei ESP32 sollen später über **WLAN** kommunizieren. Geplante Zustände: **angefordert**, **vom C3 bestätigt**, **Kommunikation verloren**. Die Umsetzung, sichere Fehlerzustände und Hardwaretests fehlen. Dieser Plan dokumentiert die Logik, nicht die 230-V-Verdrahtung.
+
+### 4×4-Matrix-Tastatur als zentrales Bedienfeld (NEU, Planung)
+
+Die vorhandene **4×4-Tastatur mit 16 Tasten (0–9, A–D, \*, #)** soll **alle Grow-Controller-Funktionen** bedienen: Betriebsstatus, fünf Relais, Temperatur/Feuchte/VPD, pH, EC, Wasser-Temperatur, Sollwerte, Wachstumsphase/Woche, Zeitpläne, Alarme und manuell ausgelöste Kalibrierungsdialoge. Das ist ein **Bedienkonzept, noch keine vorhandene Firmwarefunktion**.
+
+**Tastenbelegung – vorgeschlagen, nicht programmiert:**
+
+| Taste | Hauptfunktion |
+|---|---|
+| 1 | Licht / beide Lampen: Zustand und manuelle Freigabe |
+| 2 | Abluft: Zustand und manueller Modus |
+| 3 | Umluft: Zustand und manueller Modus |
+| 4 | Heizung: Zustand und manueller Modus |
+| 5 | Pumpe: Zustand / Betriebsmodus |
+| 6 | Klima: Lufttemperatur, Luftfeuchte, VPD |
+| 7 | pH: Messung, Sollwert und Kalibrierungsmenü |
+| 8 | EC: Messung, Sollwert und Kalibrierungsmenü |
+| 9 | DS18B20-Wassertemperatur / Sensorübersicht |
+| 0 | Wachstumsphase und Anbauwoche |
+| A | **Pumpe AUS → EIN → AUS** je Tastendruck: Wartungssperre umschalten |
+| B | Automatik-/manuelle Betriebswahl im Menü |
+| C | Statusübersicht |
+| D | Einstellungen: Sollwerte, Zeitpläne, Alarme, Kalibrierung |
+| \* | Zurück / Abbrechen |
+| # | Auswahl bestätigen / Eingabe speichern |
+
+**Bedienregel:** Die Zifferntasten 1–9 öffnen zunächst eine Funktion; sie schalten Heizung/Licht/Lüfter **nicht unmittelbar** ohne Statusanzeige und Bestätigung. Einstellungen über Zifferneingabe, \* zurück, # bestätigen. Die Kalibrierungsfunktionen übernehmen nur Bedienung und Anzeigen; Messung/Referenzlösungen und Plausibilitätsprüfung bleiben am jeweiligen Sensorcontroller.
+
+**A-Taste (Pumpe):** Wie vom Nutzer festgelegt **ein Tastendruck AUS, der nächste EIN**. Die Sperre muss am C3 lokal wirksam sein und darf während Wartung nicht durch andere Befehle übersteuert werden. Der zuvor geplante **separate physische Pumpen-Drucktaster bleibt zunächst zusätzlich vorgesehen**; ob Taste A diesen ersetzen soll, ist **noch nicht entschieden**. Eine der beiden Tasten ersetzt bei der Filterreinigung **keine sichere elektrische Trennung**.
+
+**Hardwarekonzept:** Eine typische passive 4×4-Matrix besitzt **vier Zeilen und vier Spalten, also acht Leitungen**. Statt acht direkte C3-GPIOs zu verbrauchen, ist ein **PCF8574-I²C-Portexpander** am separaten **ESP32-C3** vorgesehen. Der Expander nutzt einen C3-I²C-Bus (SDA und SCL sowie kompatible Versorgung/Masse); die acht Matrixleitungen werden vom PCF8574 ausgewertet. Die **acht tatsächlichen Tastaturkontakte** sind anhand der Rückseite/Leitungsprüfung zu identifizieren; die Reihenfolge wird nicht erfunden. Die I²C-Adresse (beispielsweise 0x20 bei geeigneter A0/A1/A2-Beschaltung) und die **konkreten zwei C3-GPIOs** sind vor Verdrahtung zu prüfen und erst dann festzulegen. Keine Änderung am Sensor-ESP32-Bus D21/D22 für ADS1115/OLED.
+
+**Anzeige und Kommunikation:** Die CYD-Oberfläche dient als bevorzugte ausführliche Menü-/Statusanzeige; das kleine Sensor-OLED kann Kurzstatus zeigen. Tastatureingaben am C3 müssen mit dem Sensor-ESP32 bzw. der CYD-Oberfläche über ein noch zu entwickelndes Protokoll abgeglichen werden. Ohne bestätigte Verbindung dürfen keine scheinbar erfolgreichen Aktorbefehle oder Sensor-Kalibrierungen angezeigt werden. Die genauen Standorte und Sichtbeziehungen von Tastatur/CYD sind noch offen.
 
 ## Softwarestand und nächste Schritte
 
 - `firmware/ph_calibration_tool/ph_calibration_tool.ino`: Sensor-Hardwaretest, pH-Kalibrierung/Alarme; **keine Relais-GPIOs mehr**.
 - `firmware/growroom_telemetry_client/growroom_telemetry_client.ino`: Sensor-Messwerte, WLAN, lokaler API-Endpunkt und Sollwertverwaltung; alte lokale Relais-GPIO-Schaltung **entfernt**. C3 ist noch nicht angebunden. API meldet für Aktoren `esp32_c3_not_connected`.
 - `firmware/ds18b20_diagnostic/ds18b20_diagnostic.ino`: DS18B20-Prüfung auf GPIO23 (nach physischer Umverdrahtung erneut testen).
-- Das separate C3-Programm, die WLAN-Anbindung, **fünf** Relaisausgänge und der **Pumpen-Wartungstaster samt Sperrlogik** sowie ihre Hardwaretests stehen noch aus.
+- Das separate C3-Programm, die WLAN-Anbindung, **fünf** Relaisausgänge, die **4×4-Tastatur via geplantem PCF8574**, die vollständige Menü-/Statusschnittstelle und die **Pumpen-Wartungssperre** samt Hardwaretests stehen noch aus.
 - Sensorplatine vollständig anhand der obigen Liste auf Beschriftung/Kontinuität prüfen. **Die pH-Kalibrierung ist laut Nutzer funktionsfähig**; übrige Sensoren, RGB an D4, die fünf C3-Relais und die Pumpensperre müssen jeweils gesondert geprüft werden.
 
 **Nicht mehr verwenden:** alter Ein-ESP32-Wiringplan, alte direkte SSR-Pinbelegung am Sensorboard und `firmware/powerbox_actuator/` als vermeintliche fertige ESP32-C3-Firmware.
