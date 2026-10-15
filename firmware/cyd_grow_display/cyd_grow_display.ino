@@ -29,6 +29,7 @@
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include <SPI.h>
+#include <math.h>
 #include <TFT_eSPI.h>
 #include <XPT2046_Touchscreen.h>
 #include <lvgl.h>
@@ -196,8 +197,10 @@ void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
   else lv_label_set_text_fmt(lbl_ecph, "EC -- | pH %.2f", ph);
   if (ecValid && ecMeasurementValid)
     lv_label_set_text_fmt(lbl_water, "EC bei DS18B20 %.2f C", ecMeasurementC);
+  else if (waterValid && ecValid)
+    lv_label_set_text_fmt(lbl_water, "Wasser %.2f C | EC@25C (alte FW)", waterC);
   else if (waterValid)
-    lv_label_set_text_fmt(lbl_water, "Wasser %.2f C | EC 25C (alte FW)", waterC);
+    lv_label_set_text_fmt(lbl_water, "Wasser %.2f C | EC nicht verfuegbar", waterC);
   else
     lv_label_set_text_static(lbl_water, "Wasser/EC-Temperatur: --");
   if (luxValid && areaLumensValid)
