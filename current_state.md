@@ -17,7 +17,7 @@
 | GPIO16 | Zweipoliger pH-Buzzer: Steuersignal reserviert; Treiber/Spannung unbekannt, Firmware deaktiviert |
 | **GPIO4 (D4)** | RGB-Grün über **440 Ω (2×220 Ω in Reihe)**; ersetzt ausgefallenen GPIO32 |
 | GPIO33 | RGB-Rot über **440 Ω (2×220 Ω in Reihe)** |
-| GPIO19 | **Ein** 4-poliger Schließtaster gegen GND, `INPUT_PULLUP`, Wechsel WUCHS/BLÜTE |
+| GPIO19 | **Taster 1:** 4-poliger Schließer zwischen D19 und GND, `INPUT_PULLUP`; WUCHS/BLÜTE. Die Firmware erfasst Tastendrücke per FALLING-Interrupt auch während blockierender Messungen; Serial-Monitor meldet TASTER D19. |
 
 **Änderung gegenüber V7:** DS18B20 wieder von GPIO32 auf **GPIO23** zurückverlegt, um den Pull-up mechanisch wie gewünscht anzuschließen. RGB-Grün war zuletzt auf **GPIO32** geplant, dort kommt laut Hardwaretest kein Signal an; deshalb nun auf **GPIO4 (D4)** ohne doppelte Pinbelegung. DS18B20-Funktion wurde zuvor vom Nutzer bei GPIO32 bestätigt; auf D23 nach dem Umverdrahten erneut prüfen.
 
@@ -44,7 +44,7 @@ Die Wochenzahl ist im separaten ESP32-NVS `growweek_v1` manuell wählbar (`k1` b
 
 ## Zweites Gerät — ESP32-C3 SuperMini
 
-Separate Installation im Leistungsgehäuse für **fünf Relais**: **(1) beide Pflanzenlampen gemeinsam über einen Lichtkanal, (2) Abluft, (3) Umluft, (4) Heizung/Heizstrahler und (5) die neu geplante Filter-/Umwälzpumpe**. Zusätzlich ist ein **normaler, nicht rastender Pumpen-Drucktaster** vorgesehen, unabhängig vom Phasentaster des Sensor-ESP32: **1× drücken = Pumpe AUS (Wartungssperre), erneut drücken = Pumpe EIN bzw. normaler Pumpenbetrieb freigegeben**. Der Zustand muss gegen Übersteuerung durch Automatik/WLAN geschützt sein; Neustart oder Kommunikationsverlust dürfen keinen unbeabsichtigten Pumpenstart auslösen. Dessen C3-Eingang und Montageort sind noch offen. Ein Software-Taster ersetzt keine fachgerecht ausgeführte elektrische Freischaltung für Wartungsarbeiten. **Die C3-Pinbelegung und Steuerungsfirmware sind noch nicht freigegeben; keine Relaisansteuerung funktionsfähig.** Kommunikationsausfall und Rückmeldungen müssen sicher behandelt werden. Keine 230-V-Anschlussanleitung in diesem Repository.
+Separate Installation im Leistungsgehäuse für **fünf Relais**: **(1) beide Pflanzenlampen gemeinsam über einen Lichtkanal, (2) Abluft, (3) Umluft, (4) Heizung/Heizstrahler und (5) die neu geplante Filter-/Umwälzpumpe**. Zusätzlich ist ein **normaler, nicht rastender Pumpen-Drucktaster** vorgesehen, unabhängig vom Phasentaster des Sensor-ESP32: **1× drücken = Pumpe AUS (Wartungssperre), erneut drücken = Pumpe EIN bzw. normaler Pumpenbetrieb freigegeben**. Der Zustand muss gegen Übersteuerung durch Automatik/WLAN geschützt sein; Neustart oder Kommunikationsverlust dürfen keinen unbeabsichtigten Pumpenstart auslösen. **Für Taster 2 ist C3-IO6/GPIO6 als separater Eingang mit `INPUT_PULLUP` vorgesehen:** **C3 GPIO6 → Drucktaster → C3 GND**, kein externer Widerstand. Die Montageposition und die C3-Firmware sind noch offen. Ein Software-Taster ersetzt keine fachgerecht ausgeführte elektrische Freischaltung für Wartungsarbeiten. **Die C3-Pinbelegung und Steuerungsfirmware sind noch nicht freigegeben; keine Relaisansteuerung funktionsfähig.** Kommunikationsausfall und Rückmeldungen müssen sicher behandelt werden. Keine 230-V-Anschlussanleitung in diesem Repository.
 
 ### Zentrales Bedienfeld (neu geplant)
 
