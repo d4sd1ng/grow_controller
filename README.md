@@ -2,7 +2,7 @@
 
 Grow-Controller fuer Indoor-Salat mit **zwei ESP32**: Sensor-ESP32 mit integriertem OLED auf **26×30-Lochraster** und separater **ESP32-C3 SuperMini** als geplanter Leistungscontroller. Das Cheap Yellow Display (CYD) dient als Fernbedienung, Raspberry Pi als Telemetrie-/Dashboard-Server.
 
-**Aktuelle Anschluesse:** [wiring_plan_v2.md](wiring_plan_v2.md) (**Zwei-ESP32-Plan V8, Sensorplatine 26×30**) · **Firmware:** [firmware/README.md](firmware/README.md) · **Status:** [current_state.md](current_state.md)
+**Aktuelle Anschluesse:** [wiring_plan_v2.md](wiring_plan_v2.md) (**Wiring Plan V2, fünf Relais, Sensorplatine 26×30**) · **Firmware:** [firmware/README.md](firmware/README.md) · **Status:** [current_state.md](current_state.md)
 
 ## Architektur
 
@@ -24,7 +24,7 @@ Raspberry Pi    CYD-Fernanzeige    ESP32-C3 SuperMini
 
 **Wiring-Status:** Auf der 26×30-Platine sind eigene Anschlüsse für BH1750 (5-polig, inkl. ADDR), MLX90640 (4-polig, VCC/VIN erst nach Modulprüfung) und DS18B20 (D23 mit 4,7-kΩ-Pull-up nach 3V3) vorgesehen. D21/D22 sind der ursprüngliche gemeinsame ADS1115-/OLED-I²C-Bus (mit geplanter MLX90640); D13/D14 bleiben ausschließlich für den BH1750. RGB-Grün auf D4 (440 Ω) statt des ausgefallenen D32, RGB-Rot auf D33 (440 Ω), ein Phasentaster auf D19 und Buzzer-Steuerreserve auf D16.
 
-**Wichtig:** Die Sensor-Firmware ist nun frei von direkter GPIO-Relaissteuerung. Die C3-Anbindung ist noch ausstehend; die Aktoren werden derzeit **nicht** angesteuert. Die 230-V-Seite gehoert in eine fachkundig gepruefte, separate Installation.
+**Wichtig:** Der separate ESP32-C3 soll **fünf Relais** ansteuern: **Licht für beide Lampen gemeinsam, Abluft, Umluft, Heizung und geplante Filter-/Umwälzpumpe**. Für die Pumpe kommt ein **zusätzlicher Wartungstaster** hinzu; die automatische Pumpensteuerung muss während Wartung gesperrt bleiben. Ein Taster/Softwaremodus ist keine sichere Netztrennung für Reinigungsarbeiten. Die Sensor-Firmware enthält keine direkten Relais-GPIOs; die C3-Anbindung ist noch nicht implementiert und Aktoren werden derzeit **nicht** angesteuert. Die Netzspannungsseite bedarf einer fachkundig geprüften, separaten Installation.
 
 
 ## Firmware
