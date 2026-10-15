@@ -220,8 +220,8 @@ char controlMode[8] = "auto";
 
 /* Ein rastfreier Schliesser D19-GND, eine 4-Pin-RGB-LED.
  * Gruen (D4) = Wuchs, Rot+Gruen (D33+D4) = Bluete (Gelb).
- * Jeder Farbkanal hat seinen eigenen 470-Ohm-Vorwiderstand.
- * Pin-Polaritaet erst aktivieren, wenn Common-Anode/-Kathode geklaert ist.
+ * Jeder Farbkanal hat zwei 220-Ohm-Widerstaende in Reihe (440 Ohm).
+ * Gemeinsame Kathode an GND (bestaetigt).
  * Auswahl wird in NVS gespeichert, unabhaengig von pH/EC.
  */
 enum class GrowPhase : uint8_t { Wuchs = 0, Bluete = 1 };
@@ -237,9 +237,17 @@ static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true};
 static constexpr PhaseProfile BLUETE_PROFILE = {NAN, NAN, false};
 static constexpr char PHASE_NVS[] = "growphase_v1";
 GrowPhase growPhase = GrowPhase::Wuchs;
-static bool phaseRaw = false;
-static bool phaseStable = false;
-static unsigned long phaseChangedMs = 0;
+// FALLING-Interrupt erfasst auch kurze Tastendruecke waehrend blockierender ADC-Messungen.
+// Kein Kontaktprellen als mehrere Eingaben werten (50 ms Mindestabstand).
+static volatile uint32_t phasePendingPresses = 0;
+static volatile uint32_t phaseLastInterruptUs = 0;
+static void IRAM_ATTR onPhaseButtonFalling() {
+  const uint32_t us = micros();
+  if (static_cast<uint32_t>(us - phaseLastInterruptUs) >= PHASE_DEBOUNCE_MS * 1000UL) {
+    phaseLastInterruptUs = us;
+    if (phasePendingPresses < 1000000UL) ++phasePendingPresses;
+  }
+}
 static const char *phaseName(GrowPhase p) {
   return p == GrowPhase::Bluete ? "bluete" : "wuchs";
 }
@@ -283,17 +291,19 @@ static void setGrowPhase(GrowPhase next) {
       saved ? "OK" : "FEHLER");
 }
 static void pollGrowPhaseButtons(unsigned long nowMs) {
-  const bool pressed = digitalRead(PIN_PHASE_BUTTON) == LOW;
-  if (pressed != phaseRaw) {
-    phaseRaw = pressed;
-    phaseChangedMs = nowMs;
-  }
-  if (pressed != phaseStable &&
-      nowMs - phaseChangedMs >= PHASE_DEBOUNCE_MS) {
-    phaseStable = pressed;
-    if (pressed) {
-      setGrowPhase(growPhase == GrowPhase::Wuchs ? GrowPhase::Bluete : GrowPhase::Wuchs);
-    }
+  (void)nowMs;
+  uint32_t pressedCount;
+  noInterrupts();
+  pressedCount = phasePendingPresses;
+  phasePendingPresses = 0;
+  interrupts();
+  if (pressedCount == 0) return;
+  Serial.printf("TASTER D19: %lu Druck-Flanke(n), GPIO19 aktuell %s\n",
+                static_cast<unsigned long>(pressedCount),
+                digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW (gedrueckt)" : "HIGH (offen)");
+  // Bei zwei sehr schnellen Druecken wird zweimal umgeschaltet -> Ursprungsphase.
+  if (pressedCount & 1UL) {
+    setGrowPhase(growPhase == GrowPhase::Wuchs ? GrowPhase::Bluete : GrowPhase::Wuchs);
   }
 }
 static void setupGrowPhaseButtons() {
@@ -306,8 +316,11 @@ static void setupGrowPhaseButtons() {
   pinMode(PIN_RGB_RED, OUTPUT);
   pinMode(PIN_RGB_GREEN, OUTPUT);
 #endif
-  phaseRaw = phaseStable = digitalRead(PIN_PHASE_BUTTON) == LOW;
-  phaseChangedMs = millis();
+  phasePendingPresses = 0;
+  phaseLastInterruptUs = micros() - PHASE_DEBOUNCE_MS * 1000UL;
+  attachInterrupt(digitalPinToInterrupt(PIN_PHASE_BUTTON), onPhaseButtonFalling, FALLING);
+  Serial.printf("TASTER D19 beim Start: %s (INPUT_PULLUP, nach GND druecken)\n",
+                digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW (Kontakt bereits geschlossen)" : "HIGH (offen)");
   loadGrowPhase();
 }
 
