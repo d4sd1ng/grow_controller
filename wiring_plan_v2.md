@@ -12,7 +12,7 @@
 
 **Bildbezug:** Platine von **vorn**, USB-Buchse **unten**, OLED sichtbar. Das Bild zeigt das **Sensor-ESP32-OLED-Board**, **nicht** den separat geplanten ESP32-C3-SuperMini der Leistungsbox. Die farbige Legende und der aufgedruckte Pinname widersprechen sich rechts ganz unten: **Auf der Leiterplatte steht 3V3, in der farbigen Legende fälschlich VIN. Hier gilt 3V3.** Links unten steht tatsächlich VIN. **Diese Pins niemals verwechseln.**
 
-| Position von oben | Links – tatsächlich aufgedruckt | Rechts – tatsächlich aufgedruckt |
+| Tabellenreihe (15 = oben, 1 = unten) | Links – tatsächlich aufgedruckt | Rechts – tatsächlich aufgedruckt |
 |---|---|---|
 | 15 | EN | **D23** (GPIO23) |
 | 14 | VP (GPIO36) | **D22** (GPIO22) |
