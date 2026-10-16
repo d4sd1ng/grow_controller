@@ -1191,6 +1191,43 @@ static void handleGrowWeek() {
   serializeJson(doc, body);
   localServer.send(200, "application/json", body);
 }
+static void handleGrowPhase() {
+  if (!localAuthorized()) return sendUnauthorized();
+  StaticJsonDocument<128> input;
+  if (deserializeJson(input, localServer.arg("plain"))) {
+    return localServer.send(400, "application/json",
+        "{\"ok\":false,\"error\":\"bad_json\"}");
+  }
+  const char *requested = input["phase"];
+  if (!requested ||
+      (strcmp(requested, "wuchs") != 0 && strcmp(requested, "bluete") != 0)) {
+    return localServer.send(400, "application/json",
+        "{\"ok\":false,\"error\":\"phase_must_be_wuchs_or_bluete\"}");
+  }
+  const GrowPhase next = strcmp(requested, "bluete") == 0
+      ? GrowPhase::Bluete : GrowPhase::Wuchs;
+  // Unveraenderte, bereits vom D19-Taster verwendete Phasenfunktion.
+  setGrowPhase(next);
+  // Nur dann Erfolg melden, wenn der gewaehlte Zustand auch in NVS steht.
+  Preferences prefs;
+  if (!prefs.begin(PHASE_NVS, true)) {
+    return localServer.send(500, "application/json",
+        "{\"ok\":false,\"error\":\"phase_nvs_unavailable\"}");
+  }
+  const uint8_t stored = prefs.getUChar("phase", 255);
+  prefs.end();
+  if (stored != static_cast<uint8_t>(next)) {
+    return localServer.send(500, "application/json",
+        "{\"ok\":false,\"error\":\"phase_nvs_not_saved\"}");
+  }
+  StaticJsonDocument<128> out;
+  out["ok"] = true;
+  out["phase"] = phaseName(growPhase);
+  String response;
+  serializeJson(out, response);
+  localServer.send(200, "application/json", response);
+}
+
 static void setupLocalApi() {
   localServer.collectHeaders(LOCAL_HEADER_KEYS, 1);
   localServer.on("/api/local/summary", HTTP_GET, handleSummary);
@@ -1198,6 +1235,7 @@ static void setupLocalApi() {
   localServer.on("/api/local/control/targets", HTTP_POST, handleControlTargets);
   localServer.on("/api/local/control/mode", HTTP_POST, handleControlMode);
   localServer.on("/api/local/control/week", HTTP_POST, handleGrowWeek);
+  localServer.on("/api/local/control/phase", HTTP_POST, handleGrowPhase);
   localServer.begin();
 }
 
