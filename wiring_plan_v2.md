@@ -30,9 +30,34 @@
 | 2 | GND | GND |
 | 1 (unten) | **VIN** | **3V3** – Leiterplattenaufdruck; **nicht VIN!** |
 
-**Pumpentaster 2 wird ausdrücklich am hier abgebildeten Sensor-ESP32 mit OLED angeschlossen (D18, rechte Seite, Position 9 von oben).** Die fünf Relais verbleiben im separaten Leistungsgehäuse; das Foto liefert keine Pinbelegung für dessen Controller.
+**Pumpentaster 2 wird ausdrücklich am hier abgebildeten Sensor-ESP32 mit OLED angeschlossen (D18, rechte Seite, 7. Pin von oben (Tabellenposition 9 vom unteren Ende)).** Die fünf Relais verbleiben im separaten Leistungsgehäuse; das Foto liefert keine Pinbelegung für dessen Controller.
 
 **Fürs Löten an der Kleinspannungs-Sensorplatine:** Pinbezeichnungen aus dieser Tabelle benutzen und die Widerstände jeweils aus den unten stehenden **Bauteiltabellen** übernehmen. Nicht auf Grundlage der früheren generischen Pinzeichnungen oder der falschen VIN-Legende arbeiten.
+
+## 0b. GND-, 3V3- und Sensorversorgungsverteilung vor dem Loeten
+
+**ESP32-OLED-Board (USB unten, Frontansicht):** Unten links **VIN**, links unmittelbar darueber **GND**; unten rechts **3V3**, rechts unmittelbar darueber **GND**. Es gibt damit physisch **2 GND-Pins, 1× 3V3 und 1× VIN**, die ueber gemeinsame Versorgungsschienen verteilt werden. **VIN nicht mit 3V3 verbinden und nicht ungeprueft als belastbaren 5-V-Ausgang betrachten.** Internes OLED braucht keinen zusaetzlichen externen Versorgungsanschluss.
+
+Die Zahlen sind **Abzweige/Kontaktstellen auf der Sensor-Lochrasterplatine**, keine Anzahl erforderlicher ESP32-GND-Pins. Beide ESP32-GND-Kontakte gehoeren zur gleichen Signalmasse.
+
+| Sensor/Komponente | GND-Abzweige | 3V3-Abzweige | Versorgung getrennt von 3V3 |
+|---|---:|---:|---|
+| ADS1115: GND und ADDR (0x48), VDD | 2 | 1 | – |
+| pH-Spannungsteiler 20 kOhm A0 nach GND | 1 | 0 | – |
+| PH4502C: GND und bestehende VCC | 1 | 0 | 1 (vorhandene, funktionierende Versorgung) |
+| CQRobot EC/TDS: GND und Versorgung | 1 | 0 | **Spannung und Zielschiene offen; Modulvariante pruefen** |
+| DS18B20: GND, VDD und 4,7-kOhm-Pull-up DATA nach 3V3 | 1 | 2 | – |
+| DHT22 Nummer 1, 2 und 3: je GND und VCC | 3 | 3 | – |
+| BH1750: GND und ADDR nach GND, VCC nach 3V3 | 2 | 1 | – |
+| RGB-LED: gemeinsame Kathode GND, Gruen/Rot je ueber Serienvorwiderstaende an GPIO | 1 | 0 | – |
+| Taster 1 D19 und Taster 2 D18: jeweils nach GND | 2 | 0 | – |
+| **Gesamt, mit geplantem BH1750 und D18-Taster** | **14** | **7** | **1 fest; EC offen** |
+
+**Zusaetzliche optionale 3V3-Abzweige nur wenn Pull-ups auf den Modulen fehlen:** drei DHT22-DATA-Pull-ups (3), ADS/OLED-I2C D21 und D22 (2), BH1750-I2C D13 und D14 (2). Im Extremfall weitere **7× 3V3**, also **bis zu 14 Anschlusspunkte insgesamt**. Pull-ups niemals blind doppelt bestuecken.
+
+**Praktische Verteilervorbereitung auf dem 26×30-Lochraster:** GND-Schiene mit **mindestens 14 Abzweigstellen**, besser **16–18** inklusive Reserve; 3V3-Schiene mit **7 festen**, besser **mindestens 14** Kontaktstellen, falls externe Pull-ups noetig werden. Fuer die vorhandene PH4502C-Versorgung **1 Anschluss** beibehalten und **1–2 Reserveplaetze** vorsehen, aber **noch kein zweites Modul auf Verdacht an VIN/5 V anschliessen**. Wenn die CQRobot-Versorgung nach Variantenpruefung 3V3 statt 5 V erfordert, muss dieser Anschluss auf die 3V3-Schiene umgeplant werden.
+
+**Nicht in obiger Summe:** optionaler MLX90640, Buzzer und dessen Treiber, spaetere Module sowie der **separate ESP32-C3 im Leistungsgehaeuse**. Dessen Masse-/3V3-/Relaisversorgung ist gesondert zu dimensionieren. PH4502C PO/ADS A0: bestehende Verdrahtung beibehalten und vorhandene Spannung nicht allein aus dem dokumentierten Teiler ableiten.
 
 ## 1. ADS1115 + PH4502C-pH-Sensor – BESTEHENDEN Spannungsteiler beibehalten
 Der ADS1115 hängt mit dem OLED am I²C-Bus **D21/D22**, Adresse **0x48**. Seine Versorgung ist **3,3 V**, nicht 5 V. pH wird an **A0**, EC an **A1** gemessen.
@@ -116,8 +141,8 @@ D32 wird **nicht mehr** für RGB benutzt, weil dort laut Nutzer kein Signal anka
 ## 6. BEIDE Taster am ESP32 mit OLED und Buzzer
 | Bauteil | Kontakt 1 | Kontakt 2 | Externer Widerstand / Status |
 |---|---|---|---|
-| **Taster 1 – WUCHS/BLÜTE** | **D19 / GPIO19**, rechts 10. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner**, interner INPUT_PULLUP ist in beiden Sketches aktiv |
-| **Taster 2 – Pumpe AUS/EIN** | **D18 / GPIO18**, rechts 9. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner** bei zukuenftigem INPUT_PULLUP; **aktueller Firmware-Rollback ohne D18-Abfrage** |
+| **Taster 1 – WUCHS/BLÜTE** | **D19 / GPIO19**, rechts 6. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner**, interner INPUT_PULLUP ist in beiden Sketches aktiv |
+| **Taster 2 – Pumpe AUS/EIN** | **D18 / GPIO18**, rechts 7. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner** bei zukuenftigem INPUT_PULLUP; **aktueller Firmware-Rollback ohne D18-Abfrage** |
 | **Buzzer-Steuersignal** | **RX2 / GPIO16**, rechts 6. Kontakt von oben | Elektrische Beschaltung noch zu prüfen | Typ/Treiber noch offen; Buzzer-Firmware deaktiviert |
 
 Die beiden Taster sind **normale, nicht rastende Schließer**. Bei einem 4-Pin-Taster müssen die ausgewählten Kontakte im Ruhezustand getrennt und nur beim Drücken leitend sein. **Keine Tasterverbindung an 3V3 oder VIN.** Bei abgezogenem USB-Kabel verdrahten.
@@ -161,7 +186,7 @@ Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Bef
 | **ADS/OLED-I²C** | ggf. **1 × 4,7 kΩ D21→3V3 + 1 × 4,7 kΩ D22→3V3** | nur wenn Pull-ups fehlen |
 | **BH1750-I²C** | ggf. **1 × 4,7 kΩ D13→3V3 + 1 × 4,7 kΩ D14→3V3** | nur wenn Pull-ups fehlen |
 | **Taster 1: Phasenwechsel am Sensor-ESP32** | **kein externer Widerstand** (interner Pull-up) | **D19 → Taster → GND** |
-| **Taster 2: Pumpenpause am OLED-Sensor-ESP32** | **kein externer Widerstand bei zukuenftigem INPUT_PULLUP** | **D18 → Taster → GND**, rechte Seite Position 9; aktuelle Firmware nach Rollback noch ohne D18-Funktion |
+| **Taster 2: Pumpenpause am OLED-Sensor-ESP32** | **kein externer Widerstand bei zukuenftigem INPUT_PULLUP** | **D18 → Taster → GND**, rechte Seite 7. Pin von oben (Tabellenposition 9); aktuelle Firmware nach Rollback noch ohne D18-Funktion |
 | **Buzzer / geplante C3-Relais** | **Widerstände/Treiber erst nach Prüfung der konkreten Module festlegen** | nicht erraten |
 
 **Wichtig:** Der frühere Widerspruch „ADS A0 ohne Spannungsteiler“ ist hiermit korrigiert. Die bestehende **10-kΩ-/20-kΩ-Teilerverdrahtung** und die auf ihr beruhende pH-Kalibrierung sind maßgeblich. Nicht ohne Messungen verändern.
