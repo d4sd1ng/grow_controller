@@ -138,6 +138,23 @@ Im Projektroot `python export_firmware_secrets_from_env.py` ausfuehren, um `devi
 Vor dem Flashen muss die geaenderte Sensor-Firmware mit der lokal installierten Arduino-ESP32-Toolchain kompiliert werden. Danach die Kleinspannungs-Sensorik auf der 26×30-Platine testen. Separate ESP32-C3-Firmware ist noch zu entwickeln; Aktoren bleiben ohne Verbindung. Die SSR-Lastseite bleibt bis zur fachgerechten Pruefung ausser Betrieb.
 
 
+## CYD-Hauptfirmware: Touchmenue ohne LVGL
+
+**Aktuelle Empfehlung:** \`firmware/cyd_remote_control/cyd_remote_control.ino\` aus dem kompletten Sketchordner kompilieren und auf das **ESP32-2432S028R-CYD** flashen, nicht \`cyd_grow_display.ino\` (diese alternative Variante verlangt LVGL v8 und ist nicht mit LVGL v9 kompatibel).
+
+- Arduino-Board fuer das uebliche CYD: **ESP32 Dev Module**, Flash 4 MB, DIO, Upload 115200 Baud, Erase All Flash *Disabled*.
+- Der Sketch benoetigt \`TFT_eSPI\` mit zum Display passendem **ILI9341**-Setup fuer TFT GPIO 12/13/14/15/2, BL GPIO21 sowie getrennten Touch-SPI, \`XPT2046_Touchscreen\` und \`ArduinoJson v6\`. Im selben Sketchordner muss \`grow_http_client.h\` liegen. WLAN/Kennwort/Telemetrie-Host werden ueber die lokale, nicht einzucheckende \`device_secrets.h\` geladen (Skript im Projektroot: \`python export_firmware_secrets_from_env.py\`).
+- Neue Touch-Navigation (320x240 Landscape) mit fuenf Seiten:
+  1. **LIVE:** pH, EC bei DS18B20-Wassertemperatur, Luftwerte/VPD, Lux und geschaetzte Lumen auf 1,00 m2.
+  2. **PHASE:** WUCHS/BLUETE ueber \`POST /api/local/control/phase\`; Anbauwoche 1–12 ueber \`POST /api/local/control/week\`. Rueckmeldung nur nach HTTP 200; der Sensor speichert die Phase im vorhandenen \`growphase_v1\` und die Woche in \`growweek_v1\` (NVS).
+  3. **SOLL:** vorhandene, aus der aktuellen Woche abgeleitete pH-/EC-Sollwerte und das feste Phasenklima anzeigen; Betriebsmodus AUTO/MANUELL ueber \`POST /api/local/control/mode\`. **Keine freie Aenderung individueller pH/EC-Wochenwerte**, da die Sensor-API dafuer aktuell keinen abgesicherten Endpunkt besitzt. Der Betriebsmodus wird bislang nicht dauerhaft in NVS gespeichert.
+  4. **KURVE:** Klima-Historie aus Server-API, ersatzweise lokaler Ringpuffer.
+  5. **INFO:** Sensor- und pH-Alarme, Servermeldungen und klar sichtbarer ESP32-C3-Verbindungsstatus.
+- **Noch keine physische Relaissteuerung:** Ohne verbundenen C3 sind keine Relais-Buttons als aktiv nutzbar; die Firmware meldet \`esp32_c3_not_connected\`. Eine manuelle Umschaltung des Software-Betriebsmodus schaltet keine physische Last.
+- Die **PHASE-Touchsteuerung** verlangt die dazu angepasste **Produktions-Sensor-Firmware**; aeltere oder Kalibrier-Firmware bietet den Endpunkt nicht, die CYD-Oberflaeche meldet dann einen fehlgeschlagenen Befehl. Die CYD-Livewerte werden nur durch \`growroom_telemetry_client\` per WLAN bereitgestellt, **nicht** durch den lokalen Kalibriersketch.
+- Kein OLED-GPIO, ADS1115-Messweg, RGB-LED-Code oder pH/EC-Kalibrierweg wurde fuer die Touchsteuerung umkonfiguriert.
+- **Status:** GitHub geaendert und statisch geprueft, **noch nicht auf realer CYD-Toolchain kompiliert/hochgeladen/getestet**.
+
 ## CYD: Lux/Lumen und EC bei DS18B20-Wassertemperatur
 
 Beide CYD-Sketches sind fuer die aktuelle Sensor-API `GET /api/local/summary` angepasst:
