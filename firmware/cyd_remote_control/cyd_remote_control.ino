@@ -212,7 +212,7 @@ bool fetchSummary() {
   String payload = http.getString();
   http.end();
 
-  StaticJsonDocument<4096> doc;
+  DynamicJsonDocument doc(4096); // JSON-Buffer im Heap statt im knappen ESP32-Task-Stack
   if (deserializeJson(doc, payload) || !doc["ok"].as<bool>())
     return false;
 
@@ -655,8 +655,12 @@ static void handleTouch(int x, int y) {
   if (!lastSensorResponseOk) return;
   if (screenPage == ScreenPage::Phase) {
     if (y >= 52 && y < 99) {
-      if (x < 160) postPhase("wuchs");
-      else postPhase("bluete");
+      const char *requested = x < 160 ? "wuchs" : "bluete";
+      if (!strcmp(state.phase, requested)) {
+        snprintf(uiMessage, sizeof(uiMessage), "Phase bereits aktiv");
+      } else {
+        postPhase(requested);
+      }
     } else if (y >= 132 && y < 179) {
       if (x < 90 && state.growWeek > 1)
         postWeek(static_cast<uint8_t>(state.growWeek - 1));
