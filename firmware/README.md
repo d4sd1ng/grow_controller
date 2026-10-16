@@ -124,6 +124,8 @@ Der CQRobot-TDS-Sensor liegt am ADS1115 A1. **Die angezeigte EC-Leitfaehigkeit g
 | GET | `/api/local/actuators` | API-Kompatibilitaet: Soll-/Ist-GPIO-Zustaende |
 | POST | `/api/local/control/targets` | Gibt **HTTP 503 `esp32_c3_not_connected`** zurueck, solange der separate C3-Leistungscontroller fehlt |
 | POST | `/api/local/control/mode` | `auto`/`manual` |
+| POST | `/api/local/control/week` | `{ "week": 1..12 }`, per NVS gespeichert, pH-/EC-Sollwerte aus Wochenprofil |
+| POST | `/api/local/control/phase` | `{ "phase": "wuchs" }` oder `{ "phase": "bluete" }`, nutzt vorhandene Phase/NVS und RGB-Logik |
 
 Die **Trennung ist in der Sensor-Firmware umgesetzt:** Alle direkten SSR-Pins und GPIO-Schaltbefehle wurden entfernt. Der Sensorcontroller liest Sensoren und verwaltet Sollwerte, meldet Aktoren aber als **`esp32_c3_not_connected`**. **Noch nicht umgesetzt:** eigenes C3-Programm, dessen Kommunikation/Rueckmeldung und sichere Ausfallbehandlung. Es gibt keine betriebsfaehige Leistungssteuerung. Fuer eine Heizlast ist eine unabhaengige physische Temperaturbegrenzung erforderlich.
 
