@@ -70,14 +70,14 @@ Die Zahlen sind **Abzweige/Kontaktstellen auf der Sensor-Lochrasterplatine**, ke
 | ADS1115-Modul | **29 × 17** | gemessene Länge × Breite, **nicht** als Lochmittenabstand bestätigt |
 | PH4502C | **33 × 23** | Mitte Befestigungsbohrung bis Mitte Befestigungsbohrung; **abgewinkelte Anschlussstifte, Modul steht hochkant** |
 | CQRobot EC-Modul | **23 × 37** | Mitte Befestigungsbohrung bis Mitte Befestigungsbohrung; Achsrichtung vor endgültiger Montage prüfen |
-| Taster | **90 × 10 (noch rückfragen!)** | Nutzer nannte 9 cm × 1 cm; das wäre fast gesamte 100-mm-PCB-Breite; **nicht auf 9 mm verkürzen, ohne Bestätigung** |
+| Taster 1 und 2 | **je 10 × 10** | Nutzermaß am 17.10.2026 bestätigt; Pinraster und Kontaktanordnung müssen vor Auswahl des Einlöt-Footprints geprüft werden |
 | Buzzer | **Ø ca. 10** | Schätzwert, **zweipoliger Buzzer, Treiber/Spannung weiter ungeklärt** |
 
 **WICHTIG für den PCB-Aufbau:** Der ESP32-Querabstand ist jetzt mit 27 mm statt des früheren Generator-Platzhalters 25,4 mm angegeben. Die **Montagebohrungen der aufgesteckten Module dürfen nicht einfach an den Abmessungsrechtecken platziert werden**: Ihre Lage relativ zu den tatsächlichen Pinreihen muss erst aufgenommen werden. Bei **hochkant stehendem PH4502C** ist statt des flachen Modulumrisses vor allem der rechtwinklige Stecker, dessen Rastermaß, die genaue Pinfolge und der nötige Gehäusefreiraum entscheidend. Die 33 × 23 mm Lochmitten sind für eine ggf. separate Befestigung der pH-Platine hilfreich, aber nicht automatisch Leiterplatten-Bohrungen im Träger.
 
 **RTC-Entscheidung:** aktuell **kein RTC erforderlich/zu bestücken**. Der Raspberry Pi kann Datums-/Uhrzeitstempel setzen; die derzeitige Sensor-Firmware hat weder eine RTC-Anbindung noch autonome zeitgebundene Last-Zeitpläne. Nur für späteren eigenständigen Uhrzeitbetrieb (z. B. Lichtplan bei WLAN-/Serverausfall) RTC/DS3231 erneut bewerten. Ein eventuell vorhandenes RTC-Modul besitzt laut Nutzer ebenfalls abgewinkelte Pins und würde hochkant stehen; **kein Footprint, solange RTC nicht benötigt wird**.
 
-**Noch nicht abschließend vermessen:** Lage/Ø der Modul-Befestigungsbohrungen relativ zu den Anschlussleisten, ADS1115-Pinreihen und genaue Ausrichtung, PH4502C-Pinraster und Gehäusefreiraum, EC-Pinfolge und Versorgung, Buzzer-Treiber/Spannung sowie der auffällige Taster-Längenwert. Für PCB-Fertigung Footprints und KiCad-DRC separat prüfen.
+**Noch nicht abschließend vermessen:** Lage/Ø der Modul-Befestigungsbohrungen relativ zu den Anschlussleisten, ADS1115-Pinreihen und genaue Ausrichtung, PH4502C-Pinraster und Gehäusefreiraum, EC-Pinfolge und Versorgung, Buzzer-Treiber/Spannung sowie die noch nicht bestätigten Taster-Pinabstände (Außenmaß jetzt 10 × 10 mm). Für PCB-Fertigung Footprints und KiCad-DRC separat prüfen.
 
 ## 1. ADS1115 + PH4502C-pH-Sensor – BESTEHENDEN Spannungsteiler beibehalten
 Der ADS1115 hängt mit dem OLED am I²C-Bus **D21/D22**, Adresse **0x48**. Seine Versorgung ist **3,3 V**, nicht 5 V. pH wird an **A0**, EC an **A1** gemessen.
