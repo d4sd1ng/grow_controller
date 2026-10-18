@@ -181,14 +181,23 @@ Die beiden Taster sind **normale, nicht rastende Schließer**. Bei einem 4-Pin-T
 
 MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus nicht ohne Prüfung mit 5-V-Pull-ups betreiben.
 
-## 8. Separate Leistungsbox – fünf Funktionskanäle, KEINE 230-V-Verdrahtung
-| Kanal | Funktion | ESP32-C3-GPIO |
+## 8. Separate Leistungsbox – 1 × SSR25 + 4 × SSR10, KEINE 230-V-Verdrahtung
+
+**Nutzerbestaetigter SSR-Bestand (18.10.2026):** Es sind **exakt fuenf SSR** vorgesehen: **1 × SSR25 fuer LED-Beleuchtung** und **4 × SSR10 fuer Abluft, Umluft, Heizung und Pumpe**. Ein zusaetzliches SSR fuer die Lampenkuehlung ist **nicht** vorhanden und darf nicht ohne Rueckfrage in den Plan eingetragen werden.
+
+| SSR | Funktion | ESP32-C3-GPIO |
 |---|---|---|
-| 1 | **Beide Lampen gemeinsam** | offen |
-| 2 | **Abluft** | offen |
-| 3 | **Umluft** | offen |
-| 4 | **Heizstrahler** | offen |
-| 5 | **Filter-/Umwälzpumpe (geplant)** | offen |
+| **SSR25 (1 ×)** | **LED-Beleuchtung (gemeinsame Leistungsschaltung)** | offen |
+| **SSR10 (1 ×)** | **Abluft** | offen |
+| **SSR10 (1 ×)** | **Umluft** | offen |
+| **SSR10 (1 ×)** | **Heizung / Heizstrahler** | offen |
+| **SSR10 (1 ×)** | **Pumpe** | offen |
+
+**Zusaetzliche Komponenten, noch kein verbindlicher Steuer-Pinplan:**
+- **2 × LED-Dimmer** fuer die LED-Treiber: Steuereingang / Dimmverfahren (z. B. 0–10 V, PWM oder Widerstandsschnittstelle) anhand der tatsaechlichen Treiberpruefen. ESP32-GPIO **nicht direkt** mit unbekanntem Dimmeingang verbinden.
+- **4 × 120-mm-PC-Luefter, je 12 V**, fuer die Waermeabfuhr der LED-Panels. Nutzer hat ein separates Netzteil mit zwei Anschluessen erwaehnt; genaue DC-Versorgung und die Schaltart der vier Luefter sind **noch offen**. Diese Luefter sind **nicht** einer der vier SSR10-Funktionen und **kein sechster SSR-Kanal** wurde bestaetigt.
+- **LED-Panel-/Treiberkonfiguration:** Nutzer nennt zwei LED-Panels am SSR25 und einen zweiten LED-Treiber mit vier Panels. Ob dessen Stromversorgung ebenfalls ueber den SSR25 geschaltet wird, ist **noch nicht eindeutig geklaert**. Keine zusaetzliche Lastannahme oder Leitungsdimensionierung ohne diese Klaerung.
+- Die Leistungsschaltung liegt im **separaten Leistungsgehaeuse**, **nicht auf der Sensor-Kleinspannungs-PCB**. Netzspannung, SSR-Typ (AC/DC-Eignung), Kuehlung und Absicherung von einer Elektrofachkraft pruefen lassen. Der C3-Pinplan und seine Firmware sind weiterhin nicht freigegeben.
 
 **Pumpentaster-Zuordnung:** Ausschließlich **Sensor-ESP32 mit OLED, D18 → Taster 2 → GND**; Details samt Widerstand direkt in Abschnitt 6. **Keine Pumpentaster-Verbindung am separaten Leistungscontroller.** Die D18-Tastenerfassung ist im aktuellen Firmwarestand voruebergehend deaktiviert; sie steuert keine Pumpe.
 
