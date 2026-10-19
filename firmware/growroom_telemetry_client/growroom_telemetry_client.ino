@@ -43,7 +43,11 @@
 #define GROW_ENABLE_PH_BUZZER 0
 #endif
 /* RGB: gemeinsame Kathode vom Nutzer bestaetigt, GND gemeinsam.
- * R D33 und G D4 jeweils ueber 440 Ohm; nach Umverdrahtung aktiv.
+ * R D33 und G D4 = Phasenanzeige; B D17 (TX2) = Filterwechsel.
+ * Je Kanal zwei 220-Ohm-Widerstaende in Reihe (440 Ohm).
+ * BLAU darf nur bei vom Leistungscontroller bestaetigter Pumpenabschaltung
+ * waehrend Filterwartung leuchten. C3-Kommunikation fehlt noch:
+ * B bleibt aktuell bewusst AUS; GPIO18-Taster ist noch nicht aktiv.
  */
 #ifndef GROW_ENABLE_PHASE_RGB
 #define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode: LED gruen D4, rot D33; DS18B20 D23
@@ -76,6 +80,7 @@ static constexpr uint8_t PIN_DHT3 = 27;
 static constexpr uint8_t PIN_PHASE_BUTTON = 19; // Taster an D19
 static constexpr uint8_t PIN_RGB_GREEN = 4; // Gruen an D4; GPIO32 liefert kein Signal
 static constexpr uint8_t PIN_RGB_RED = 33;
+static constexpr uint8_t PIN_RGB_BLUE = 17; // TX2: Pumpen-Filterwechsel, nur bei bestaetigtem Pumpen-AUS
 static constexpr uint8_t PIN_PH_BUZZER = 16; // Buzzer an D16; deaktiviert bis Typ/Treiber geklaert
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 static constexpr uint8_t PIN_ONEWIRE = 23; // DS18B20 auf D23; PH4502C DO wird nicht genutzt
@@ -313,8 +318,10 @@ static void setupGrowPhaseButtons() {
   const uint8_t off = GROW_RGB_COMMON_ANODE ? HIGH : LOW;
   digitalWrite(PIN_RGB_RED, off);
   digitalWrite(PIN_RGB_GREEN, off);
+  digitalWrite(PIN_RGB_BLUE, off); // keine C3-Rueckmeldung: blau muss AUS bleiben
   pinMode(PIN_RGB_RED, OUTPUT);
   pinMode(PIN_RGB_GREEN, OUTPUT);
+  pinMode(PIN_RGB_BLUE, OUTPUT);
 #endif
   phasePendingPresses = 0;
   phaseLastInterruptUs = micros() - PHASE_DEBOUNCE_MS * 1000UL;
@@ -1108,6 +1115,8 @@ static void handleSummary() {
   JsonObject outputs = doc.createNestedObject("actuators");
   outputs["source"] = "esp32_c3_not_connected";
   outputs["connected"] = false;
+  // Bestaetigung der physischen Abschaltung ist noch nicht verfuegbar.
+  outputs["pump_service_off_confirmed"] = false;
   JsonObject actualObj = outputs.createNestedObject("actual");
   writeActuators(actualObj, actual);
 
