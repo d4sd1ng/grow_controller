@@ -22,7 +22,7 @@
 | 10 | D32 (GPIO32; **nicht verwenden für RGB**) | **D19** (GPIO19; Phasentaster) |
 | 9 | **D33** (GPIO33; LED Rot) | **D18** (GPIO18; Pumpentaster 2) |
 | 8 | **D25** (GPIO25; DHT22-1) | D5 (GPIO5) |
-| 7 | **D26** (GPIO26; DHT22-2) | TX2 (GPIO17) |
+| 7 | **D26** (GPIO26; DHT22-2) | **TX2 (GPIO17; RGB Blau fuer bestaetigte Pumpen-Wartung)** |
 | 6 | **D27** (GPIO27; DHT22-3) | **RX2 (GPIO16; Buzzer-Signal)** |
 | 5 | **D14** (GPIO14; BH1750 SCL) | **D4** (GPIO4; LED Grün) |
 | 4 | D12 (GPIO12) | D2 (GPIO2) |
@@ -49,7 +49,7 @@ Die Zahlen sind **Abzweige/Kontaktstellen auf der Sensor-Lochrasterplatine**, ke
 | DS18B20: GND, VDD und 4,7-kOhm-Pull-up DATA nach 3V3 | 1 | 2 | – |
 | DHT22 Nummer 1, 2 und 3: je GND und VCC | 3 | 3 | – |
 | BH1750: GND und ADDR nach GND, VCC nach 3V3 | 2 | 1 | – |
-| RGB-LED: gemeinsame Kathode GND, Gruen/Rot je ueber Serienvorwiderstaende an GPIO | 1 | 0 | – |
+| RGB-LED: gemeinsame Kathode GND, Gruen/Rot/Blau je ueber eigene Serienvorwiderstaende an GPIO | 1 | 0 | – |
 | Taster 1 D19 und Taster 2 D18: jeweils nach GND | 2 | 0 | – |
 | **Gesamt, mit geplantem BH1750 und D18-Taster** | **14** | **7** | **1 fest; EC offen** |
 
@@ -148,13 +148,15 @@ Keine 4,7 kΩ in Reihe zum Datenpin. Bei Breakout-Modulen mit integriertem Pull-
 
 Die Pull-ups liegen **parallel zum Bus**, nicht in Reihe. Vorhandene Widerstände auf dem BH1750-Breakout zuerst prüfen.
 
-## 5. RGB-LED – zwei Vorwiderstandsketten
+## 5. RGB-LED – drei Vorwiderstandsketten
 | Von | Widerstandskette | Nach |
 |---|---|---|
 | ESP32 **D4 / GPIO4** | **220 Ω → 220 Ω in Reihe = 440 Ω** | **RGB Grün (Anode)** |
 | ESP32 **D33 / GPIO33** | **220 Ω → 220 Ω in Reihe = 440 Ω** | **RGB Rot (Anode)** |
 | **Gemeinsame Kathode** | keiner | **GND** |
-| **RGB Blau** | keiner | **nicht angeschlossen** |
+| ESP32 **TX2 / GPIO17** | **220 Ω → 220 Ω in Reihe = 440 Ω** | **RGB Blau (Anode), nur bestaetigte Pumpenabschaltung fuer Filterwechsel** |
+
+Bei bestaetigter Pumpenwartung hat **Blau Vorrang**: Rot und Gruen sind AUS, damit die LED wirklich rein blau statt cyan/weiss leuchtet. Der Sensor-ESP32 bekommt derzeit noch **keine bestaetigte Pumpen-Rueckmeldung vom C3**, daher bleibt Blau absichtlich AUS. **Ein Druck auf D18 allein ist kein Nachweis fuer Pumpe AUS.** Beim Filterwechsel muss die Pumpe unabhaengig von der Software sicher elektrisch getrennt sein.
 
 D32 wird **nicht mehr** für RGB benutzt, weil dort laut Nutzer kein Signal ankam. **Grün = WUCHS; Rot + Grün = Gelb = BLÜTE.** D4 ist in beiden aktuellen Sketches eingetragen; Hardwarefunktion erst nach dem Umstecken und Flashen bestätigen.
 
@@ -211,6 +213,7 @@ Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Bef
 | **DS18B20** | **1 × 4,7 kΩ DATA(D23)→3V3** | vorgesehen/bereits bestätigt |
 | **RGB Grün** | **2 × 220 Ω in Reihe, D4→LED** | Firmware auf D4, physisch prüfen |
 | **RGB Rot** | **2 × 220 Ω in Reihe, D33→LED** | vorgesehen |
+| **RGB Blau** | **2 × 220 Ω in Reihe, TX2/GPIO17→LED** | PCB V0.6 vorbereitet; Firmware bleibt ohne C3-Rueckmeldung AUS |
 | **DHT22 Nr. 1/2/3** | ggf. **je 1 × 4,7 kΩ DATA→3V3** | nur bei fehlendem Modul-Pull-up |
 | **ADS/OLED-I²C** | ggf. **1 × 4,7 kΩ D21→3V3 + 1 × 4,7 kΩ D22→3V3** | nur wenn Pull-ups fehlen |
 | **BH1750-I²C** | ggf. **1 × 4,7 kΩ D13→3V3 + 1 × 4,7 kΩ D14→3V3** | nur wenn Pull-ups fehlen |
