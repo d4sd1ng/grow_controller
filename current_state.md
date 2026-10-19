@@ -17,12 +17,13 @@
 | GPIO16 | Zweipoliger pH-Buzzer: Steuersignal reserviert; Treiber/Spannung unbekannt, Firmware deaktiviert |
 | **GPIO4 (D4)** | RGB-Grün über **440 Ω (2×220 Ω in Reihe)**; ersetzt ausgefallenen GPIO32 |
 | GPIO33 | RGB-Rot über **440 Ω (2×220 Ω in Reihe)** |
+| **GPIO17 (TX2)** | RGB-Blau über **440 Ω (2×220 Ω in Reihe)**; Vorrang nur bei vom C3 bestaetigtem Pumpen-AUS waehrend Filterwartung; derzeit AUS mangels C3-Rueckmeldung |
 | GPIO19 | **Taster 1:** D19 → nicht rastender Schließer → GND, interner `INPUT_PULLUP` aktiv; WUCHS/BLÜTE. Die Firmware meldet im Serial-Monitor TASTER D19. |
 | **GPIO18 (D18)** | **Taster 2 – Pumpe:** Hardwareplanung D18 → nicht rastender Schließer → GND am OLED-ESP32. Keine D18-Verarbeitung in der aktuellen Firmware **nach Rollback vor die D18-Erweiterung**; keine wirksame Pumpenabschaltung. |
 
 **Änderung gegenüber V7:** DS18B20 wieder von GPIO32 auf **GPIO23** zurückverlegt, um den Pull-up mechanisch wie gewünscht anzuschließen. RGB-Grün war zuletzt auf **GPIO32** geplant, dort kommt laut Hardwaretest kein Signal an; deshalb nun auf **GPIO4 (D4)** ohne doppelte Pinbelegung. DS18B20-Funktion wurde zuvor vom Nutzer bei GPIO32 bestätigt; auf D23 nach dem Umverdrahten erneut prüfen.
 
-**RGB-LED:** Gemeinsame Kathode laut Nutzer → GND, Blau bleibt frei. Grün = WUCHS; Rot + Grün = Gelb (BLÜTE). Firmware verwendet `GROW_RGB_COMMON_ANODE=0` und aktiviert RGB mit `GROW_ENABLE_PHASE_RGB=1`. **LED-/pH-Abweichung nach Firmwarewechsel ist weiterhin zu klaeren; keine weitere Umverdrahtung auf Verdacht.** Ein Phasentaster D19 (bereits programmiert) und ein separater Pumpentaster D18 (noch nicht programmiert); Phasenzustand im NVS `growphase_v1`.
+**RGB-LED:** Gemeinsame Kathode laut Nutzer → GND, Blau ist neu auf TX2/GPIO17 vorgesehen und bleibt mangels bestaetigter C3-Pumpenabschaltung AUS. Grün = WUCHS; Rot + Grün = Gelb (BLÜTE). Bei bestaetigter Filterwartung nur BLAU (Rot/Gruen aus). Firmware verwendet `GROW_RGB_COMMON_ANODE=0` und aktiviert RGB mit `GROW_ENABLE_PHASE_RGB=1`. **LED-/pH-Abweichung nach Firmwarewechsel ist weiterhin zu klaeren; keine weitere Umverdrahtung auf Verdacht.** Ein Phasentaster D19 (bereits programmiert) und ein separater Pumpentaster D18 (noch nicht programmiert); Phasenzustand im NVS `growphase_v1`.
 
 **Nicht verdrahten:** PH4502C TO/DO; keine SSR- oder Netzspannungsverkabelung auf der Sensorplatine. Interner OLED auf GPIO21/22. Kamera-Versorgung noch nicht freigegeben. Weitere Details: [wiring_plan_v2.md](wiring_plan_v2.md).
 
@@ -66,7 +67,7 @@ Ein **PCF8574-I²C-Portexpander am ESP32-C3** ist vorgesehen, damit eine passive
 - PH4502C PO pH-4-/pH-7-Kalibrierung laut Nutzer erfolgt.
 - pH-Alarmtests LOW / HIGH / NORMAL laut Nutzer funktionsfähig.
 - PH4502C TO nicht verwendet. Genau ein DS18B20 laut Nutzer erfolgreich erkannt (bislang GPIO32), Rückverlegung auf GPIO23 nun vereinbart.
-- RGB-LED gemeinsame Kathode geklärt, ein Taster und je zwei 220-Ω-Widerstände pro R/G-Kanal vorgesehen. Buzzer-Typ und Versorgung noch nicht ermittelt.
+- RGB-LED gemeinsame Kathode geklärt, ein Taster und je zwei 220-Ω-Widerstände pro R/G/B-Kanal vorgesehen. Buzzer-Typ und Versorgung noch nicht ermittelt.
 - Die aktuell geänderten Sketche wurden hier **nicht** mit einer realen Arduino-ESP32-Toolchain kompiliert und nicht erneut auf Hardware getestet.
 
 ## Nächste Aufgaben
