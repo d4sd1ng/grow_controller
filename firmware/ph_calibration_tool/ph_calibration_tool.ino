@@ -37,8 +37,9 @@
 #ifndef GROW_ENABLE_PH_BUZZER
 #define GROW_ENABLE_PH_BUZZER 0
 #endif
-/* RGB: gemeinsame Kathode laut Nutzer bestaetigt, gruen D4 / rot D33.
- * GROW_RGB_COMMON_ANODE = 0, gemeinsamer Kontakt an GND.
+/* RGB: gemeinsame Kathode, R D33 und G D4 fuer Phase.
+ * B D17 (TX2) fuer bestaetigte Pumpen-Filterwartung ueber 2x220 Ohm.
+ * Kein C3-Feedback im Diagnose-Sketch: B bleibt IMMER AUS.
  */
 #ifndef GROW_ENABLE_PHASE_RGB
 #define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode: LED gruen D4, rot D33; DS18B20 D23
@@ -62,6 +63,7 @@ static constexpr uint8_t PIN_DS18B20 = 23; // D23, 4.7 kOhm Pull-up nach 3V3
 static constexpr uint8_t PIN_PHASE_BUTTON = 19; // Taster an D19
 static constexpr uint8_t PIN_RGB_GREEN = 4; // Gruen an D4; GPIO32 liefert kein Signal
 static constexpr uint8_t PIN_RGB_RED = 33;
+static constexpr uint8_t PIN_RGB_BLUE = 17; // TX2: Pumpen-Filterwechsel, nur bei bestaetigtem Pumpen-AUS
 static constexpr uint8_t PIN_PH_BUZZER = 16; // Buzzer an D16; deaktiviert bis Typ/Treiber geklaert
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 // TO erst aktivieren, nachdem sein maximaler Ausgangspegel nachweislich <= ADS-VDD (3.3 V) ist.
@@ -296,8 +298,10 @@ static void setupGrowPhaseButtons() {
   const uint8_t off = GROW_RGB_COMMON_ANODE ? HIGH : LOW;
   digitalWrite(PIN_RGB_RED, off);
   digitalWrite(PIN_RGB_GREEN, off);
+  digitalWrite(PIN_RGB_BLUE, off); // keine C3-Rueckmeldung: blau muss AUS bleiben
   pinMode(PIN_RGB_RED, OUTPUT);
   pinMode(PIN_RGB_GREEN, OUTPUT);
+  pinMode(PIN_RGB_BLUE, OUTPUT);
 #endif
   phasePendingPresses = 0;
   phaseLastInterruptUs = micros() - PHASE_DEBOUNCE_MS * 1000UL;
