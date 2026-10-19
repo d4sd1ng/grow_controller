@@ -259,12 +259,19 @@ static const char *phaseName(GrowPhase p) {
 static const PhaseProfile &phaseProfile() {
   return growPhase == GrowPhase::Bluete ? BLUETE_PROFILE : WUCHS_PROFILE;
 }
+// Wird erst durch spaetere *verifizierte* C3-Pumpen-Rueckmeldung gesetzt.
+// Die bestehende Sensor-Firmware hat dafuer noch kein Transportprotokoll.
+static bool pumpServiceOffConfirmed = false;
 static void refreshPhaseRgb() {
 #if GROW_ENABLE_PHASE_RGB
-  const bool redOn = growPhase == GrowPhase::Bluete;
-  const bool greenOn = true;
+  // Blau hat Vorrang: bei bestaetigter Filterwartung R/G AUS statt
+  // Mischfarben wie Cyan/Weiss. Ohne Rueckmeldung nur Wuchs/Bluete.
+  const bool blueOn = pumpServiceOffConfirmed;
+  const bool redOn = !blueOn && growPhase == GrowPhase::Bluete;
+  const bool greenOn = !blueOn;
   digitalWrite(PIN_RGB_RED, redOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
   digitalWrite(PIN_RGB_GREEN, greenOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
+  digitalWrite(PIN_RGB_BLUE, blueOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
 #endif
 }
 static void loadGrowPhase() {
@@ -1116,7 +1123,7 @@ static void handleSummary() {
   outputs["source"] = "esp32_c3_not_connected";
   outputs["connected"] = false;
   // Bestaetigung der physischen Abschaltung ist noch nicht verfuegbar.
-  outputs["pump_service_off_confirmed"] = false;
+  outputs["pump_service_off_confirmed"] = pumpServiceOffConfirmed;
   JsonObject actualObj = outputs.createNestedObject("actual");
   writeActuators(actualObj, actual);
 
