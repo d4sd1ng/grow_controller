@@ -189,14 +189,24 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 
 | SSR | Funktion | ESP32-C3-GPIO |
 |---|---|---|
-| **SSR25 (1 ×)** | **LED-Beleuchtung (gemeinsame Leistungsschaltung)** | offen |
-| **SSR10 (1 ×)** | **Abluft** | offen |
-| **SSR10 (1 ×)** | **Umluft** | offen |
-| **SSR10 (1 ×)** | **Heizung / Heizstrahler** | offen |
-| **SSR10 (1 ×)** | **Pumpe** | offen |
+| **SSR25 (1 ×)** | **LED-Beleuchtung (gemeinsame Leistungsschaltung)** | **GPIO0 (vorgesehen)** |
+| **SSR10 (1 ×)** | **Abluft** | **GPIO1 (vorgesehen)** |
+| **SSR10 (1 ×)** | **Umluft** | **GPIO3 (vorgesehen)** |
+| **SSR10 (1 ×)** | **Heizung / Heizstrahler** | **GPIO4 (vorgesehen)** |
+| **SSR10 (1 ×)** | **Pumpe** | **GPIO5 (vorgesehen)** |
+
+**ESP32-C3 SuperMini – vorlaeufiger verbindlicher GPIO-Funktionsplan (noch nicht elektrisch/firmwareseitig getestet):**
+- **5V** am SuperMini nur mit stabilisierten **5 V DC** aus einer geeigneten Kleinspannungsversorgung beschicken; falls 12 V fuer PC-Luefter vorhanden, ueber passend dimensionierten **12-auf-5-V-DC/DC-Wandler**. 12 V keinesfalls direkt an 5V, 3V3 oder GPIO anlegen. Bei USB-Flash und externer 5-V-Einspeisung Rueckspeisung auf USB vermeiden und konkrete Board-Variante pruefen.
+- **GND** an DC-Masse der Kleinspannungs-Steuer-/Treiberseite; **3V3 ist kein Anschluss fuer 5 V**.
+- **GPIO0, GPIO1, GPIO3, GPIO4, GPIO5** sind fuenf **3,3-V-Logiksignale zu noch zu dimensionierenden SSR-Treiberstufen**; **nicht unmittelbar an 230-V-Lasten** und ohne gepruefte SSR-Eingangsspezifikationen nicht direkt an SSR-Steuereingaenge schalten. Die SSRs bleiben getrennt in der Leistungsbox.
+- **GPIO6** als optionaler separater Logikausgang fuer die spaetere **12-V-Lampenkuehlung** ueber passende Niedervolt-Treiberstufe **reserviert, nicht aktiv**; **GPIO10** momentan frei; die Dimmung ist auf Nutzerwunsch **zurueckgestellt, kein Dimm-Footprint/kein Optokoppler jetzt**.
+- **GPIO2, GPIO8, GPIO9** fuer den Boot-Strappingvorgang frei halten; **GPIO18/19** sind USB und **GPIO20/21** UART. Die GPIO-Nummern des C3 sind unabhaengig von denen des Sensor-ESP32 (z. B. Sensor GPIO4 fuer RGB Gruen).
+- **Keine elektrische Signalleitung vom C3 zum Sensor-ESP32:** Kommunikation spaeter ausschliesslich WLAN, Firmware/Netzwerkprotokoll fehlen. Relaisausgaenge im Firmwarestand derzeit **nicht aktiv**. Auf dem Sensor-PCB weiterhin **keine SSR-Lastverdrahtung**.
+- **Nur Niedervolt-Kontrollseite planen;** SSR-Typnummern inkl. Eingangsstrom/-spannung (z. B. ob „DA“ oder andere Variante), SSR-Kuehlung/Absicherung/Trennung muessen vor Umsetzung kontrolliert werden. Netzseitige Installation gehoert zur Elektrofachkraft.
+- Referenz der 2×8-Pinbelegung: https://github.com/apache/nuttx/blob/master/Documentation/platforms/risc-v/esp32c3/boards/esp32c3-supermini/index.rst; Strappingpins: https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32c3/schematic-checklist.html
 
 **Zusaetzliche Komponenten, noch kein verbindlicher Steuer-Pinplan:**
-- **1 × gemeinsamer LED-Dimmkanal (Nutzerentscheidung 20.10.2026):** Die beiden Treiber sollen immer dieselbe Helligkeitsanforderung bekommen; separate Regelung ist nicht noetig. Exakte Varianten laut Nutzer: **Mean Well HLG-240H-48B** und **Mean Well XLG-240-H-AB**. Beide erlauben **10-V-PWM an ihren DIM+/DIM--Eingaengen, 100 Hz bis 3 kHz**. Daher **ein ESP32-C3-Steuersignal** und eine **geeignete 10-V-PWM-Schnittstellenstufe fuer beide Treiber**, mit Belastbarkeit, Bezugspotenzial und ggf. galvanischer Trennung geprueft. Keine 3,3-V-Direktansteuerung der DIM-Eingaenge und DIM- keinesfalls mit LED-Ausgangs-Minus gleichsetzen. Beide Eingangskennlinien unterscheiden sich besonders bei kleinen Dimmwerten; dasselbe PWM-Signal bewirkt nicht zwingend exakt gleichen Lichtstrom. Das gemeinsame **SSR25 bleibt fuer Netz-Ein/Aus beider Treiber vorgesehen**. Herstellerdatenblaetter: https://www.meanwell.com/Upload/PDF/HLG-240H/HLG-240H-SPEC.pdf und https://www.meanwell.com/Upload/PDF/XLG-240/XLG-240-SPEC.PDF.
+- **1 × gemeinsamer LED-Dimmkanal (Nutzerentscheidung 20.10.2026):** Die beiden Treiber sollen immer dieselbe Helligkeitsanforderung bekommen; separate Regelung ist nicht noetig. Exakte Varianten laut Nutzer: **Mean Well HLG-240H-48B** und **Mean Well XLG-240-H-AB**. Beide erlauben **10-V-PWM an ihren DIM+/DIM--Eingaengen, 100 Hz bis 3 kHz**. Daher **ein ESP32-C3-Steuersignal** und eine **spaeter eventuell geeignete Schnittstellenstufe fuer beide Treiber, aktuell auf Nutzerwunsch NICHT geplant**, mit Belastbarkeit, Bezugspotenzial und ggf. galvanischer Trennung geprueft. Keine 3,3-V-Direktansteuerung der DIM-Eingaenge und DIM- keinesfalls mit LED-Ausgangs-Minus gleichsetzen. Beide Eingangskennlinien unterscheiden sich besonders bei kleinen Dimmwerten; dasselbe PWM-Signal bewirkt nicht zwingend exakt gleichen Lichtstrom. Das gemeinsame **SSR25 bleibt fuer Netz-Ein/Aus beider Treiber vorgesehen**. Herstellerdatenblaetter: https://www.meanwell.com/Upload/PDF/HLG-240H/HLG-240H-SPEC.pdf und https://www.meanwell.com/Upload/PDF/XLG-240/XLG-240-SPEC.PDF.
 - **4 × 120-mm-PC-Luefter, je 12 V**, fuer die Waermeabfuhr der LED-Panels. Nutzer hat ein separates Netzteil mit zwei Anschluessen erwaehnt; genaue DC-Versorgung und die Schaltart der vier Luefter sind **noch offen**. Diese Luefter sind **nicht** einer der vier SSR10-Funktionen und **kein sechster SSR-Kanal** wurde bestaetigt.
 - **LED-Panel-/Treiberkonfiguration (Nutzer bestaetigt):** **4 LED-Panels gesamt**, aufgeteilt auf **2 LED-Treiber mit je 2 in Reihe geschalteten Panels**. **Beide Treiber werden gemeinsam ueber das vorhandene SSR25 versorgt.** Jeder Treiber bekommt einen eigenen der beiden Dimmer. Die konkrete elektrische Dimmerschnittstelle sowie SSR-/Treiber-Typ und Belastbarkeit vor der Leistungsverdrahtung anhand der Datenblaetter pruefen.
 - Die Leistungsschaltung liegt im **separaten Leistungsgehaeuse**, **nicht auf der Sensor-Kleinspannungs-PCB**. Netzspannung, SSR-Typ (AC/DC-Eignung), Kuehlung und Absicherung von einer Elektrofachkraft pruefen lassen. Der C3-Pinplan und seine Firmware sind weiterhin nicht freigegeben.
