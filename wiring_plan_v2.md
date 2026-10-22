@@ -207,8 +207,8 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 | Heizung SSR10 | GPIO4 | rechts 4 |
 | Wasserpumpe SSR10 | GPIO5 | links 1 |
 | Lampen-PC-Luefter (4 × 12 V) | GPIO6 | links 2 |
-| **I²C SDA** PCA9685 (4 Dosierpumpen) | **GPIO7** | **links 3** |
-| **I²C SCL** PCA9685 (4 Dosierpumpen) | **GPIO10** | **links 6** |
+| **I²C SDA** PCA9685 (7 Dosierpumpen) | **GPIO7** | **links 3** |
+| **I²C SCL** PCA9685 (7 Dosierpumpen) | **GPIO10** | **links 6** |
 | **DOS_OE aktive LOW, Gesamtsperre Dosier-MOSFETs** | **GPIO20** | **links 7** |
 | Versorgung | 5V | rechts 1 |
 | GND | GND | rechts 2 |
@@ -219,7 +219,7 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 - **GPIO6** schaltet die Lampenkuehlung erst ueber eine eigene externe 12-V-DC-MOSFET-Stufe.
 - **GPIO7/GPIO10** werden als I²C-Bus fuer den **auf derselben Leistungscontroller-PCB integrierten PCA9685** fest vorgesehen, mit 4,7-kΩ-Pull-ups nach 3V3 einmal je Leitung und PCA-Adresse 0x40 (Adressleitungen entsprechend beschalten).
 - **GPIO20** statt UART-RX reserviert als **PCA9685 OE (LOW=freigegeben, HIGH=gesperrt)**. OE durch 10-kΩ-Widerstand nach 3V3 im Boot-/Reset-Zustand AUS halten. Nur bei initialisiertem Controller OE freigeben. Gate-Pulldowns der MOSFETs als zweite Ruhe-Bedingung vorsehen.
-- **Dosierpumpe 1-4:** PCA9685 PWM-Kanaele **0,1,2,3** → je ein eigener DC-MOSFET-Kanal mit Gate-Widerstand/Gate-Pulldown/Freilaufdiode → je ein **2-poliger Pumpenanschluss** auf **derselben** C3-Platine. Pumpenstromkreis ueber eigene externe **V_PUMP**-DC-Einspeisung, nicht ueber 3V3/5V. Dimensionierung nach den tatsaechlichen Pumpen (Versorgung, Anlauf-/Blockierstrom); vorerst keine Motor-Teilenummer unterstellen. Ueberstromschutz sowie Hardware-Timeout bzw. externe Freigabe gegen Dauerlauf vor Inbetriebnahme vorsehen.
+- **GENAU 7 Dosierpumpen (Nutzerkorrektur 22.10.2026):** **5 × Dünger** an PCA9685 **OUT0–OUT4** (PUMP1–PUMP5), **1 × pH− an OUT5** (PUMP6), **1 × pH+ an OUT6** (PUMP7). Alle **sieben** Kanaele auf **derselben** C3-Platine: jeweils eigener DC-MOSFET mit Gate-Widerstand/Gate-Pulldown/Freilaufdiode und je ein eigener **2-poliger Pumpenanschluss**. **Keine zweite Dosierpumpen-Platine.** Pumpenstromkreis ueber eigene externe **V_PUMP**-DC-Einspeisung, nicht ueber 3V3/5V. Dimensionierung nach den tatsaechlichen Pumpen (Versorgung, Anlauf-/Blockierstrom); vorerst keine Motor-Teilenummer unterstellen. Ueberstromschutz sowie Hardware-Timeout bzw. externe Freigabe gegen Dauerlauf vor Inbetriebnahme vorsehen. **Interlock:** pH+ und pH− niemals gleichzeitig freigeben; bei fehlendem/ungueltigem pH-Messwert oder Verbindungsverlust beide pH-Dosierkanaele sperren. Automatische Dosierung und ihre Grenzwerte sind noch nicht implementiert.
 - Optionaler spaeterer PCF8574 fuer Matrix-Bedienfeld koennte den **gleichen I²C-Bus GPIO7/GPIO10** nutzen (z. B. Adresse 0x20, Buskonflikte prüfen), ohne weitere C3-GPIOs. Tastaturpins/Halterung bleiben ungeplant.
 - **GPIO2, GPIO8, GPIO9** als Boot-Strappingpins nicht belegen, **GPIO18/19** bleiben fuer USB, **GPIO21** bleibt Reserve/UART-TX.
 - **Keine direkte Kabelverbindung zwischen Sensor-ESP und C3:** Datenaustausch soll ueber WLAN erfolgen. Es gibt bislang **keine betriebsfaehige C3-SSR-/Pumpen-Firmware**; das ist eine Pin- und Platinenkonstruktion, keine funktionsfaehige Dosierung.
