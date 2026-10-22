@@ -2,7 +2,7 @@
 
 **Geltungsbereich:** zwei getrennte Boards. Sensor-ESP32-OLED fuer Kleinspannungs-Messung/Bedienfeld; ESP32-C3 SuperMini fuer geplante 3,3-V-SSR-Steuersignale in einer gesonderten Leistungsbox. **Keinerlei Netzspannungs-/SSR-Lastverdrahtung auf der Sensorplatine.**
 
-**Nummerierung:** Die erste Spalte zaehlt **Loecher je Seitenreihe VON OBEN**, also unabhaengig von der GPIO-Nummer. *Links* und *rechts* sind Ansichten auf die **Bauteilseite**, **nicht** die Rueckseite. Die aufgedruckte Beschriftung ist beim realen Board zu pruefen.
+**Nummerierung:** Die erste Spalte zaehlt **Loecher je Seitenreihe VON OBEN**, also unabhaengig von der GPIO-Nummer. Der Nutzer hat Taster und Buzzer dagegen als Kontakte **VON UNTEN** benannt: rechts 6 von unten = GPIO16 (Wuchs/Bluete), rechts 10 von unten = GPIO19 (Wasserpumpentaster), rechts 7 von unten = GPIO17 (RGB Blau), rechts 8 von unten = GPIO5 (Buzzer). *Links* und *rechts* sind Ansichten auf die **Bauteilseite**, **nicht** die Rueckseite. Die aufgedruckte Beschriftung ist beim realen Board zu pruefen.
 
 ## A. Sensor-ESP32 mit OLED – alle 30 Kontakte
 
@@ -15,11 +15,11 @@
 | 3 | VN / GPIO39 / frei, nur Eingang | TX0 / GPIO1 / UART |
 | 4 | D34 / GPIO34 / frei, nur Eingang | RX0 / GPIO3 / UART |
 | 5 | D35 / GPIO35 / frei, nur Eingang | D21 / GPIO21 / I²C SDA (ADS/OLED/MLX) |
-| 6 | D32 / GPIO32 / derzeit unbenutzt | D19 / GPIO19 / Phasentaster |
-| 7 | D33 / GPIO33 / RGB Rot | D18 / GPIO18 / Pumpen-Wartungstaster (Firmware aktuell deaktiviert) |
-| 8 | D25 / GPIO25 / DHT22 1 | D5 / GPIO5 / frei |
+| 6 | D32 / GPIO32 / derzeit unbenutzt | D19 / GPIO19 / **Wasserpumpen-Wartungstaster (vom Nutzer an rechts 10 von unten angeschlossen; Firmware noch veraltet)** |
+| 7 | D33 / GPIO33 / RGB Rot | D18 / GPIO18 / **frei; alte Pumpentaster-Zuordnung aufgehoben** |
+| 8 | D25 / GPIO25 / DHT22 1 | D5 / GPIO5 / **Buzzer-Signal (vom Nutzer rechts 8 von unten; Treiber noch zu prüfen)** |
 | 9 | D26 / GPIO26 / DHT22 2 | TX2 / GPIO17 / RGB Blau |
-| 10 | D27 / GPIO27 / DHT22 3 | RX2 / GPIO16 / Buzzer-Signal nur reserviert |
+| 10 | D27 / GPIO27 / DHT22 3 | RX2 / GPIO16 / **Wuchs/Blüte-Taster (vom Nutzer rechts 6 von unten; Firmware noch veraltet)** |
 | 11 | D14 / GPIO14 / BH1750 SCL | D4 / GPIO4 / RGB Gruen |
 | 12 | D12 / GPIO12 / frei (Boot-Pin beachten) | D2 / GPIO2 / frei (Boot-Pin beachten) |
 | 13 | D13 / GPIO13 / BH1750 SDA | D15 / GPIO15 / frei (Boot-Pin beachten) |
@@ -46,9 +46,9 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 | RGB Gruen | Anode | GPIO4 (rechts 11) | 2×220 Ω in Reihe |
 | RGB Blau | Anode | GPIO17 TX2 (rechts 9) | 2×220 Ω in Reihe; bleibt ohne Pumpen-AUS-Bestaetigung AUS |
 | RGB gemeinsam | Kathode | GND (links oder rechts 14) | gemeinsame Kathode |
-| Taster Phase | Signal | GPIO19 (rechts 6) | Taster gegen GND; interner INPUT_PULLUP |
-| Taster Pumpenwartung | Signal | GPIO18 (rechts 7) | Taster gegen GND; aktuelle Firmware ohne aktive Pumpenabschaltung |
-| Buzzer optional | Signalleitung reserviert | GPIO16 RX2 (rechts 10) | 2-Pin-Buzzer-Typ und Treiber ungeklärt, Firmware deaktiviert |
+| Taster Phase | Signal | GPIO16 (rechts 10 von oben / rechts 6 von unten) | Taster gegen GND; interner INPUT_PULLUP vorgesehen; Firmware noch auf altem Pin |
+| Taster Pumpenwartung | Signal | GPIO19 (rechts 6 von oben / rechts 10 von unten) | Taster gegen GND; Firmware noch nicht nachgezogen und keine Pumpenabschaltung aktiv |
+| Buzzer optional | Signalleitung reserviert | GPIO5 D5 (rechts 8 von oben / unten) | 2-Pin-Buzzer-Typ und Treiber ungeklärt, Firmware deaktiviert |
 
 **Versorgungen:** ADS1115/DHT22/BH1750 benutzen 3V3, gemeinsame Signalmasse. PH4502C behält die bestehende externe Sensorversorgung; EC- und MLX-VCC nicht auf Verdacht zuordnen. 3V3 und VIN niemals zusammenschalten.
 
