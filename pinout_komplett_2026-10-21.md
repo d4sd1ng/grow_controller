@@ -52,36 +52,52 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 
 **Versorgungen:** ADS1115/DHT22/BH1750 benutzen 3V3, gemeinsame Signalmasse. PH4502C behält die bestehende externe Sensorversorgung; EC- und MLX-VCC nicht auf Verdacht zuordnen. 3V3 und VIN niemals zusammenschalten.
 
-## C. ESP32-C3 SuperMini – alle 16 Kontakte
+## C. ESP32-C3 SuperMini – alle 16 Kontakte + 4 Dosierpumpen
 
-**Ansicht: Bauteilseite, USB-C OBEN.** Jeweils 8 Kontakte pro Seite. Diese Darstellung entspricht dem verbreiteten ESP32-C3-SuperMini V1601 16-Pin-Layout, nicht automatisch jedem Nachbau.
+**Ansicht des vom Nutzer gelieferten Fotos: Bauteilseite, USB-C OBEN.** Je 8 Kontakte links/rechts, Position **von oben**. Achtung: Eine fruehere Tabelle hatte die **linke und rechte C3-Pinreihe vertauscht** – korrigiert auf die Aufdrucke des tatsaechlich abgebildeten Boards!
 
-| Kontakt von oben | Linke Reihe: Aufdruck / GPIO / Funktion | Rechte Reihe: Aufdruck / GPIO / Funktion |
+| Pin von oben | Links am Board: GPIO / Aufgabe | Rechts am Board: GPIO / Aufgabe |
 |---:|---|---|
-| 1 | 5V / – / geregelte 5 V Eingang | GPIO5 / 5 / SSR10 Pumpe |
-| 2 | GND / – / Steuermasse | GPIO6 / 6 / 12-V-Lampenkuehlung reserviert; externer DC-Treiber noetig |
-| 3 | 3V3 / – / 3,3 V interne Versorgung | GPIO7 / 7 / frei |
-| 4 | GPIO4 / 4 / SSR10 Heizung | GPIO8 / 8 / BOOT-Strapping/LED; frei lassen |
-| 5 | GPIO3 / 3 / SSR10 Umluft | GPIO9 / 9 / BOOT-Strapping/Taster; frei lassen |
-| 6 | GPIO2 / 2 / BOOT-Strapping; frei lassen | GPIO10 / 10 / frei |
-| 7 | GPIO1 / 1 / SSR10 Abluft | GPIO20 / 20 / UART RX; frei |
-| 8 | GPIO0 / 0 / SSR25 LED-Licht | GPIO21 / 21 / UART TX; frei |
+| 1 | **D3 / GPIO5** – SSR10 Wasserpumpe | **5V** – geregelte Versorgung |
+| 2 | **D4 / GPIO6** – Lampenkuehlung 4× 12-V-Luefter (eigene DC-Treiberstufe) | **GND** – Steuermasse |
+| 3 | **D5 / GPIO7** – **SDA Erweiterungs-I²C** (Dosierpumpen + spaetere optionale Tastatur) | **3V3** – Logikversorgung |
+| 4 | D8 / GPIO8 – **Boot-/Strappingpin, frei lassen** | **D2 / GPIO4** – SSR10 Heizung |
+| 5 | D9 / GPIO9 – **Boot-/Strappingpin, frei lassen** | **D1 / GPIO3** – SSR10 Umluft |
+| 6 | **D10 / GPIO10** – **SCL Erweiterungs-I²C** | D0 / GPIO2 – **Boot-/Strappingpin, frei lassen** |
+| 7 | **D7 / GPIO20** – **DOS_OE Dosierpumpen-Gesamtfreigabe (aktiv LOW; bei Reset Hardware-Sperre)**; UART-RX hierfuer nicht verwenden | **GPIO1** – SSR10 Abluft |
+| 8 | D6 / GPIO21 – Reserve / UART-TX | **GPIO0** – SSR25 LED-Stromversorgung |
 
-**Gemaess aktuellem Projekt-Pinplan vorgesehene 5 SSR-Signale** (noch keine funktionierende C3-Firmware, noch keine gepruefte Steuerendstufe):
- 
-| Funktion | SSR | C3 GPIO | Board-Pin: Kontakt von oben |
-|---|---|---:|---|
-| Beleuchtung beider LED-Treiber | SSR25 | 0 | **links 8** |
-| Abluft | SSR10 | 1 | **links 7** |
-| Umluft | SSR10 | 3 | **links 5** |
-| Heizung | SSR10 | 4 | **links 4** |
-| Pumpe | SSR10 | 5 | **rechts 1** |
-| Lampenkuehlung: 4× 120-mm-PC-Luefter, 12 V | externe DC-Schaltstufe, **kein SSR vorgesehen** | **6 reserviert** | **rechts 2** |
+## D. ESP32-C3 – Baugruppen und feste Signale
 
-**C3-Versorgung:** 5V **links 1**, GND **links 2** aus passender stabilisierter Kleinspannungsversorgung. Keinesfalls 12V an 5V/3V3/GPIO. Externe USB-Versorgung gleichzeitig mit 5V-Einspeisung nur nach Rueckspeisepruefung. SSR-Eingaenge benoetigen eine zum Typ passende Steuerschnittstelle und geeignete Ausfallsicherung. **GPIO2/8/9 (Boot-Strapping) unbenutzt**, GPIO20/21 UART. C3-GPIO18/19 sind dem USB zugeordnet und nicht in den seitlichen Leisten vorhanden.
+| Bauteil / Widerstand / Funktion | Nummer (von oben) | C3-PIN / Ausgang | Anschluss |
+|---|---|---|---|
+| SSR25 LED gesamt | 8 rechts | GPIO0 | Logiksignal an zu dimensionierende SSR-Ansteuerstufe |
+| SSR10 Abluft | 7 rechts | GPIO1 | SSR-Ansteuerstufe |
+| SSR10 Umluft | 5 rechts | GPIO3 | SSR-Ansteuerstufe |
+| SSR10 Heizung | 4 rechts | GPIO4 | SSR-Ansteuerstufe |
+| SSR10 Wasserpumpe | 1 links | GPIO5 | SSR-Ansteuerstufe |
+| Vier 12-V-Lampenkuehler | 2 links | GPIO6 | Ein eigener DC-MOSFET-Treiber (NICHT ein sechstes SSR) |
+| **PCA9685 SDA (I²C)** | **3 links** | **GPIO7** | I²C SDA, 4,7 kΩ Pull-up nach 3V3 nur einmal auf dem Bus |
+| **PCA9685 SCL (I²C)** | **6 links** | **GPIO10** | I²C SCL, 4,7 kΩ Pull-up nach 3V3 nur einmal auf dem Bus |
+| **PCA9685 OE** | **7 links** | **GPIO20** | Freigabe **LOW=aktiv, HIGH=gesperrt**; OE mit 10 kΩ nach 3V3, Ausgangszustand AUS |
+| **Dosierpumpe 1** | **PCA9685 Kanal 0** | kein weiterer ESP-GPIO | PCA OUT0 → MOSFET-Treiber 1 → 2-polige PUMP1-Klemme |
+| **Dosierpumpe 2** | **PCA9685 Kanal 1** | kein weiterer ESP-GPIO | PCA OUT1 → MOSFET-Treiber 2 → 2-polige PUMP2-Klemme |
+| **Dosierpumpe 3** | **PCA9685 Kanal 2** | kein weiterer ESP-GPIO | PCA OUT2 → MOSFET-Treiber 3 → 2-polige PUMP3-Klemme |
+| **Dosierpumpe 4** | **PCA9685 Kanal 3** | kein weiterer ESP-GPIO | PCA OUT3 → MOSFET-Treiber 4 → 2-polige PUMP4-Klemme |
+| PCB-Kleinspannungsversorgung | 1 rechts | 5V | stabilisierte 5 V |
+| Steuermasse | 2 rechts | GND | GND Kleinspannung; keine Verbindung zu Netzleitern |
+| Logik | 3 rechts | 3V3 | Versorgung I²C-Logik |
+| Pumpen-Leistungsversorgung | separater PCB-Stecker | V_PUMP+/GND | **eigener Niedervolt-DC-Eingang**, NICHT an 3V3/5V anschliessen; zulässige Spannung/Strom nach Pumpenauswahl dimensionieren |
 
-**Dimmer:** auf ausdruecklichen Nutzerwunsch aktuell **nicht** einplanen; weder GPIO noch Optokoppler bestuecken. **RTC:** derzeit nicht erforderlich. **4×4-Tastatur/PCF8574:** nicht verdrahten, bis Einbauposition geklaert. **CYD:** eigener WLAN-Touchscreen, keine Steckkabelverbindung zum Sensor-ESP/C3.
+**Dosierpumpen sind auf derselben C3-Leistungscontroller-Platine wie SSR-Ansteuerung und Lampenkuehlung zu integrieren – kein Zusatz-Board!** Physisch vorsehen: PCA9685-IC auf dem PCB (I²C-Adresse 0x40), vier Leistungs-MOSFETs, je eine Freilaufdiode passend zum Motor, je ein Gate-Widerstand und Gate-Pulldown, vier eigene 2-polige Pumpenklemmen, gemeinsame externe Pumpen-DC-Versorgung mit passend bemessener Absicherung und 3V3-I²C-Pullups. Ein getrennter Leistungs-DC-Zweig ist zu planen; keine Spannung aus C3-5V/3V3 fuer Motoren ziehen. PWM und Dosiermenge erst nach Pumpendaten bestimmen.
 
-**Quellen fuer das physische C3-SuperMini-Pinout:** [Apache NuttX SuperMini V1601](https://nuttx.apache.org/docs/latest/platforms/risc-v/esp32c3/boards/esp32c3-supermini/index.html) und [ESP32-C3 SuperMini 16-pin schematic](https://smartstream-electronics.co.uk/assets/datasheets/ESP32-C3-SuperMini.pdf). Die tatsaechlichen Leiterplattenaufdrucke haben Vorrang.
+**Sichere Ausgangsruhe:** OE des PCA9685 durch externen 10-kΩ-Pull-up standardmaessig HIGH (=Ausgaenge gesperrt). MOSFET-Gate-Pulldowns machen die Motoren stromlos, solange der C3 nicht initialisiert ist. GPIO20 senkt OE nur bei initialisiertem Controller ab. **Das ersetzt keinen unabhängigen Hardware-Schutz gegen Software-Haenger oder Ueberdosierung**; entsprechende Abschaltung/Timeout vor Inbetriebnahme implementieren.
 
-**Stand/Freigabe:** Sensoranschlussplan projektseitig dokumentiert, aber die Sensor-PCB v0.6 weiterhin nicht DRC-/Produktionsfreigegeben; die C3-GPIO-Funktionen sind nur verplant, nicht physisch geprueft oder geflasht. Keine SSR-Leistungsseite und keine Netzspannungsverdrahtung aus diesem Dokument ableiten.
+**I²C-Zweitnutzer:** Fuer die zuvor nur optional geplante 4×4-Tastatur kann spaeter ein PCF8574 auf **demselben C3-I²C-Bus GPIO7/10** bei 0x20 vorgesehen werden; keine zusaetzlichen GPIOs und keine zusaetzliche Adapterplatine noetig. Tastaturanschluss und Montage sind weiterhin nicht beschlossen. I²C-Adressen und Pull-up-Bestueckung vor Montage ueberpruefen.
+
+**Herstellungsstand:** Das ist die feste logische Pin-/Netzzuordnung **fuer die spaetere eine Leistungscontroller-PCB**, aber noch **kein fertig geroutetes/fertigungstaugliches KiCad-Layout**. Endgueltige Leiterbahnbreiten, Stecker-Nennstroeme, MOSFET-Typen, Freilaufdioden, Sicherungen, Temperatur und Bauteilabstaende haengen von den tatsaechlichen Motor-/SSR-Daten ab. SSR-Leistungsseite mit Netzspannung gehoert zur Elektrofachkraft; die C3-Platine enthaelt nur Steuerelektronik und DC-Motortreiber.
+
+**Dimmer:** auf ausdruecklichen Nutzerwunsch aktuell **nicht** einplanen; weder GPIO noch Optokoppler bestuecken. **RTC:** derzeit nicht erforderlich. **CYD:** eigener WLAN-Touchscreen, keine Steckkabelverbindung zum Sensor-ESP/C3.
+
+**Datenblattgrundlagen:** [Espressif ESP32-C3 GPIO](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/peripherals/gpio.html), [NXP PCA9685](https://www.nxp.com/docs/en/data-sheet/PCA9685.pdf).
+
