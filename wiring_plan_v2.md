@@ -21,18 +21,18 @@
 | 13 | VN (GPIO39) | TX0 (GPIO1) |
 | 12 | D34 (GPIO34) | RX0 (GPIO3) |
 | 11 | D35 (GPIO35) | **D21** (GPIO21) |
-| 10 | D32 (GPIO32; **nicht verwenden für RGB**) | **D19** (GPIO19; Phasentaster) |
-| 9 | **D33** (GPIO33; LED Rot) | **D18** (GPIO18; Pumpentaster 2) |
-| 8 | **D25** (GPIO25; DHT22-1) | D5 (GPIO5) |
+| 10 | D32 (GPIO32; **nicht verwenden für RGB**) | **D19** (GPIO19; **Wasserpumpen-Wartungstaster laut Nutzerposition rechts 10 von unten; Firmware noch alte Belegung**) |
+| 9 | **D33** (GPIO33; LED Rot) | **D18** (GPIO18; **jetzt unbenutzt, Pumpentaster verlegt auf GPIO19**) |
+| 8 | **D25** (GPIO25; DHT22-1) | **D5** (GPIO5; **Buzzer rechts 8 von unten**) |
 | 7 | **D26** (GPIO26; DHT22-2) | **TX2 (GPIO17; RGB Blau fuer bestaetigte Pumpen-Wartung)** |
-| 6 | **D27** (GPIO27; DHT22-3) | **RX2 (GPIO16; Buzzer-Signal)** |
+| 6 | **D27** (GPIO27; DHT22-3) | **RX2 (GPIO16; Wuchs/Bluete-Taster rechts 6 von unten)** |
 | 5 | **D14** (GPIO14; BH1750 SCL) | **D4** (GPIO4; LED Grün) |
 | 4 | D12 (GPIO12) | D2 (GPIO2) |
 | 3 | **D13** (GPIO13; BH1750 SDA) | D15 (GPIO15) |
 | 2 | GND | GND |
 | 1 (unten) | **VIN** | **3V3** – Leiterplattenaufdruck; **nicht VIN!** |
 
-**Pumpentaster 2 wird ausdrücklich am hier abgebildeten Sensor-ESP32 mit OLED angeschlossen (D18, rechte Seite, 7. Pin von oben (Tabellenposition 9 vom unteren Ende)).** Die fünf Relais verbleiben im separaten Leistungsgehäuse; das Foto liefert keine Pinbelegung für dessen Controller.
+**Nutzerkorrigierte reale Positionen am Sensor-ESP32 (Nummerierung von UNTEN): Wuchs/Bluete-Taster rechts 6 = RX2/GPIO16; Pumpen-Wartungstaster rechts 10 = D19/GPIO19; RGB Blau rechts 7 = TX2/GPIO17; Buzzer rechts 8 = D5/GPIO5.** Die aktuelle Firmware und der Sensor-PCB-Entwurf benutzen zum Teil noch die alten Anschluesse und sind entsprechend vor Einsatz abzugleichen. Die fünf Relais verbleiben im separaten Leistungsgehäuse; das Foto liefert keine Pinbelegung für dessen Controller.
 
 **Fürs Löten an der Kleinspannungs-Sensorplatine:** Pinbezeichnungen aus dieser Tabelle benutzen und die Widerstände jeweils aus den unten stehenden **Bauteiltabellen** übernehmen. Nicht auf Grundlage der früheren generischen Pinzeichnungen oder der falschen VIN-Legende arbeiten.
 
@@ -165,15 +165,15 @@ D32 wird **nicht mehr** für RGB benutzt, weil dort laut Nutzer kein Signal anka
 ## 6. BEIDE Taster am ESP32 mit OLED und Buzzer
 | Bauteil | Kontakt 1 | Kontakt 2 | Externer Widerstand / Status |
 |---|---|---|---|
-| **Taster 1 – WUCHS/BLÜTE** | **D19 / GPIO19**, rechts 6. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner**, interner INPUT_PULLUP ist in beiden Sketches aktiv |
-| **Taster 2 – Pumpe AUS/EIN** | **D18 / GPIO18**, rechts 7. Kontakt von oben | **GND** auf demselben Sensor-ESP32 | **Keiner** bei zukuenftigem INPUT_PULLUP; **aktueller Firmware-Rollback ohne D18-Abfrage** |
-| **Buzzer-Steuersignal** | **RX2 / GPIO16**, rechts 6. Kontakt von oben | Elektrische Beschaltung noch zu prüfen | Typ/Treiber noch offen; Buzzer-Firmware deaktiviert |
+| **Taster 1 – WUCHS/BLÜTE** | **RX2 / GPIO16**, rechts **6. Kontakt von unten** | **GND** am Sensor-ESP32 | **Keiner** bei INPUT_PULLUP; aktuelle Firmware noch GPIO19! |
+| **Taster 2 – Pumpe AUS/EIN** | **D19 / GPIO19**, rechts **10. Kontakt von unten** | **GND** am Sensor-ESP32 | **Keiner** bei INPUT_PULLUP; alte D18-Planung aufgehoben, aktuelle Firmware noch nicht angepasst! |
+| **Buzzer-Steuersignal** | **D5 / GPIO5**, rechts **8. Kontakt von unten** | Elektrische Beschaltung noch zu pruefen | Typ/Treiber noch offen; Buzzer-Firmware deaktiviert |
 
 Die beiden Taster sind **normale, nicht rastende Schließer**. Bei einem 4-Pin-Taster müssen die ausgewählten Kontakte im Ruhezustand getrennt und nur beim Drücken leitend sein. **Keine Tasterverbindung an 3V3 oder VIN.** Bei abgezogenem USB-Kabel verdrahten.
 
 **Taster 1: Diagnose bei weiterhin ausbleibender Funktion:** Nach Flashen des aktuellen Sketches meldet Serial (115200 Baud) beim Druck `TASTER D19 ...`; im Kalibriersketch zeigt `t` HIGH (offen) bzw. LOW (gedrückt). Die Eingabefunktion auf D19 ist bereits programmiert.
 
-**Taster 2: Funktion derzeit NICHT aktiv (Firmware nach LED-/pH-Regression auf Stand vor D18 zurueckgesetzt). Bisherige, voruebergehend zurueckgenommene D18-Implementierung:** Erster Druck = Wartungssperre/Pumpe AUS **angefordert**, nächster Druck = Betrieb **freigegeben**. D18 wird per FALLING-Interrupt mit 50-ms-Entprellung erfasst. Der Anforderungszustand wird im NVS `pumpbtn_v1` gespeichert. **Serial 115200** meldet `PUMPEN-TASTER D18 ...`; im Kalibriersketch zeigt `t` Eingang und Wartungszustand. Bei aktiver Pause zeigt das OLED `P!`. Im Produktionssketch melden `/api/local/summary` und `/api/local/actuators` den Booleschen Wert `pump_maintenance_pause_requested`, mit `pump_output_confirmed=false` – **dies bestätigt ausdrücklich KEINE tatsächliche Pumpenabschaltung**. Der Sensor-ESP32 übermittelt die Anforderung derzeit **nicht** an die Leistungsbox. Die C3-Firmware, der Transport, sichere Abschalt- und Wiederanlaufverriegelung sowie Rückmeldungen fehlen. Das Anlöten bewirkt noch kein Abschalten. Für Filterreinigung ist eine sichere elektrische Trennung gegen Wiederanlauf erforderlich.
+**Taster 2: Funktion derzeit NICHT aktiv; der reale Pin wurde inzwischen vom Nutzer auf D19/GPIO19 geaendert. Die folgende Beschreibung betrifft ausschliesslich die historische, NICHT lauffaehige alte D18-Implementierung:** Erster Druck = Wartungssperre/Pumpe AUS **angefordert**, nächster Druck = Betrieb **freigegeben**. D18 wird per FALLING-Interrupt mit 50-ms-Entprellung erfasst. Der Anforderungszustand wird im NVS `pumpbtn_v1` gespeichert. **Serial 115200** meldet `PUMPEN-TASTER D18 ...`; im Kalibriersketch zeigt `t` Eingang und Wartungszustand. Bei aktiver Pause zeigt das OLED `P!`. Im Produktionssketch melden `/api/local/summary` und `/api/local/actuators` den Booleschen Wert `pump_maintenance_pause_requested`, mit `pump_output_confirmed=false` – **dies bestätigt ausdrücklich KEINE tatsächliche Pumpenabschaltung**. Der Sensor-ESP32 übermittelt die Anforderung derzeit **nicht** an die Leistungsbox. Die C3-Firmware, der Transport, sichere Abschalt- und Wiederanlaufverriegelung sowie Rückmeldungen fehlen. Das Anlöten bewirkt noch kein Abschalten. Für Filterreinigung ist eine sichere elektrische Trennung gegen Wiederanlauf erforderlich.
 
 ## 7. MLX90640 – vorbereitet, nicht montiert
 | Modulanschluss | Verbindung | Widerstand |
@@ -197,15 +197,34 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 | **SSR10 (1 ×)** | **Heizung / Heizstrahler** | **GPIO4 (vorgesehen)** |
 | **SSR10 (1 ×)** | **Pumpe** | **GPIO5 (vorgesehen)** |
 
-**ESP32-C3 SuperMini – vorlaeufiger verbindlicher GPIO-Funktionsplan (noch nicht elektrisch/firmwareseitig getestet):**
-- **5V** am SuperMini nur mit stabilisierten **5 V DC** aus einer geeigneten Kleinspannungsversorgung beschicken; falls 12 V fuer PC-Luefter vorhanden, ueber passend dimensionierten **12-auf-5-V-DC/DC-Wandler**. 12 V keinesfalls direkt an 5V, 3V3 oder GPIO anlegen. Bei USB-Flash und externer 5-V-Einspeisung Rueckspeisung auf USB vermeiden und konkrete Board-Variante pruefen.
-- **GND** an DC-Masse der Kleinspannungs-Steuer-/Treiberseite; **3V3 ist kein Anschluss fuer 5 V**.
-- **GPIO0, GPIO1, GPIO3, GPIO4, GPIO5** sind fuenf **3,3-V-Logiksignale zu noch zu dimensionierenden SSR-Treiberstufen**; **nicht unmittelbar an 230-V-Lasten** und ohne gepruefte SSR-Eingangsspezifikationen nicht direkt an SSR-Steuereingaenge schalten. Die SSRs bleiben getrennt in der Leistungsbox.
-- **GPIO6** als optionaler separater Logikausgang fuer die spaetere **12-V-Lampenkuehlung** ueber passende Niedervolt-Treiberstufe **reserviert, nicht aktiv**; **GPIO10** momentan frei; die Dimmung ist auf Nutzerwunsch **zurueckgestellt, kein Dimm-Footprint/kein Optokoppler jetzt**.
-- **GPIO2, GPIO8, GPIO9** fuer den Boot-Strappingvorgang frei halten; **GPIO18/19** sind USB und **GPIO20/21** UART. Die GPIO-Nummern des C3 sind unabhaengig von denen des Sensor-ESP32 (z. B. Sensor GPIO4 fuer RGB Gruen).
-- **Keine elektrische Signalleitung vom C3 zum Sensor-ESP32:** Kommunikation spaeter ausschliesslich WLAN, Firmware/Netzwerkprotokoll fehlen. Relaisausgaenge im Firmwarestand derzeit **nicht aktiv**. Auf dem Sensor-PCB weiterhin **keine SSR-Lastverdrahtung**.
-- **Nur Niedervolt-Kontrollseite planen;** SSR-Typnummern inkl. Eingangsstrom/-spannung (z. B. ob „DA“ oder andere Variante), SSR-Kuehlung/Absicherung/Trennung muessen vor Umsetzung kontrolliert werden. Netzseitige Installation gehoert zur Elektrofachkraft.
-- Referenz der 2×8-Pinbelegung: https://github.com/apache/nuttx/blob/master/Documentation/platforms/risc-v/esp32c3/boards/esp32c3-supermini/index.rst; Strappingpins: https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32c3/schematic-checklist.html
+**ESP32-C3 SuperMini – FESTE logische Pinzuordnung fuer die eine Leistungscontroller-PCB (USB-C oben, PCB-Aufdruck gemaess Nutzerfoto):**
+
+| Funktion | C3 Pin / GPIO | Konnektorposition von OBEN |
+|---|---|---|
+| LED SSR25 | GPIO0 | rechts 8 |
+| Abluft SSR10 | GPIO1 | rechts 7 |
+| Umluft SSR10 | GPIO3 | rechts 5 |
+| Heizung SSR10 | GPIO4 | rechts 4 |
+| Wasserpumpe SSR10 | GPIO5 | links 1 |
+| Lampen-PC-Luefter (4 × 12 V) | GPIO6 | links 2 |
+| **I²C SDA** PCA9685 (4 Dosierpumpen) | **GPIO7** | **links 3** |
+| **I²C SCL** PCA9685 (4 Dosierpumpen) | **GPIO10** | **links 6** |
+| **DOS_OE aktive LOW, Gesamtsperre Dosier-MOSFETs** | **GPIO20** | **links 7** |
+| Versorgung | 5V | rechts 1 |
+| GND | GND | rechts 2 |
+| I²C-Logikversorgung | 3V3 | rechts 3 |
+
+- **WICHTIGE Berichtigung:** Fruehere Darstellungen vertauschten die C3-Linke und -Rechte-Pinreihe. Hier sind die physischen Seiten anhand des Nutzerfotos, **USB-C OBEN**, korrigiert. Die GPIO-Funktionen der fuenf SSR (0/1/3/4/5) bleiben konstant.
+- Die SSR-GPIOs sind 3,3-V-Logiksignale zu geeigneten Ansteuerstufen; **kein direkter Netzspannungsanschluss auf dieser Controller-Platine**. SSR-Eingangstyp/Leistung und fachgerechte Installation sind separat zu pruefen.
+- **GPIO6** schaltet die Lampenkuehlung erst ueber eine eigene externe 12-V-DC-MOSFET-Stufe.
+- **GPIO7/GPIO10** werden als I²C-Bus fuer den **auf derselben Leistungscontroller-PCB integrierten PCA9685** fest vorgesehen, mit 4,7-kΩ-Pull-ups nach 3V3 einmal je Leitung und PCA-Adresse 0x40 (Adressleitungen entsprechend beschalten).
+- **GPIO20** statt UART-RX reserviert als **PCA9685 OE (LOW=freigegeben, HIGH=gesperrt)**. OE durch 10-kΩ-Widerstand nach 3V3 im Boot-/Reset-Zustand AUS halten. Nur bei initialisiertem Controller OE freigeben. Gate-Pulldowns der MOSFETs als zweite Ruhe-Bedingung vorsehen.
+- **Dosierpumpe 1-4:** PCA9685 PWM-Kanaele **0,1,2,3** → je ein eigener DC-MOSFET-Kanal mit Gate-Widerstand/Gate-Pulldown/Freilaufdiode → je ein **2-poliger Pumpenanschluss** auf **derselben** C3-Platine. Pumpenstromkreis ueber eigene externe **V_PUMP**-DC-Einspeisung, nicht ueber 3V3/5V. Dimensionierung nach den tatsaechlichen Pumpen (Versorgung, Anlauf-/Blockierstrom); vorerst keine Motor-Teilenummer unterstellen. Ueberstromschutz sowie Hardware-Timeout bzw. externe Freigabe gegen Dauerlauf vor Inbetriebnahme vorsehen.
+- Optionaler spaeterer PCF8574 fuer Matrix-Bedienfeld koennte den **gleichen I²C-Bus GPIO7/GPIO10** nutzen (z. B. Adresse 0x20, Buskonflikte prüfen), ohne weitere C3-GPIOs. Tastaturpins/Halterung bleiben ungeplant.
+- **GPIO2, GPIO8, GPIO9** als Boot-Strappingpins nicht belegen, **GPIO18/19** bleiben fuer USB, **GPIO21** bleibt Reserve/UART-TX.
+- **Keine direkte Kabelverbindung zwischen Sensor-ESP und C3:** Datenaustausch soll ueber WLAN erfolgen. Es gibt bislang **keine betriebsfaehige C3-SSR-/Pumpen-Firmware**; das ist eine Pin- und Platinenkonstruktion, keine funktionsfaehige Dosierung.
+- **5V** C3 nur aus stabilisiertem DC-Netzteil oder passend dimensioniertem DC/DC-Wandler (bei vorhandenen 12V); 12V nie direkt an 5V/3V3/GPIO. Gleichzeitige USB-/5V-Einspeisung nur nach Rueckspeisepruefung. Netzseitige Lasten nur durch Elektrofachkraft.
+- Verifizierungsgrundlagen: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/peripherals/gpio.html und https://www.nxp.com/docs/en/data-sheet/PCA9685.pdf .
 
 **Zusaetzliche Komponenten, noch kein verbindlicher Steuer-Pinplan:**
 - **1 × gemeinsamer LED-Dimmkanal (Nutzerentscheidung 20.10.2026):** Die beiden Treiber sollen immer dieselbe Helligkeitsanforderung bekommen; separate Regelung ist nicht noetig. Exakte Varianten laut Nutzer: **Mean Well HLG-240H-48B** und **Mean Well XLG-240-H-AB**. Beide erlauben **10-V-PWM an ihren DIM+/DIM--Eingaengen, 100 Hz bis 3 kHz**. Daher **ein ESP32-C3-Steuersignal** und eine **spaeter eventuell geeignete Schnittstellenstufe fuer beide Treiber, aktuell auf Nutzerwunsch NICHT geplant**, mit Belastbarkeit, Bezugspotenzial und ggf. galvanischer Trennung geprueft. Keine 3,3-V-Direktansteuerung der DIM-Eingaenge und DIM- keinesfalls mit LED-Ausgangs-Minus gleichsetzen. Beide Eingangskennlinien unterscheiden sich besonders bei kleinen Dimmwerten; dasselbe PWM-Signal bewirkt nicht zwingend exakt gleichen Lichtstrom. Das gemeinsame **SSR25 bleibt fuer Netz-Ein/Aus beider Treiber vorgesehen**. Herstellerdatenblaetter: https://www.meanwell.com/Upload/PDF/HLG-240H/HLG-240H-SPEC.pdf und https://www.meanwell.com/Upload/PDF/XLG-240/XLG-240-SPEC.PDF.
@@ -213,7 +232,7 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 - **LED-Panel-/Treiberkonfiguration (Nutzer bestaetigt):** **4 LED-Panels gesamt**, aufgeteilt auf **2 LED-Treiber mit je 2 in Reihe geschalteten Panels**. **Beide Treiber werden gemeinsam ueber das vorhandene SSR25 versorgt.** Die Dimmung ist auf Nutzerwunsch derzeit **zurueckgestellt**; falls spaeter gewuenscht, ist **ein gemeinsamer Dimmkanal fuer beide Treiber** vorgesehen. SSR-/Treiber-Typ und Belastbarkeit vor der Leistungsverdrahtung pruefen.
 - Die Leistungsschaltung liegt im **separaten Leistungsgehaeuse**, **nicht auf der Sensor-Kleinspannungs-PCB**. Netzspannung, SSR-Typ (AC/DC-Eignung), Kuehlung und Absicherung von einer Elektrofachkraft pruefen lassen. Der C3-Pinplan und seine Firmware sind weiterhin nicht freigegeben.
 
-**Pumpentaster-Zuordnung:** Ausschließlich **Sensor-ESP32 mit OLED, D18 → Taster 2 → GND**; Details samt Widerstand direkt in Abschnitt 6. **Keine Pumpentaster-Verbindung am separaten Leistungscontroller.** Die D18-Tastenerfassung ist im aktuellen Firmwarestand voruebergehend deaktiviert; sie steuert keine Pumpe.
+**Pumpentaster-Zuordnung:** Sensor-ESP32 mit OLED, **D19/GPIO19 → Taster 2 → GND** gemaess Nutzerkorrektur (rechts 10 von unten). **Keine Pumpentaster-Verbindung zum C3.** Die aktuelle Firmware benutzt noch alte Pinannahmen und muss vor Inbetriebnahme angepasst werden; aktuell erfolgt keine Pumpenabschaltung.
 
 Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Befestigung vorhanden). PCF8574 und Tastenpins sind **noch nicht** zu verdrahten. Die geplante C3-WLAN-Anbindung, Relaislogik und Pumpensperre sind noch nicht implementiert oder getestet.
 
@@ -229,8 +248,8 @@ Die **4×4-Matrix-Tastatur** bleibt lediglich für später vorgemerkt (keine Bef
 | **DHT22 Nr. 1/2/3** | ggf. **je 1 × 4,7 kΩ DATA→3V3** | nur bei fehlendem Modul-Pull-up |
 | **ADS/OLED-I²C** | ggf. **1 × 4,7 kΩ D21→3V3 + 1 × 4,7 kΩ D22→3V3** | nur wenn Pull-ups fehlen |
 | **BH1750-I²C** | ggf. **1 × 4,7 kΩ D13→3V3 + 1 × 4,7 kΩ D14→3V3** | nur wenn Pull-ups fehlen |
-| **Taster 1: Phasenwechsel am Sensor-ESP32** | **kein externer Widerstand** (interner Pull-up) | **D19 → Taster → GND** |
-| **Taster 2: Pumpenpause am OLED-Sensor-ESP32** | **kein externer Widerstand bei zukuenftigem INPUT_PULLUP** | **D18 → Taster → GND**, rechte Seite 7. Pin von oben (Tabellenposition 9); aktuelle Firmware nach Rollback noch ohne D18-Funktion |
+| **Taster 1: Phasenwechsel am Sensor-ESP32** | **kein externer Widerstand** (interner Pull-up) | **RX2/GPIO16 → Taster → GND**; Firmwareanpassung ausstehend |
+| **Taster 2: Pumpenpause am OLED-Sensor-ESP32** | **kein externer Widerstand bei zukuenftigem INPUT_PULLUP** | **D19/GPIO19 → Taster → GND**, rechts 10 von unten; aktuelle Firmware noch nicht korrigiert |
 | **Buzzer / geplante C3-Relais** | **Widerstände/Treiber erst nach Prüfung der konkreten Module festlegen** | nicht erraten |
 
 **Wichtig:** Der frühere Widerspruch „ADS A0 ohne Spannungsteiler“ ist hiermit korrigiert. Die bestehende **10-kΩ-/20-kΩ-Teilerverdrahtung** und die auf ihr beruhende pH-Kalibrierung sind maßgeblich. Nicht ohne Messungen verändern.
