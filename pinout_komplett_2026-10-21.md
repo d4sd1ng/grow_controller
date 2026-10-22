@@ -52,7 +52,7 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 
 **Versorgungen:** ADS1115/DHT22/BH1750 benutzen 3V3, gemeinsame Signalmasse. PH4502C behält die bestehende externe Sensorversorgung; EC- und MLX-VCC nicht auf Verdacht zuordnen. 3V3 und VIN niemals zusammenschalten.
 
-## C. ESP32-C3 SuperMini – alle 16 Kontakte + 4 Dosierpumpen
+## C. ESP32-C3 SuperMini – alle 16 Kontakte + 7 Dosierpumpen
 
 **Ansicht des vom Nutzer gelieferten Fotos: Bauteilseite, USB-C OBEN.** Je 8 Kontakte links/rechts, Position **von oben**. Achtung: Eine fruehere Tabelle hatte die **linke und rechte C3-Pinreihe vertauscht** – korrigiert auf die Aufdrucke des tatsaechlich abgebildeten Boards!
 
@@ -80,18 +80,21 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 | **PCA9685 SDA (I²C)** | **3 links** | **GPIO7** | I²C SDA, 4,7 kΩ Pull-up nach 3V3 nur einmal auf dem Bus |
 | **PCA9685 SCL (I²C)** | **6 links** | **GPIO10** | I²C SCL, 4,7 kΩ Pull-up nach 3V3 nur einmal auf dem Bus |
 | **PCA9685 OE** | **7 links** | **GPIO20** | Freigabe **LOW=aktiv, HIGH=gesperrt**; OE mit 10 kΩ nach 3V3, Ausgangszustand AUS |
-| **Dosierpumpe 1** | **PCA9685 Kanal 0** | kein weiterer ESP-GPIO | PCA OUT0 → MOSFET-Treiber 1 → 2-polige PUMP1-Klemme |
-| **Dosierpumpe 2** | **PCA9685 Kanal 1** | kein weiterer ESP-GPIO | PCA OUT1 → MOSFET-Treiber 2 → 2-polige PUMP2-Klemme |
-| **Dosierpumpe 3** | **PCA9685 Kanal 2** | kein weiterer ESP-GPIO | PCA OUT2 → MOSFET-Treiber 3 → 2-polige PUMP3-Klemme |
-| **Dosierpumpe 4** | **PCA9685 Kanal 3** | kein weiterer ESP-GPIO | PCA OUT3 → MOSFET-Treiber 4 → 2-polige PUMP4-Klemme |
+| **Dosierpumpe 1 – Dünger 1** | **PCA9685 Kanal 0** | kein weiterer ESP-GPIO | PCA OUT0 → MOSFET-Treiber 1 → 2-polige PUMP1-Klemme |
+| **Dosierpumpe 2 – Dünger 2** | **PCA9685 Kanal 1** | kein weiterer ESP-GPIO | PCA OUT1 → MOSFET-Treiber 2 → 2-polige PUMP2-Klemme |
+| **Dosierpumpe 3 – Dünger 3** | **PCA9685 Kanal 2** | kein weiterer ESP-GPIO | PCA OUT2 → MOSFET-Treiber 3 → 2-polige PUMP3-Klemme |
+| **Dosierpumpe 4 – Dünger 4** | **PCA9685 Kanal 3** | kein weiterer ESP-GPIO | PCA OUT3 → MOSFET-Treiber 4 → 2-polige PUMP4-Klemme |
+| **Dosierpumpe 5 – Dünger 5** | **PCA9685 Kanal 4** | kein weiterer ESP-GPIO | PCA OUT4 → MOSFET-Treiber 5 → 2-polige PUMP5-Klemme |
+| **Dosierpumpe 6 – pH−** | **PCA9685 Kanal 5** | kein weiterer ESP-GPIO | PCA OUT5 → MOSFET-Treiber 6 → 2-polige PUMP6-Klemme |
+| **Dosierpumpe 7 – pH+** | **PCA9685 Kanal 6** | kein weiterer ESP-GPIO | PCA OUT6 → MOSFET-Treiber 7 → 2-polige PUMP7-Klemme |
 | PCB-Kleinspannungsversorgung | 1 rechts | 5V | stabilisierte 5 V |
 | Steuermasse | 2 rechts | GND | GND Kleinspannung; keine Verbindung zu Netzleitern |
 | Logik | 3 rechts | 3V3 | Versorgung I²C-Logik |
 | Pumpen-Leistungsversorgung | separater PCB-Stecker | V_PUMP+/GND | **eigener Niedervolt-DC-Eingang**, NICHT an 3V3/5V anschliessen; zulässige Spannung/Strom nach Pumpenauswahl dimensionieren |
 
-**Dosierpumpen sind auf derselben C3-Leistungscontroller-Platine wie SSR-Ansteuerung und Lampenkuehlung zu integrieren – kein Zusatz-Board!** Physisch vorsehen: PCA9685-IC auf dem PCB (I²C-Adresse 0x40), vier Leistungs-MOSFETs, je eine Freilaufdiode passend zum Motor, je ein Gate-Widerstand und Gate-Pulldown, vier eigene 2-polige Pumpenklemmen, gemeinsame externe Pumpen-DC-Versorgung mit passend bemessener Absicherung und 3V3-I²C-Pullups. Ein getrennter Leistungs-DC-Zweig ist zu planen; keine Spannung aus C3-5V/3V3 fuer Motoren ziehen. PWM und Dosiermenge erst nach Pumpendaten bestimmen.
+**Dosierpumpen sind auf derselben C3-Leistungscontroller-Platine wie SSR-Ansteuerung und Lampenkuehlung zu integrieren – kein Zusatz-Board!** Physisch vorsehen: PCA9685-IC auf dem PCB (I²C-Adresse 0x40), **sieben** Leistungs-MOSFETs, je eine Freilaufdiode passend zum Motor, je ein Gate-Widerstand und Gate-Pulldown, **sieben** eigene 2-polige Pumpenklemmen, gemeinsame externe Pumpen-DC-Versorgung mit passend bemessener Absicherung und 3V3-I²C-Pullups. Ein getrennter Leistungs-DC-Zweig ist zu planen; keine Spannung aus C3-5V/3V3 fuer Motoren ziehen. PWM und Dosiermenge erst nach Pumpendaten bestimmen.
 
-**Sichere Ausgangsruhe:** OE des PCA9685 durch externen 10-kΩ-Pull-up standardmaessig HIGH (=Ausgaenge gesperrt). MOSFET-Gate-Pulldowns machen die Motoren stromlos, solange der C3 nicht initialisiert ist. GPIO20 senkt OE nur bei initialisiertem Controller ab. **Das ersetzt keinen unabhängigen Hardware-Schutz gegen Software-Haenger oder Ueberdosierung**; entsprechende Abschaltung/Timeout vor Inbetriebnahme implementieren.
+**Sichere Ausgangsruhe:** OE des PCA9685 durch externen 10-kΩ-Pull-up standardmaessig HIGH (=Ausgaenge gesperrt). MOSFET-Gate-Pulldowns machen die Motoren stromlos, solange der C3 nicht initialisiert ist. GPIO20 senkt OE nur bei initialisiertem Controller ab. **Das ersetzt keinen unabhängigen Hardware-Schutz gegen Software-Haenger oder Ueberdosierung**; entsprechende Abschaltung/Timeout vor Inbetriebnahme implementieren. **pH+ und pH− duerfen nicht gleichzeitig angesteuert werden; beide Kanaele bleiben bei fehlendem/ungueltigem pH-Signal oder Kommunikationsverlust gesperrt.**
 
 **I²C-Zweitnutzer:** Fuer die zuvor nur optional geplante 4×4-Tastatur kann spaeter ein PCF8574 auf **demselben C3-I²C-Bus GPIO7/10** bei 0x20 vorgesehen werden; keine zusaetzlichen GPIOs und keine zusaetzliche Adapterplatine noetig. Tastaturanschluss und Montage sind weiterhin nicht beschlossen. I²C-Adressen und Pull-up-Bestueckung vor Montage ueberpruefen.
 
