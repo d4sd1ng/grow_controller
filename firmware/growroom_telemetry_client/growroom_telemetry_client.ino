@@ -420,7 +420,8 @@ static PhAlarm evaluatePhAlarm(float v, bool measurementValid,
                                PhAlarm current, PhAlarm &pending, uint8_t &samples);
 PhAlarm phAlarm = PhAlarm::Fault, phPending = PhAlarm::Fault;
 uint8_t phSamples = 0;
-bool phAlertPending = true; // initial sensor fault is an alert
+bool phAlarmConfirmed = false; // Erst nach einer echten Sensorablesung bzw. 3 gueltigen Messungen
+bool phAlertPending = false;   // Beim Booten niemals den voreingestellten Fault verschicken
 unsigned long lastPhAlertAttempt = 0;
 static const char *phCode(PhAlarm status) {
   switch (status) {
@@ -465,9 +466,26 @@ static PhAlarm evaluatePhAlarm(float v, bool measurementValid,
   return current;
 }
 static void updatePhAlarm() {
-  setPhAlarm(evaluatePhAlarm(
-      sensors.ph, phCalibrated && sensors.adsOk,
-      phAlarm, phPending, phSamples));
+  const bool measurementValid = phCalibrated && sensors.adsOk &&
+      isfinite(sensors.ph) && sensors.ph >= 0.0f && sensors.ph <= 14.0f;
+  const PhAlarm next = evaluatePhAlarm(
+      sensors.ph, measurementValid, phAlarm, phPending, phSamples);
+
+  if (!phAlarmConfirmed) {
+    // Der initiale Fault ist nur ein Platzhalter, noch kein bestaetigter Alarm.
+    // Ungueltige reale Sensorablesungen gelten wie bisher sofort als Fault.
+    // Gueltige Messungen benoetigen weiterhin PH_CONFIRM (3) Samples.
+    if (measurementValid && next == PhAlarm::Fault) return;
+    phAlarmConfirmed = true;
+    phAlarm = next;
+    // Beim erstmaligen Normalzustand keine "wieder im Bereich"-Meldung erzeugen.
+    // Echte Startfehler sowie bestaetigte Low/High-Werte dagegen melden.
+    phAlertPending = next != PhAlarm::Normal;
+    Serial.printf("pH-STARTSTATUS: %s\n", phMessage(next));
+    return;
+  }
+
+  setPhAlarm(next);
 }
 
 static bool phTestActive = false;
