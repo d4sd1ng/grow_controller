@@ -256,15 +256,17 @@ void applyRelays() {
 }
 
 void controlLogic() {
-  if (strcmp(controlMode, "auto") != 0) return;
-  // Ungueltige/fehlende Werte duerfen keine Heizung einschalten.
+  // Sicherheitsabschaltung hat Vorrang auch vor manuellen Heizanfragen.
   if (!sensors.dhtOk) {
     relayHeater = false;
-    relayCirculation = false;
-    relayExhaust = false;
-    relayPump = false;
+    if (strcmp(controlMode, "auto") == 0) {
+      relayCirculation = false;
+      relayExhaust = false;
+      relayPump = false;
+    }
     return;
   }
+  if (strcmp(controlMode, "auto") != 0) return;
   if (sensors.airC < TARGET_AIR_TEMP - TEMP_HYST) relayHeater = true;
   else if (sensors.airC > TARGET_AIR_TEMP + TEMP_HYST) relayHeater = false;
 
@@ -347,6 +349,7 @@ bool sendTelemetry() {
   devInfo["ads1115_available"] = adsAvailable;
   devInfo["ph_voltage_raw"] = phAdcVolts;
   devInfo["tds_voltage_raw"] = ecAdcVolts;
+  devInfo["dht_control_ok"] = sensors.dhtOk;
   devInfo["ph_calibrated"] = false;
   devInfo["tds_calibrated"] = false;
   JsonArray zones = devInfo.createNestedArray("dht_zones");
