@@ -77,11 +77,12 @@ const bool SERVER_TLS_INSECURE = false;
 static constexpr uint8_t PIN_DHT1 = 25;
 static constexpr uint8_t PIN_DHT2 = 26;
 static constexpr uint8_t PIN_DHT3 = 27;
-static constexpr uint8_t PIN_PHASE_BUTTON = 19; // Taster an D19
+static constexpr uint8_t PIN_PHASE_BUTTON = 16; // Phase laut letzter Hardwarezuordnung
+static constexpr uint8_t PIN_PUMP_SERVICE_BUTTON = 19; // softwareseitige Pumpen-Wartungssperre
 static constexpr uint8_t PIN_RGB_GREEN = 4; // Gruen an D4; GPIO32 liefert kein Signal
 static constexpr uint8_t PIN_RGB_RED = 33;
 static constexpr uint8_t PIN_RGB_BLUE = 17; // TX2: Pumpen-Filterwechsel, nur bei bestaetigtem Pumpen-AUS
-static constexpr uint8_t PIN_PH_BUZZER = 16; // Buzzer an D16; deaktiviert bis Typ/Treiber geklaert
+static constexpr uint8_t PIN_PH_BUZZER = 5; // Buzzer an D5; deaktiviert bis Typ/Treiber geklaert
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 static constexpr uint8_t PIN_ONEWIRE = 23; // DS18B20 auf D23; PH4502C DO wird nicht genutzt
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
@@ -215,11 +216,29 @@ struct ActuatorState {
   bool heater = false;
   bool circulation = false;
   bool exhaust = false;
+  bool waterPump = false;
+  bool lampCooling = false;
 };
 
 ActuatorState targets;
-ActuatorState actual;  // C3-Rueckmeldung fehlt noch: alle Aktoren als AUS / unbekannt
+ActuatorState actual;
 uint32_t commandSeq = 0;
+static constexpr uint8_t DOSING_PUMP_COUNT = 6; // exakt 6
+static constexpr uint16_t PUMP_PULSE_MAX_MS = 2000;
+static constexpr unsigned long C3_HEARTBEAT_TIMEOUT_MS = 8000UL;
+unsigned long lastC3StatusMs = 0;
+bool c3OutputsEnabled = false;
+bool c3Failsafe = true;
+uint8_t c3PumpActive = 0;
+uint32_t c3PumpAckSeq = 0;
+bool pumpServiceOff = true;
+uint8_t pendingPumpIndex = 0;
+uint16_t pendingPumpDurationMs = 0;
+uint32_t pumpCommandSeq = 0;
+unsigned long pumpCommandMs = 0;
+static bool c3Connected() {
+  return lastC3StatusMs != 0 && millis() - lastC3StatusMs < C3_HEARTBEAT_TIMEOUT_MS;
+}
 char controlMode[8] = "auto";
 
 
@@ -310,7 +329,7 @@ static void pollGrowPhaseButtons(unsigned long nowMs) {
   phasePendingPresses = 0;
   interrupts();
   if (pressedCount == 0) return;
-  Serial.printf("TASTER D19: %lu Druck-Flanke(n), GPIO19 aktuell %s\n",
+  Serial.printf("PHASENTASTER D16: %lu Druck-Flanke(n), GPIO16 aktuell %s\n",
                 static_cast<unsigned long>(pressedCount),
                 digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW (gedrueckt)" : "HIGH (offen)");
   // Bei zwei sehr schnellen Druecken wird zweimal umgeschaltet -> Ursprungsphase.
@@ -333,9 +352,29 @@ static void setupGrowPhaseButtons() {
   phasePendingPresses = 0;
   phaseLastInterruptUs = micros() - PHASE_DEBOUNCE_MS * 1000UL;
   attachInterrupt(digitalPinToInterrupt(PIN_PHASE_BUTTON), onPhaseButtonFalling, FALLING);
-  Serial.printf("TASTER D19 beim Start: %s (INPUT_PULLUP, nach GND druecken)\n",
+  Serial.printf("PHASENTASTER D16 beim Start: %s (INPUT_PULLUP, nach GND druecken)\n",
                 digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW (Kontakt bereits geschlossen)" : "HIGH (offen)");
+  pinMode(PIN_PUMP_SERVICE_BUTTON, INPUT_PULLUP);
   loadGrowPhase();
+}
+static void pollPumpServiceButton(unsigned long nowMs) {
+  static bool previousHigh = true;
+  static unsigned long changedAt = 0;
+  const bool high = digitalRead(PIN_PUMP_SERVICE_BUTTON) == HIGH;
+  if (high != previousHigh && nowMs - changedAt >= 200UL) {
+    previousHigh = high;
+    changedAt = nowMs;
+    if (!high) {
+      pumpServiceOff = !pumpServiceOff;
+      pendingPumpIndex = 0;
+      pendingPumpDurationMs = 0;
+      ++pumpCommandSeq;
+      pumpServiceOffConfirmed = false;
+      refreshPhaseRgb();
+      Serial.printf("Pumpen-Softwaresperre %s (KEINE elektrische Trennung)\n",
+                    pumpServiceOff ? "EIN" : "AUS");
+    }
+  }
 }
 
 /* Nutzersollwerte, getrennt von pH-Alarmgrenzen und Sensor-Kalibrierung.
@@ -767,12 +806,15 @@ static void writeActuators(JsonObject obj, const ActuatorState &s) {
   obj["heater"] = s.heater;
   obj["circulation_vent"] = s.circulation;
   obj["exhaust_vent"] = s.exhaust;
+  obj["water_pump"] = s.waterPump;
+  obj["lamp_cooling"] = s.lampCooling;
 }
 
 /* Sensor-ESP32 hat keine SSR-Ausgaenge. Keine GPIO-Initialisierung. */
 static bool sameState(const ActuatorState &a, const ActuatorState &b) {
   return a.light == b.light && a.heater == b.heater &&
-         a.circulation == b.circulation && a.exhaust == b.exhaust;
+         a.circulation == b.circulation && a.exhaust == b.exhaust &&
+         a.waterPump == b.waterPump && a.lampCooling == b.lampCooling;
 }
 
 static void applyActuators() {
@@ -782,7 +824,7 @@ static void applyActuators() {
     targets.heater = false;
     ++commandSeq;
   }
-  actual = ActuatorState{}; // kein bestaetigter Leistungscontroller
+  // Istwerte werden nur durch den C3-Status aktualisiert.
 }
 
 /* ---------- BH1750 ---------- */
@@ -1062,7 +1104,7 @@ static void autoControl() {
 static void handleSummary() {
   if (!localAuthorized()) return sendUnauthorized();
 
-  DynamicJsonDocument doc(3072);
+  DynamicJsonDocument doc(4096);
   doc["ok"] = true;
 
   JsonObject control = doc.createNestedObject("control");
@@ -1552,6 +1594,7 @@ void loop() {
 
   localServer.handleClient();
   pollGrowPhaseButtons(now);
+  pollPumpServiceButton(now);
   handlePhTestSerial();
   updatePhBuzzer(now);
   sampleTdsBackground(now);
