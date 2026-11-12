@@ -9,7 +9,7 @@
 | `growroom_telemetry_client` | Sensor-ESP32 mit OLED, **26×30-Lochraster** | 3x DHT22, DS18B20, ADS1115 pH/EC, BH1750; **keine Relais-GPIOs**, HTTP-API, Telemetrie |
 | `ph_calibration_tool` | derselbe ESP32, temporär geflasht | Hardwarediagnose aller Sensortypen und pH-7-/pH-4-Kalibrierung ueber ADS1115 A0 |
 | `ds18b20_diagnostic` | derselbe ESP32, temporär geflasht | 1-Wire-Diagnose auf GPIO23 |
-| `cyd_remote_control` | vorhandenes CYD | primaere Fernbedienung |
+| `cyd_remote_control` | vorhandenes CYD | bisherige TFT_eSPI-Fallback-Firmware; fuer den aktuellen LVGL-Auftrag nicht verwenden |
 | `cyd_grow_display` | dasselbe CYD, alternative Firmware | alternative LVGL-Oberflaeche |
 | `powerbox_actuator` | Legacy-Leistungscode | **nicht** als ESP32-C3-Firmware verwenden; C3-Programm und WLAN-Anbindung noch offen |
 
