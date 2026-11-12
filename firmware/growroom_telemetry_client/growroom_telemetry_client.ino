@@ -635,6 +635,7 @@ unsigned long lastSensorRead = 0;
 unsigned long lastOledRefresh = 0;
 unsigned long lastTelemetry = 0;
 unsigned long lastWifiReconnect = 0;
+bool sensorMdnsStarted = false;
 
 /* ---------- Hilfsfunktionen ---------- */
 
@@ -1672,6 +1673,7 @@ void setup() {
 
   if (WiFi.status() == WL_CONNECTED) {
     if (MDNS.begin("grow-sensor")) {
+      sensorMdnsStarted = true;
       MDNS.addService("http", "tcp", LOCAL_HTTP_PORT);
     }
   }
@@ -1702,6 +1704,12 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED && now - lastWifiReconnect >= WIFI_RECONNECT_MS) {
     lastWifiReconnect = now;
     WiFi.reconnect();
+  }
+  if (WiFi.status() == WL_CONNECTED && !sensorMdnsStarted) {
+    if (MDNS.begin("grow-sensor")) {
+      sensorMdnsStarted = true;
+      MDNS.addService("http", "tcp", LOCAL_HTTP_PORT);
+    }
   }
 
   if (now - lastSensorRead >= SENSOR_READ_MS) {
