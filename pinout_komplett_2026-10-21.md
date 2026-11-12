@@ -120,3 +120,6 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 ### Motorleistung der sieben Dosierkanaele (Nutzerangabe 12.11.2026)
 
 Angegebene **Leistungsaufnahme 3 W bei 12 V DC** => rechnerischer **Motor-Betriebsstrom 0,25 A**. 6 installierte Pumpen: **1,50 A / 18 W** insgesamt bei gleichzeitigem Nennbetrieb; 7 vorbereitete Kanaele: **1,75 A / 21 W**, falls spaeter alle sieben laufen. Keine Rueckschluesse auf Anlauf-/Blockierstrom oder die finale Netzteil-/Sicherungsdimensionierung ziehen. Die elektrischen Verbindungen und das bisherige Konstruktionsmass 180 × 110 mm sind deshalb weiterhin nicht fertigungsfreigegeben.
+
+
+**Festlegung Förderrichtung (12.11.2026):** Die 12-V-Peristaltikpumpen koennen laut Nutzer zwar CW/CCW durch Umpolung, sollen im Grow-Controller aber **nur in einer festen Foerderrichtung** laufen. **Keine Polaritaetsumkehr und keine H-Bruecken vorsehen**. Es bleibt bei **sieben unabhaengigen einseitigen MOSFET-DC-Motorschaltstufen**, einer je Pumpe, und **PCA9685 OUT0–OUT6**. Die Motorpolung wird bei der Montage fuer die richtige Foerderrichtung festgelegt; Rueckwaertsbetrieb ist nicht vorgesehen. Alle sieben Kanaele samt Anschluss werden bestueckt, anfangs nur sechs Pumpen angeschlossen. **Nennstrom rechnerisch 0,25 A pro Motor (3 W / 12 V); Anlauf-/Blockierstrom weiter unbekannt.**
