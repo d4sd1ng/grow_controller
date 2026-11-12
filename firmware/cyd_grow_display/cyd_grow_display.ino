@@ -326,6 +326,12 @@ void fetchSummaryAndUpdate() {
   }
 
   updateLabels(mode, t, rh, ec, ph, heat, pump, circ, exh, alertMsg, alertSev);
+  if (r.isNull() || r["air_temperature"].isNull())
+    lv_label_set_text_static(lbl_temp, "Temperatur: -- (Sensor fehlt)");
+  if (r.isNull() || r["humidity"].isNull())
+    lv_label_set_text_static(lbl_hum, "Luftfeuchte: -- (Sensor fehlt)");
+  if (r.isNull() || r["ec"].isNull() || r["ph"].isNull())
+    lv_label_set_text_static(lbl_ecph, "EC -- | pH -- (Kalibrierung offen)");
   lv_label_set_text_fmt(lbl_wifi, "WiFi OK | %s", WiFi.localIP().toString().c_str());
 }
 
