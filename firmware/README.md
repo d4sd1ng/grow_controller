@@ -1,49 +1,59 @@
-# ESP32-Firmware (Growroom + portables CYD)
+# Grow Controller — drei Firmware-Rollen (Arbeitsstand)
 
-## Rollen
+**Stand: 2026-11-12, Branch feature/six-pump-c3-firmware-integration.**
 
-| Gerät | Aufgabe |
-|-------|---------|
-| **Growroom-ESP** (fest, mit optionalem lokalem Display) | `GET /api/v1/control/state` → Relais am Hardware-GPIO. Sensoren messen; `POST /api/v1/telemetry` → Server/SQLite (Dashboard-Charts). Lokale Anzeige: z. B. dieselben Messwerte auf OLED/TFT oder wie im Sketch über **Serial**. |
-| **Cheap Yellow Display** (portable) | `cyd_remote_control`: **3 Tafeln** — links Relais, Mitte Werte + Alert-Liste, rechts Mini-Verläufe T/rH/VPD (Ringpuffer aus Polls). Alternativ: `cyd_grow_display` (kompakt). |
+| Firmware | Hardware | Rolle |
+|---|---|---|
+| growroom_telemetry_client/growroom_telemetry_client.ino | ESP32-WROOM / ESP Pro mit OLED | Sensoren, Hysterese, Telemetrie, Weitergabe der SSR-Schaltziele |
+| cyd_grow_display/cyd_grow_display.ino | CYD mit LVGL v8 | Remote-Monitoring und Bedienung |
+| esp32_c3_power_controller/esp32_c3_power_controller.ino | ESP32-C3 SuperMini **ohne Display** | Aktor-Knoten mit 5 SSR und genau 6 MOSFET-Dosierpumpen |
 
-**Server** (`run_telemetry_api.py` + optional Streamlit): eine SQLite-Datei — `app_control` (Modus + Relais-Soll), `readings`, `alerts_log`.
+Die historische TFT_eSPI-Firmware cyd_remote_control bleibt unveraendert und ist keine dieser drei Rollen.
 
-- **Automatik**: Streamlit regelt Relais (wenn Tab läuft + Modus „auto“) und schreibt Soll in die DB.
-- **Manuell**: Soll kommt vom **CYD** oder Tastern im Dashboard; Growroom-ESP liest nur noch `control/state`.
+## Physische Kanaele
 
-## Endpoints (Header `X-Telemetry-Key` wenn `TELEMETRY_API_KEY` gesetzt)
+- Fuenf SSR-Funktionen: Licht, Abluft, Umluft, Heizung, Wasserpumpe (separat von den Dosierpumpen).
+- Sechs unidirektionale Dosierpumpen an 12 V DC / 3 W je Pumpe. **18 W Nennleistung / 1,5 A nominal zusammen**; Einschaltstrom ist nicht bekannt.
+- C3: **kein OLED, kein Display-GPIO**, keine Umpolung.
+- OLED bleibt ausschliesslich am Sensor-ESP.
 
-- `POST /api/v1/telemetry` — Messwerte (+ optional `relays`)
-- `GET /api/v1/control/state` — `{ control_mode, targets }`
-- `POST /api/v1/control/targets` — Teilupdate Relais → Modus **manual**
-- `POST /api/v1/control/mode` — `{"mode":"auto"|"manual"}`
-- `GET /api/v1/mobile/summary` — Steuerung + letzte Messung + Alert-Liste
-- `GET /api/v1/telemetry/series` — Zeitreihe aus SQLite (`minutes`, `hours`, `max_points`) für CYD-/Web-Charts
-- `GET /api/v1/alerts/recent` — nur Meldungen
-- `POST /api/v1/alerts` — Gerät kann Fehler an den Server melden (`message`, `severity`, `source`)
+### Hardwarefreigabe noch offen
 
-## Sensible Konfiguration
+Der C3 soll elf physische Schaltausgaenge bedienen. Fuer das konkrete SuperMini-Board wurde keine konfliktfreie GPIO-Belegung freigegeben. USB-/Boot-Pins duerfen nicht blind belegt werden; ggf. wird ein separater I/O-Expander oder anderer Treiber notwendig.
 
-- **Nicht** WLAN-Passwort oder API-Key dauerhaft in den `.ino` im Repo pflegen.
-- Im Projektroot **`.env`** mit u. a. **`IOT_WIFI_SSID`**, **`IOT_WIFI_PASSWORD`**, **`IOT_TELEMETRY_SERVER_HOST`**, **`TELEMETRY_API_PORT`**, **`TELEMETRY_API_KEY`** (siehe `.env.example`).
-- **HTTPS** (VPS mit Reverse-Proxy): **`IOT_USE_HTTPS=1`**, optional **`IOT_TELEMETRY_SERVER_PORT=443`**, **`IOT_TLS_INSECURE=1`** für ESP ohne Zertifikatscheck (oder `0` + eigenes Root-CA im Code).
-- Dann: **`python export_firmware_secrets_from_env.py`** — schreibt **`device_secrets.h`** in jeden Sketch-Ordner (gitignored). HTTP(S) läuft über **`grow_http_client.h`**.
+Der neue C3-Sketch ist bewusst **fail-closed**: OUTPUTS_APPROVED=false, alle SSR_GPIO und DOSER_GPIO=-1, MAX_DOSING_MS=0; das LVGL-Display hat DOSER_UI_DURATION_MS=0. Alle realen Ausgaenge sind deshalb gesperrt. Erst nach Pruefung von Boardpins, Treiberpolaritaten, MOSFET-Stufen, Pumpenkalibrierung und Abschaltverhalten darf die Hardwarefreigabe erfolgen.
 
-## Arduino IDE
+## Netzwerk
 
-Sketch-Ordner = Dateiname des `.ino`.
+Sensorcontroller und LVGL-Remote verwenden die bisherige API:
+- GET /api/v1/control/state
+- POST /api/v1/control/targets
+- POST /api/v1/telemetry
+- GET /api/v1/mobile/summary
 
-- **TFT_eSPI** + CYD-`User_Setup` (siehe [ESP32-Cheap-Yellow-Display](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)).
-- **cyd_remote_control**: zusätzlich **XPT2046_Touchscreen** (SPI-Touch). Die Konstanten `CAL_*` und ggf. XPT-Pins musst du einmal an dein Board anpassen (Kalibrier-Sketch aus dem CYD-Repo).
-- **ArduinoJson** v6.
+Der C3 bietet lokal auf Port 80 mit X-Telemetry-Key:
+- GET /api/v1/actuator/state (SSR-Zustand, aktiver Dosierkanal, Hardwarefreigabe)
+- POST /api/v1/actuator/relays (boolesche Teilupdates fuer light, exhaust_vent, circulation_vent, heater, water_pump)
+- POST /api/v1/actuator/dose (Pumpen-ID 1..6 und gepruefte duration_ms; maximal eine gleichzeitig)
+- POST /api/v1/actuator/stop (saemtliche Ausgaenge abschalten)
 
-### Noch mehr „Grafik“?
+Der Sensor-ESP leitet die vier bekannten SSR-Ziele des bestehenden Servers per WLAN an den C3 weiter. Die bestehende Server-Datenbank kennt bisher kein light-Ziel; das LVGL-Display kann Licht darum nur direkt beim C3 anfordern. Dosierbefehle werden bisher nicht serverseitig protokolliert. Die Erweiterung der Server-API bleibt eine gesonderte Aufgabe.
 
-Auf dem CYD geht mit **TFT_eSPI** schon einiges (Rundungen, Farben, „LED“-Punkte, Layout wie oben). Wer **mehr UI** will (Screens, Slider, Animationen): **LVGL** mit Display-Treiber — deutlich mehr Flash/RAM, dafür echte GUI-Bausteine. Für eine Fernbedienung reicht oft TFT_eSPI + Touch wie im Remote-Sketch.
+## Geheime Konfiguration
 
-```bash
-python run_telemetry_api.py
-```
+Im Projektroot in .env: IOT_WIFI_SSID, IOT_WIFI_PASSWORD, IOT_TELEMETRY_SERVER_HOST, TELEMETRY_API_PORT und TELEMETRY_API_KEY. **Neu:** IOT_ACTUATOR_HOST ist der Hostname oder die LAN-IP des C3. Der Befehl python export_firmware_secrets_from_env.py erstellt in jedem Firmwareordner die ignorierte device_secrets.h, auch beim neuen C3. Keine Zugangsdaten commiten.
 
-Firewall-Port **8765** (oder `TELEMETRY_API_PORT`) im LAN freigeben.
+## Sensorcontroller — derzeitige Grenzen
+
+- DHT22: GPIO25/26/27; der erste Sensor ist Steuerwert, die weiteren Zonen sind Diagnose.
+- ADS1115 auf GPIO21/22; Rohspannung von A0 (pH) und A1 (TDS), **keine** unkalibrierte Umrechnung in pH/EC.
+- Passives OLED auf demselben I2C-Bus; BH1750 auf getrenntem Bus GPIO13/14.
+- DS18B20 an GPIO23 ist noch **nicht** in den Firmwarecode integriert; die Wassertemperatur wird als fehlend statt erfunden gemeldet.
+- Lokale SSR-GPIO-Ausgaenge sind entfernt; ohne gueltigen DHT-Wert sind die AUTO-Schaltziele AUS.
+- Keine automatische Dosierung aufgrund von unkalibrierten Sensoren.
+
+## Software und Pruefstatus
+
+Bestehende Bibliotheken: Arduino-ESP32-Core (WiFi, WebServer, HTTPClient, Wire, WiFiClientSecure), ArduinoJson v6, DHT, Adafruit_GFX, Adafruit_SSD1306; auf dem Display zusaetzlich LVGL v8, TFT_eSPI und XPT2046_Touchscreen.
+
+**Noch kein Arduino-Compile und kein Hardware-Smoke-Test.** Keine Freigabe zum Anschluss von Lasten und kein Release-Tag. Das Repository folgt weiterhin architecture_rules.md und dem dortigen Änderungs-/Validierungsvertrag.
