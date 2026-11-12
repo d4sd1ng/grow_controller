@@ -1,19 +1,11 @@
 /**
- * Growroom-ESP32 Steuerzentrale (ESP32-WROOM-32D + SSD1306 OLED)
- *
- * Autonome Regelung mit Hysterese. Server dient nur Logging + Dashboard.
- * OLED zeigt passive Anzeige (keine Touch-Steuerung).
- *
- * Hardware (festgelegt):
- *   GPIO36 -> DHT22 (Luft-Temperatur + Luftfeuchte)
- *   GPIO34 -> EC-Sonde  (ADC, Verstaerker-Modul)
- *   GPIO35 -> pH-Sonde   (ADC, Verstaerker-Modul)
- *   GPIO21 -> I2C SDA    (SSD1306 OLED + BH1750)
- *   GPIO22 -> I2C SCL
- *   GPIO4  -> Relais Heizung
- *   GPIO5  -> Relais Wasserpumpe
- *   GPIO16 -> Relais Zirkulationsluefter
- *   GPIO17 -> Relais Abluftluefter
+ * ESP32-WROOM Sensorcontroller mit passivem OLED.
+ * I2C (OLED + ADS1115) GPIO21/22; BH1750 separater Bus GPIO13/14.
+ * DHT22 an GPIO25/26/27. DS18B20 GPIO23 bleibt bis zur
+ * Bibliotheks-/Kalibrierpruefung deaktiviert.
+ * Keine lokalen SSR- oder Dosierpumpen-Ausgaenge.
+ * Fuenf SSR-Funktionen werden ueber WLAN an den C3 weitergeleitet.
+ * pH/EC sind erst nach Kalibrierung als Messwerte gueltig.
  */
 #include <Arduino.h>
 #include <WiFi.h>
@@ -27,11 +19,12 @@
 #if __has_include("device_secrets.h")
 #include "device_secrets.h"
 #else
-const char *WIFI_SSID = "M3thlab";
-const char *WIFI_PASS = "!Butch*20052023";
+const char *WIFI_SSID = "";
+const char *WIFI_PASS = "";
 const char *SERVER_HOST = "192.168.1.70";
 const uint16_t SERVER_PORT = 8765;
 const char *TELEMETRY_API_KEY = "";
+const char *ACTUATOR_HOST = "";
 const bool SERVER_USE_HTTPS = false;
 const bool SERVER_TLS_INSECURE = false;
 #endif
@@ -40,14 +33,12 @@ const bool SERVER_TLS_INSECURE = false;
 
 /* ---------- Konfiguration ---------- */
 
-// --- Pins ---
-#define PIN_DHT 36
-#define PIN_ADC_EC 34
-#define PIN_ADC_PH 35
-#define PIN_RELAY_HEATER 4
-#define PIN_RELAY_PUMP 5
-#define PIN_RELAY_CIRC 16
-#define PIN_RELAY_EXHAUST 17
+// --- Sensor-GPIOs (keine Leistungs-GPIOs) ---
+#define PIN_DHT_1 25
+#define PIN_DHT_2 26
+#define PIN_DHT_3 27
+#define PIN_BH_SDA 13
+#define PIN_BH_SCL 14
 
 // --- Intervale ---
 const unsigned long TELEMETRY_INTERVAL_MS = 10000;
@@ -61,21 +52,10 @@ const unsigned long SENSOR_READ_MS = 2000;
 #define TARGET_EC 1.5f
 #define TARGET_PH 6.0f
 
-// --- Kalibrierung EC / pH (ADC 12bit: 0-4095 @ 3.3V) ---
-// Passe diese Werte an dein Verstaerker-Modul an!
-#define EC_ADC_MIN 0
-#define EC_ADC_MAX 4095
-#define EC_VALUE_MIN 0.0f
-#define EC_VALUE_MAX 5.0f
-#define PH_ADC_MIN 0
-#define PH_ADC_MAX 4095
-#define PH_VALUE_MIN 0.0f
-#define PH_VALUE_MAX 14.0f
-
-// --- Hysterese ---
+// pH-/EC-Umrechnung bleibt bis zur Kalibrierung gesperrt.
+// Rohspannungen werden nur als Diagnose uebertragen.
 #define TEMP_HYST 0.5f
 #define HUM_HYST 2.0f
-#define EC_HYST 0.1f
 
 /* ---------- OLED ---------- */
 #define SCREEN_WIDTH 128
@@ -86,7 +66,15 @@ const unsigned long SENSOR_READ_MS = 2000;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 /* ---------- DHT22 ---------- */
-DHT dht(PIN_DHT, DHT22);
+DHT dht1(PIN_DHT_1, DHT22);
+DHT dht2(PIN_DHT_2, DHT22);
+DHT dht3(PIN_DHT_3, DHT22);
+TwoWire lightWire = TwoWire(1);
+float zoneTemp[3] = {NAN, NAN, NAN};
+float zoneRh[3] = {NAN, NAN, NAN};
+float phAdcVolts = NAN;
+float ecAdcVolts = NAN;
+bool adsAvailable = false;
 
 /* ---------- I2C Sensor-Erkennung ---------- */
 struct I2CDevice {
@@ -94,6 +82,7 @@ struct I2CDevice {
   const char *name;
 };
 static const I2CDevice KNOWN_I2C_DEVICES[] = {
+  { 0x48, "ADS1115" },
   { 0x3C, "OLED_SSD1306" },
   { 0x3D, "OLED_SSD1306_ALT" },
   { 0x23, "BH1750_ADDR_LOW" },
@@ -128,6 +117,7 @@ unsigned long lastTelemetry = 0;
 unsigned long lastControl = 0;
 unsigned long lastOled = 0;
 unsigned long lastSensor = 0;
+unsigned long lastActuatorSend = 0;
 
 /* ---------- Prototypen ---------- */
 void scanI2CDevices();
@@ -137,15 +127,47 @@ void controlLogic();
 void drawOled();
 bool sendTelemetry();
 void fetchControlState();
-float mapADC(int raw, int adcMin, int adcMax, float valMin, float valMax);
 uint32_t readBH1750();
 
-/* ---------- Hilfsfunktionen ---------- */
+bool readAdsVolts(uint8_t channel, float &out) {
+  if (!adsAvailable || channel > 3) return false;
+  // ADS1115: single ended, +/-4.096 V, single shot, 128 SPS.
+  uint16_t config = 0x8000 | ((uint16_t)(4 + channel) << 12) |
+                    0x0200 | 0x0100 | 0x0080 | 0x0003;
+  Wire.beginTransmission(0x48);
+  Wire.write(0x01);
+  Wire.write((uint8_t)(config >> 8));
+  Wire.write((uint8_t)config);
+  if (Wire.endTransmission() != 0) return false;
+  delay(12);
+  Wire.beginTransmission(0x48);
+  Wire.write(0x00);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom((uint8_t)0x48, (uint8_t)2) != 2) return false;
+  int16_t raw = (int16_t)(((uint16_t)Wire.read() << 8) | Wire.read());
+  out = (float)raw * (4.096f / 32768.0f);
+  return true;
+}
 
-float mapADC(int raw, int adcMin, int adcMax, float valMin, float valMax) {
-  if (raw < adcMin) raw = adcMin;
-  if (raw > adcMax) raw = adcMax;
-  return valMin + (valMax - valMin) * (float)(raw - adcMin) / (float)(adcMax - adcMin);
+bool sendActuatorSnapshot() {
+  if (!ACTUATOR_HOST || !ACTUATOR_HOST[0] || WiFi.status() != WL_CONNECTED ||
+      !TELEMETRY_API_KEY || !TELEMETRY_API_KEY[0]) return false;
+  StaticJsonDocument<192> doc;
+  doc["heater"] = relayHeater;
+  doc["water_pump"] = relayPump;
+  doc["circulation_vent"] = relayCirculation;
+  doc["exhaust_vent"] = relayExhaust;
+  String payload;
+  serializeJson(doc, payload);
+  HTTPClient http;
+  http.setTimeout(2000);
+  String url = String("http://") + ACTUATOR_HOST + "/api/v1/actuator/relays";
+  if (!http.begin(url)) return false;
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Telemetry-Key", TELEMETRY_API_KEY);
+  int status = http.POST(payload);
+  http.end();
+  return status == 200;
 }
 
 void scanI2CDevices() {
@@ -154,6 +176,7 @@ void scanI2CDevices() {
   i2cOledAddr = 0;
   hasBh1750 = false;
   bh1750Addr = 0;
+  adsAvailable = false;
   Serial.println("\n--- I2C-Scan ---");
   for (uint8_t addr = 1; addr < 127 && detectedCount < 16; ++addr) {
     Wire.beginTransmission(addr);
@@ -164,10 +187,8 @@ void scanI2CDevices() {
         if (KNOWN_I2C_DEVICES[i].address == addr) {
           name = KNOWN_I2C_DEVICES[i].name;
           if (addr == 0x3C || addr == 0x3D) i2cOledAddr = addr;
-          if (addr == 0x23 || addr == 0x5C) {
-            hasBh1750 = true;
-            bh1750Addr = addr;
-          }
+          if (addr == 0x48) adsAvailable = true;
+
           break;
         }
       }
@@ -177,72 +198,87 @@ void scanI2CDevices() {
       ++detectedCount;
     }
   }
-  Serial.printf("--- %d I2C-Geraete erkannt ---\n\n", detectedCount);
+  // BH1750 liegt auf einem anderen I2C-Bus.
+  lightWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
+  for (uint8_t addr : { (uint8_t)0x23, (uint8_t)0x5C }) {
+    lightWire.beginTransmission(addr);
+    if (lightWire.endTransmission() == 0) {
+      hasBh1750 = true;
+      bh1750Addr = addr;
+      break;
+    }
+  }
+  Serial.printf("--- %d I2C-Hauptbusgeraete erkannt ---\n\n", detectedCount);
 }
 
 uint32_t readBH1750() {
   if (!hasBh1750) return 0;
-  Wire.beginTransmission(bh1750Addr);
-  Wire.write(0x01);
-  Wire.endTransmission();
+  lightWire.beginTransmission(bh1750Addr);
+  lightWire.write(0x01);
+  if (lightWire.endTransmission() != 0) return 0;
   delay(10);
-  Wire.beginTransmission(bh1750Addr);
-  Wire.write(0x10);
-  Wire.endTransmission();
+  lightWire.beginTransmission(bh1750Addr);
+  lightWire.write(0x10);
+  if (lightWire.endTransmission() != 0) return 0;
   delay(180);
-  Wire.requestFrom((int)bh1750Addr, 2);
-  if (Wire.available() >= 2) {
-    uint16_t raw = (Wire.read() << 8) | Wire.read();
-    return raw / 1.2;
-  }
-  return 0;
+  if (lightWire.requestFrom(bh1750Addr, (uint8_t)2) != 2) return 0;
+  uint16_t raw = ((uint16_t)lightWire.read() << 8) | lightWire.read();
+  return (uint32_t)(raw / 1.2f);
 }
 
 void readSensors() {
-  sensors.dhtOk = false;
-  float t = dht.readTemperature();
-  float h = dht.readHumidity();
-  if (!isnan(t) && !isnan(h)) {
-    sensors.airC = t;
-    sensors.rh = h;
-    sensors.dhtOk = true;
-  }
-  sensors.ec = mapADC(analogRead(PIN_ADC_EC), EC_ADC_MIN, EC_ADC_MAX, EC_VALUE_MIN, EC_VALUE_MAX);
-  sensors.ph = mapADC(analogRead(PIN_ADC_PH), PH_ADC_MIN, PH_ADC_MAX, PH_VALUE_MIN, PH_VALUE_MAX);
+  zoneTemp[0] = dht1.readTemperature();
+  zoneRh[0] = dht1.readHumidity();
+  zoneTemp[1] = dht2.readTemperature();
+  zoneRh[1] = dht2.readHumidity();
+  zoneTemp[2] = dht3.readTemperature();
+  zoneRh[2] = dht3.readHumidity();
+  sensors.dhtOk = !isnan(zoneTemp[0]) && !isnan(zoneRh[0]);
+  sensors.airC = sensors.dhtOk ? zoneTemp[0] : NAN;
+  sensors.rh = sensors.dhtOk ? zoneRh[0] : NAN;
+  phAdcVolts = NAN;
+  ecAdcVolts = NAN;
+  readAdsVolts(0, phAdcVolts);
+  readAdsVolts(1, ecAdcVolts);
+  sensors.ph = NAN;  // pH7/pH4-Kalibrierung noch nicht freigegeben
+  sensors.ec = NAN;  // temperaturkompensierte TDS-Kalibrierung noch offen
   sensors.lux = readBH1750();
-  sensors.caseC = temperatureRead();  // ESP32 interner Temperatursensor
+  sensors.caseC = temperatureRead();
 }
 
 void applyRelays() {
-  digitalWrite(PIN_RELAY_HEATER, relayHeater ? HIGH : LOW);
-  digitalWrite(PIN_RELAY_PUMP, relayPump ? HIGH : LOW);
-  digitalWrite(PIN_RELAY_CIRC, relayCirculation ? HIGH : LOW);
-  digitalWrite(PIN_RELAY_EXHAUST, relayExhaust ? HIGH : LOW);
+  // Keine lokalen Ausgaenge am ESP Pro! C3 bekommt nur vier
+  // bestaetigte Server-Steuerfelder; "light" bleibt eigener C3-Kanal.
+  unsigned long now = millis();
+  if (now - lastActuatorSend < 2000) return;
+  lastActuatorSend = now;
+  sendActuatorSnapshot();
 }
 
 void controlLogic() {
   if (strcmp(controlMode, "auto") != 0) return;
-
-  // Heizung
+  // Ungueltige/fehlende Werte duerfen keine Heizung einschalten.
+  if (!sensors.dhtOk) {
+    relayHeater = false;
+    relayCirculation = false;
+    relayExhaust = false;
+    relayPump = false;
+    return;
+  }
   if (sensors.airC < TARGET_AIR_TEMP - TEMP_HYST) relayHeater = true;
   else if (sensors.airC > TARGET_AIR_TEMP + TEMP_HYST) relayHeater = false;
 
-  // Zirkulationsluefter (Luftfeuchte)
   if (sensors.rh > TARGET_HUMIDITY + HUM_HYST) relayCirculation = true;
   else if (sensors.rh < TARGET_HUMIDITY - HUM_HYST) relayCirculation = false;
 
-  // Abluftluefter (Notfall-Kuehlung)
   if (sensors.airC > TARGET_AIR_TEMP + 2.0f) relayExhaust = true;
-  // Abluft bleibt an bis Temp wieder im Zielbereich
   else if (sensors.airC < TARGET_AIR_TEMP + 0.5f) relayExhaust = false;
 
-  // Wasserpumpe (EC)
-  if (sensors.ec < TARGET_EC - EC_HYST) relayPump = true;
-  else if (sensors.ec > TARGET_EC + EC_HYST) relayPump = false;
+  // Ohne kalibrierte EC-/pH-Messung NIE automatisch dosieren/schalten.
+  relayPump = false;
 }
 
 void drawOled() {
-  if (!display.begin(SSD1306_SWITCHCAPVCC, i2cOledAddr ? i2cOledAddr : OLED_ADDR)) return;
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
@@ -292,7 +328,7 @@ bool sendTelemetry() {
 
   StaticJsonDocument<1024> doc;
   doc["air_temperature"] = sensors.airC;
-  doc["water_temperature"] = 0.0f;  // optional
+  doc["water_temperature"] = nullptr;  // DS18B20 noch nicht verifiziert
   doc["case_temperature"] = sensors.caseC;
   doc["humidity"] = sensors.rh;
   doc["ec"] = sensors.ec;
@@ -307,7 +343,19 @@ bool sendTelemetry() {
 
   JsonObject devInfo = doc.createNestedObject("device_info");
   devInfo["device_id"] = "growroom_esp32_01";
-  devInfo["firmware_version"] = "3.0.0";
+  devInfo["firmware_version"] = "3.1.0-c3";
+  devInfo["ads1115_available"] = adsAvailable;
+  devInfo["ph_voltage_raw"] = phAdcVolts;
+  devInfo["tds_voltage_raw"] = ecAdcVolts;
+  devInfo["ph_calibrated"] = false;
+  devInfo["tds_calibrated"] = false;
+  JsonArray zones = devInfo.createNestedArray("dht_zones");
+  for (int i = 0; i < 3; ++i) {
+    JsonObject z = zones.createNestedObject();
+    z["zone"] = i + 1;
+    z["temperature"] = zoneTemp[i];
+    z["humidity"] = zoneRh[i];
+  }
   devInfo["control_mode"] = controlMode;
   devInfo["i2c_device_count"] = detectedCount;
   devInfo["has_oled"] = (i2cOledAddr != 0);
@@ -363,8 +411,8 @@ void fetchControlState() {
     relayHeater = t["heater"] | relayHeater;
     relayCirculation = t["circulation_vent"] | relayCirculation;
     relayExhaust = t["exhaust_vent"] | relayExhaust;
-    relayPump = (t["pump"] | false) || (t["water_pump"] | false) || relayPump;
-    applyRelays();
+    if (t.containsKey("pump")) relayPump = t["pump"].as<bool>();
+    else if (t.containsKey("water_pump")) relayPump = t["water_pump"].as<bool>();
   }
 }
 
@@ -372,13 +420,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
-  // Relais-Pins
-  pinMode(PIN_RELAY_HEATER, OUTPUT);
-  pinMode(PIN_RELAY_PUMP, OUTPUT);
-  pinMode(PIN_RELAY_CIRC, OUTPUT);
-  pinMode(PIN_RELAY_EXHAUST, OUTPUT);
-  applyRelays();
-
+  // Der ESP Pro besitzt keine Leistungs-GPIOs.
   // I2C + OLED-Adresse ermitteln
   scanI2CDevices();
 
@@ -395,13 +437,16 @@ void setup() {
   }
 
   // DHT init
-  dht.begin();
+  dht1.begin();
+  dht2.begin();
+  dht3.begin();
 
   // WiFi
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   Serial.print("WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
+  unsigned long wifiStart = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 15000) {
     delay(500);
     Serial.print(".");
   }
