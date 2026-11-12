@@ -176,47 +176,6 @@ void sensorApiState() {
   serializeJson(doc, out);
   sensorApi.send(200, "application/json", out);
 }
-void sensorApiSetState() {
-  if (!sensorApiAuthorized()) return;
-  StaticJsonDocument<256> doc;
-  if (deserializeJson(doc, sensorApi.arg("plain")) || !doc.is<JsonObject>()) {
-    sensorApi.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_json\"}");
-    return;
-  }
-  bool nextBloom = bloomPhase;
-  uint8_t nextWeek = growthWeek;
-  bool nextPause = pumpPaused;
-  for (JsonPair item : doc.as<JsonObject>()) {
-    const char *key = item.key().c_str();
-    JsonVariant value = item.value();
-    if (strcmp(key, "phase") == 0 && value.is<const char *>()) {
-      String phase = value.as<String>();
-      if (phase != "grow" && phase != "bloom") {
-        sensorApi.send(422, "application/json", "{\"ok\":false,\"error\":\"invalid_phase\"}");
-        return;
-      }
-      nextBloom = (phase == "bloom");
-    } else if (strcmp(key, "week") == 0 && value.is<int>() &&
-               value.as<int>() >= 1 && value.as<int>() <= 12) {
-      nextWeek = (uint8_t)value.as<int>();
-    } else if (strcmp(key, "pump_paused") == 0 && value.is<bool>()) {
-      nextPause = value.as<bool>();
-    } else {
-      sensorApi.send(422, "application/json", "{\"ok\":false,\"error\":\"unknown_or_invalid_field\"}");
-      return;
-    }
-  }
-  if (nextBloom != bloomPhase || nextWeek != growthWeek) {
-    bloomPhase = nextBloom;
-    growthWeek = nextWeek;
-    savePhase();
-  }
-  if (nextPause != pumpPaused) {
-    pumpPaused = nextPause;
-    savePumpPause();
-  }
-  sensorApiState();
-}
 bool fellDebounced(DebouncedButton &button, unsigned long now) {
   bool rawHigh = digitalRead(button.pin) == HIGH;
   if (rawHigh != button.lastRawHigh) {
@@ -575,7 +534,6 @@ void setup() {
   const char *headers[] = {"X-Telemetry-Key"};
   sensorApi.collectHeaders(headers, 1);
   sensorApi.on("/api/v1/sensor/state", HTTP_GET, sensorApiState);
-  sensorApi.on("/api/v1/sensor/state", HTTP_POST, sensorApiSetState);
   sensorApi.begin();
   // Der ESP Pro besitzt keine Leistungs-GPIOs.
   // I2C + OLED-Adresse ermitteln
