@@ -15,6 +15,8 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <DHT.h>
+#include <Preferences.h>
+#include <WebServer.h>
 
 #if __has_include("device_secrets.h")
 #include "device_secrets.h"
@@ -39,6 +41,11 @@ const bool SERVER_TLS_INSECURE = false;
 #define PIN_DHT_3 27
 #define PIN_BH_SDA 13
 #define PIN_BH_SCL 14
+// Physische Eingaben und Status-LEDs, Festlegung vom 15.10.
+#define PIN_BUTTON_PHASE 19
+#define PIN_BUTTON_PUMP 18
+#define PIN_LED_GREEN 4
+#define PIN_LED_RED 33
 
 // --- Intervale ---
 const unsigned long TELEMETRY_INTERVAL_MS = 10000;
@@ -112,6 +119,127 @@ bool relayCirculation = false;
 bool relayExhaust = false;
 
 char controlMode[8] = "auto";  // "auto" oder "manual"
+
+// Wachstum/Bluete und Woche werden auf dem Sensor-ESP gespeichert.
+// Der Pumpentaster ist ein Wartungs-Override, kein Dosierpumpen-Taster.
+Preferences preferences;
+WebServer sensorApi(80);
+bool bloomPhase = false;
+uint8_t growthWeek = 1;
+bool pumpPaused = false;
+unsigned long lastValidServerControl = 0;
+const unsigned long MANUAL_CONTROL_STALE_MS = 15000;
+const unsigned long BUTTON_DEBOUNCE_MS = 45;
+struct DebouncedButton {
+  uint8_t pin;
+  bool lastRawHigh = true;
+  bool stableHigh = true;
+  unsigned long lastTransition = 0;
+};
+DebouncedButton buttonPhase = {PIN_BUTTON_PHASE};
+DebouncedButton buttonPump = {PIN_BUTTON_PUMP};
+
+bool sensorApiAuthorized() {
+  if (!TELEMETRY_API_KEY || TELEMETRY_API_KEY[0] == 0) {
+    sensorApi.send(503, "application/json", "{\"ok\":false,\"error\":\"api_key_unconfigured\"}");
+    return false;
+  }
+  if (!sensorApi.hasHeader("X-Telemetry-Key") ||
+      sensorApi.header("X-Telemetry-Key") != String(TELEMETRY_API_KEY)) {
+    sensorApi.send(401, "application/json", "{\"ok\":false,\"error\":\"unauthorized\"}");
+    return false;
+  }
+  return true;
+}
+void updatePhaseLeds() {
+  digitalWrite(PIN_LED_GREEN, HIGH);
+  digitalWrite(PIN_LED_RED, bloomPhase ? HIGH : LOW);
+}
+void savePhase() {
+  preferences.putBool("bloom", bloomPhase);
+  preferences.putUChar("week", growthWeek);
+  updatePhaseLeds();
+}
+void savePumpPause() {
+  preferences.putBool("pumpPause", pumpPaused);
+  if (pumpPaused) relayPump = false;
+}
+void sensorApiState() {
+  if (!sensorApiAuthorized()) return;
+  StaticJsonDocument<256> doc;
+  doc["ok"] = true;
+  doc["phase"] = bloomPhase ? "bloom" : "grow";
+  doc["week"] = growthWeek;
+  doc["pump_paused"] = pumpPaused;
+  doc["pump_enabled"] = relayPump && !pumpPaused;
+  String out;
+  serializeJson(doc, out);
+  sensorApi.send(200, "application/json", out);
+}
+void sensorApiSetState() {
+  if (!sensorApiAuthorized()) return;
+  StaticJsonDocument<256> doc;
+  if (deserializeJson(doc, sensorApi.arg("plain")) || !doc.is<JsonObject>()) {
+    sensorApi.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_json\"}");
+    return;
+  }
+  bool nextBloom = bloomPhase;
+  uint8_t nextWeek = growthWeek;
+  bool nextPause = pumpPaused;
+  for (JsonPair item : doc.as<JsonObject>()) {
+    const char *key = item.key().c_str();
+    JsonVariant value = item.value();
+    if (strcmp(key, "phase") == 0 && value.is<const char *>()) {
+      String phase = value.as<String>();
+      if (phase != "grow" && phase != "bloom") {
+        sensorApi.send(422, "application/json", "{\"ok\":false,\"error\":\"invalid_phase\"}");
+        return;
+      }
+      nextBloom = (phase == "bloom");
+    } else if (strcmp(key, "week") == 0 && value.is<int>() &&
+               value.as<int>() >= 1 && value.as<int>() <= 12) {
+      nextWeek = (uint8_t)value.as<int>();
+    } else if (strcmp(key, "pump_paused") == 0 && value.is<bool>()) {
+      nextPause = value.as<bool>();
+    } else {
+      sensorApi.send(422, "application/json", "{\"ok\":false,\"error\":\"unknown_or_invalid_field\"}");
+      return;
+    }
+  }
+  if (nextBloom != bloomPhase || nextWeek != growthWeek) {
+    bloomPhase = nextBloom;
+    growthWeek = nextWeek;
+    savePhase();
+  }
+  if (nextPause != pumpPaused) {
+    pumpPaused = nextPause;
+    savePumpPause();
+  }
+  sensorApiState();
+}
+bool fellDebounced(DebouncedButton &button, unsigned long now) {
+  bool rawHigh = digitalRead(button.pin) == HIGH;
+  if (rawHigh != button.lastRawHigh) {
+    button.lastTransition = now;
+    button.lastRawHigh = rawHigh;
+  }
+  if (rawHigh != button.stableHigh &&
+      now - button.lastTransition >= BUTTON_DEBOUNCE_MS) {
+    button.stableHigh = rawHigh;
+    return !rawHigh;
+  }
+  return false;
+}
+void pollButtons(unsigned long now) {
+  if (fellDebounced(buttonPhase, now)) {
+    bloomPhase = !bloomPhase;
+    savePhase();
+  }
+  if (fellDebounced(buttonPump, now)) {
+    pumpPaused = !pumpPaused;
+    savePumpPause();
+  }
+}
 
 unsigned long lastTelemetry = 0;
 unsigned long lastControl = 0;
@@ -256,6 +384,7 @@ void applyRelays() {
 }
 
 void controlLogic() {
+  if (pumpPaused) relayPump = false;
   // Sicherheitsabschaltung hat Vorrang auch vor manuellen Heizanfragen.
   if (!sensors.dhtOk) {
     relayHeater = false;
@@ -276,8 +405,8 @@ void controlLogic() {
   if (sensors.airC > TARGET_AIR_TEMP + 2.0f) relayExhaust = true;
   else if (sensors.airC < TARGET_AIR_TEMP + 0.5f) relayExhaust = false;
 
-  // Ohne kalibrierte EC-/pH-Messung NIE automatisch dosieren/schalten.
-  relayPump = false;
+  // Wasserpumpe ist KEINE Dosierpumpe: Betrieb, ausser Filterwechselpause.
+  relayPump = !pumpPaused;
 }
 
 void drawOled() {
@@ -305,10 +434,7 @@ void drawOled() {
 
   // Zeile 3: EC + pH
   display.setCursor(0, 32);
-  display.print("EC:");
-  display.print(sensors.ec, 2);
-  display.print(" pH:");
-  display.print(sensors.ph, 1);
+  display.print("EC:-- pH:--");
 
   // Zeile 4: Relais + Modus
   display.setCursor(0, 48);
@@ -321,6 +447,10 @@ void drawOled() {
   display.print(relayCirculation);
   display.print(" E");
   display.print(relayExhaust);
+  display.setCursor(75, 56);
+  display.print(bloomPhase ? "BL" : "WU");
+  display.print(growthWeek);
+  if (pumpPaused) display.print(" P!");
 
   display.display();
 }
@@ -350,6 +480,9 @@ bool sendTelemetry() {
   devInfo["ph_voltage_raw"] = phAdcVolts;
   devInfo["tds_voltage_raw"] = ecAdcVolts;
   devInfo["dht_control_ok"] = sensors.dhtOk;
+  devInfo["phase"] = bloomPhase ? "bloom" : "grow";
+  devInfo["week"] = growthWeek;
+  devInfo["pump_paused"] = pumpPaused;
   devInfo["ph_calibrated"] = false;
   devInfo["tds_calibrated"] = false;
   JsonArray zones = devInfo.createNestedArray("dht_zones");
@@ -402,6 +535,9 @@ void fetchControlState() {
   StaticJsonDocument<512> doc;
   if (deserializeJson(doc, payload)) return;
   if (!doc["ok"].as<bool>()) return;
+  const char *requestedMode = doc["control_mode"] | "";
+  if (strcmp(requestedMode, "auto") != 0 && strcmp(requestedMode, "manual") != 0) return;
+  if (!doc["targets"].is<JsonObject>()) return;
 
   const char *m = doc["control_mode"];
   if (m) {
@@ -416,13 +552,31 @@ void fetchControlState() {
     relayExhaust = t["exhaust_vent"] | relayExhaust;
     if (t.containsKey("pump")) relayPump = t["pump"].as<bool>();
     else if (t.containsKey("water_pump")) relayPump = t["water_pump"].as<bool>();
+    if (pumpPaused) relayPump = false;
   }
+  lastValidServerControl = millis();
 }
 
 void setup() {
   Serial.begin(115200);
   delay(500);
 
+  // Taster + Status-LEDs: ausschliesslich Kleinspannungs-Signale.
+  pinMode(PIN_BUTTON_PHASE, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_PUMP, INPUT_PULLUP);
+  pinMode(PIN_LED_GREEN, OUTPUT);
+  pinMode(PIN_LED_RED, OUTPUT);
+  preferences.begin("grow-phase", false);
+  bloomPhase = preferences.getBool("bloom", false);
+  growthWeek = preferences.getUChar("week", 1);
+  if (growthWeek < 1 || growthWeek > 12) growthWeek = 1;
+  pumpPaused = preferences.getBool("pumpPause", false);
+  updatePhaseLeds();
+  const char *headers[] = {"X-Telemetry-Key"};
+  sensorApi.collectHeaders(headers, 1);
+  sensorApi.on("/api/v1/sensor/state", HTTP_GET, sensorApiState);
+  sensorApi.on("/api/v1/sensor/state", HTTP_POST, sensorApiSetState);
+  sensorApi.begin();
   // Der ESP Pro besitzt keine Leistungs-GPIOs.
   // I2C + OLED-Adresse ermitteln
   scanI2CDevices();
@@ -458,6 +612,15 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
+  pollButtons(now);
+  if (WiFi.status() == WL_CONNECTED) sensorApi.handleClient();
+  else if (now % 5000 < 10) WiFi.reconnect();
+
+  if (strcmp(controlMode, "manual") == 0 &&
+      (lastValidServerControl == 0 ||
+       now - lastValidServerControl > MANUAL_CONTROL_STALE_MS)) {
+    relayHeater = relayPump = relayCirculation = relayExhaust = false;
+  }
 
   // Sensoren lesen
   if (now - lastSensor >= SENSOR_READ_MS) {
@@ -465,8 +628,9 @@ void loop() {
     readSensors();
   }
 
-  // Autonome Regelung (nur im AUTO-Modus)
+  // Autonome Regelung (nur im AUTO-Modus).
   controlLogic();
+  if (pumpPaused) relayPump = false;
   applyRelays();
 
   // OLED aktualisieren
