@@ -1,3 +1,5 @@
+> **VERBINDLICHER AKTUELLER STAND (12.11.2026):** **GENAU 6** Dosierpumpen, **6** MOSFET-Kanaele, PCA9685 **OUT0–OUT5**, **6** Pumpenklemmen; keine siebte Pumpe und kein Reservekanal. Motor 12 V DC/3 W (rechnerisch je 0,25 A, insgesamt 18 W/1,50 A bei sechs gleichzeitig). Zuordnung der 6 Pumpen zu Duenger/pH noch offen. ESP32-C3 SuperMini **ohne Display**; gesondertes LVGL-CYD ist die Remote. C3-Ausgaenge standardmaessig gesperrt bis zum verifizierten Hardwaretest. Keine automatische Dosierung. Die vorherigen 7-Pumpen-Platzierungsstudien sind veraltet.
+
 # Grow-Controller – Wiring Plan V2: Anschlüsse und Widerstände
 
 **Kompakte Gesamtübersicht mit GPIO, Board-Pin und Position jeder Buchsenleiste:** [pinout_komplett_2026-10-21.md](pinout_komplett_2026-10-21.md).
@@ -207,8 +209,8 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 | Heizung SSR10 | GPIO4 | rechts 4 |
 | Wasserpumpe SSR10 | GPIO5 | links 1 |
 | Lampen-PC-Luefter (4 × 12 V) | GPIO6 | links 2 |
-| **I²C SDA** PCA9685 (7 Dosierpumpen) | **GPIO7** | **links 3** |
-| **I²C SCL** PCA9685 (7 Dosierpumpen) | **GPIO10** | **links 6** |
+| **I²C SDA** PCA9685 (6 Dosierpumpen) | **GPIO7** | **links 3** |
+| **I²C SCL** PCA9685 (6 Dosierpumpen) | **GPIO10** | **links 6** |
 | **DOS_OE aktive LOW, Gesamtsperre Dosier-MOSFETs** | **GPIO20** | **links 7** |
 | Versorgung | 5V | rechts 1 |
 | GND | GND | rechts 2 |
@@ -219,9 +221,9 @@ MLX90640 ist in der Firmware deaktiviert. Geplante I²C-Adresse 0x33. I²C-Bus n
 - **GPIO6** schaltet die Lampenkuehlung erst ueber eine eigene externe 12-V-DC-MOSFET-Stufe.
 - **GPIO7/GPIO10** werden als I²C-Bus fuer den **auf derselben Leistungscontroller-PCB integrierten PCA9685** fest vorgesehen, mit 4,7-kΩ-Pull-ups nach 3V3 einmal je Leitung und PCA-Adresse 0x40 (Adressleitungen entsprechend beschalten).
 - **GPIO20** statt UART-RX reserviert als **PCA9685 OE (LOW=freigegeben, HIGH=gesperrt)**. OE durch 10-kΩ-Widerstand nach 3V3 im Boot-/Reset-Zustand AUS halten. Nur bei initialisiertem Controller OE freigeben. Gate-Pulldowns der MOSFETs als zweite Ruhe-Bedingung vorsehen.
-**Mechanische Trennung der sieben Peristaltikpumpen (Nutzerkorrektur):** Die **sieben physischen Pumpen/Motoren gehören NICHT auf die ESP32-C3-Leistungsplatine**. Sie werden separat unten bei den jeweiligen Dünger-/pH-Vorratsbehältern montiert, damit der Abstand zwischen Flüssigkeitsspiegel und Pumpeneinlass innerhalb der **modellabhängigen zulässigen Ansaughöhe** bleibt (Nutzer nennt als typischen Wert ca. 50 cm; exaktes Pumpendatenblatt abwarten). Auf der **einen** Leistungscontroller-PCB sind ausschließlich **PCA9685, sieben MOSFET-Motortreiber mitsamt Schutzbauteilen, DC-Einspeisung und sieben steck-/schraubbare Motoranschlüsse** vorgesehen. Elektrische Leitungen zur tieferliegenden Pumpen-Montage separat führen; Pumpen- und Schläuche nicht ins Elektronikgehäuse einbauen. Das Pumpengehäuse/Halterungen benötigen eine getrennte mechanische Planung, während die Größe der Controller-PCB nur von deren Elektronik bestimmt wird.
+**Mechanik der sechs Peristaltikpumpen:** Alle sechs Motoren werden separat untergebracht; nur sechs zweipolige Motorkabel fuehren zur C3-Leistungsplatine. Die Platine traegt PCA9685, genau sechs MOSFET-Treiber und Schutzbauteile sowie sechs Motoranschluesse. Die Gesamtgehäuseplanung umfasst die Pumpenkoerper ausdruecklich nicht.
 
-- **GENAU 7 Dosierpumpen (Nutzerkorrektur 22.10.2026):** **5 × Dünger** an PCA9685 **OUT0–OUT4** (PUMP1–PUMP5), **1 × pH− an OUT5** (PUMP6), **1 × pH+ an OUT6** (PUMP7). Alle **sieben** Kanaele auf **derselben** C3-Platine: jeweils eigener DC-MOSFET mit Gate-Widerstand/Gate-Pulldown/Freilaufdiode und je ein eigener **2-poliger Pumpenanschluss**. **Keine zweite Dosierpumpen-Platine.** Pumpenstromkreis ueber eigene externe **V_PUMP**-DC-Einspeisung, nicht ueber 3V3/5V. Dimensionierung nach den tatsaechlichen Pumpen (Versorgung, Anlauf-/Blockierstrom); vorerst keine Motor-Teilenummer unterstellen. Ueberstromschutz sowie Hardware-Timeout bzw. externe Freigabe gegen Dauerlauf vor Inbetriebnahme vorsehen. **Interlock:** pH+ und pH− niemals gleichzeitig freigeben; bei fehlendem/ungueltigem pH-Messwert oder Verbindungsverlust beide pH-Dosierkanaele sperren. Automatische Dosierung und ihre Grenzwerte sind noch nicht implementiert.
+- **GENAU 6 DOSIERPUMPEN (12.11.2026):** PUMP1–PUMP6 = PCA9685 OUT0–OUT5, jeweils eigener Niedervolt-MOSFET-/Schutz- und 2-poliger Motoranschluss. **Keine siebte Pumpenstufe/Reserve**, keine zweite Platine und keine Umpolung. Zuordnung zu Duenger/pH ist noch offen; automatische Dosierung bleibt gesperrt. Motorstromkreis separate 12-V-DC-Einspeisung, kein Pumpenstrom aus ESP-Versorgung.
 - Optionaler spaeterer PCF8574 fuer Matrix-Bedienfeld koennte den **gleichen I²C-Bus GPIO7/GPIO10** nutzen (z. B. Adresse 0x20, Buskonflikte prüfen), ohne weitere C3-GPIOs. Tastaturpins/Halterung bleiben ungeplant.
 - **GPIO2, GPIO8, GPIO9** als Boot-Strappingpins nicht belegen, **GPIO18/19** bleiben fuer USB, **GPIO21** bleibt Reserve/UART-TX.
 - **Keine direkte Kabelverbindung zwischen Sensor-ESP und C3:** Datenaustausch soll ueber WLAN erfolgen. Es gibt bislang **keine betriebsfaehige C3-SSR-/Pumpen-Firmware**; das ist eine Pin- und Platinenkonstruktion, keine funktionsfaehige Dosierung.
@@ -268,12 +270,12 @@ Der OLED zeigt Lux und `~lm` im Wechsel mit einer bestehenden Informationszeile 
 
 Die fuer die Dosierer vorgesehenen Pumpen werden vom Anbieter als **12-V-DC-Motoren** beschrieben. Weitere Anbieterangaben: **10–90 ml/min Durchflussbereich**, separat **>80 ml/min Durchflussrate**, Silikonschlauch **3×5** (Einheit auf dem Screenshot nicht ausgewiesen), Pumpenkopf **ABS**, **3 Rollen**, ca. **83 g** je Pumpe. Das sind **Anbieterangaben**, keine gemessenen Kennwerte. **Nennstrom, Anlaufstrom und Blockierstrom pro Pumpe fehlen**.
 
-Die C3-Leistungsplatine erhaelt **7 gleichwertige Pumpenkanaele** (5× Duenger, pH−, pH+), **alle sieben 12-V-DC-Pumpenanschluesse/Treiber vollstaendig vorbereitet**. Zunaechst werden **nur sechs externe Pumpen installiert**; der siebte bleibt frei, ohne dass der freie Kanal bereits bestimmt ist. Die Pumpenkabel werden getrennt zu den physisch extern montierten Pumpen gefuehrt. Versorgung: vorgesehener **separater 12-V-DC-Pumpeneingang**; nicht an den C3-5V- oder 3V3-Pin legen. Endgueltige MOSFET-/Dioden-/Sicherungs-/Leiterbahndimensionierung und Fertigungsfreigabe erst mit Motorstromdaten und Steckerspezifikationen. Bisherige Platinengroessenstudie **180 × 110 mm** ist **nicht die endgueltige fertigungserprobte PCB-Groesse**. Fuer genaue Dosierung muss der reale Durchfluss je Pumpe kalibriert werden.
+Die C3-Leistungsplatine erhaelt **genau 6** 12-V-DC-Pumpenkanaele mit 6 Treibern und 6 Klemmen. Alle sechs Motoren werden angeschlossen; keine Reserve. Motoren werden separat montiert. Die alte 180×110-mm-Platzierung fuer sieben Kanaele ist kein gueltiges Fertigungsmass. Eigene abgesicherte DC-Einspeisung; Anlauf-/Blockierstrom und Leiterbahnen noch zu pruefen.
 
 
 ### 8b. Motorleistung der Dosierer (Nutzerangabe 12.11.2026)
 
-**12 V DC, elektrische Leistungsaufnahme 3 W pro Motor**. Berechneter **Nennstrom I = P/U = 3/12 = 0,25 A pro Pumpe**. Sechs Pumpen zusammen rechnerisch **18 W / 1,50 A**; sieben Pumpen zusammen **21 W / 1,75 A**, jeweils nur bei gleichzeitigem Nennbetrieb. **Keiner dieser Werte ist der unbestimmte Anlauf- oder Blockierstrom**. Die Leiterplatte behaelt sieben gleichwertige Anschluesse und Treiber, anfangs nur sechs Pumpen installiert. Netzteilleistung, Leitungsschutz, MOSFET-/Freilaufdioden-Belastbarkeit und Leiterbahngeometrie werden erst nach Bewertung der Einschalt-/Blockierbedingungen freigegeben.
+**12 V DC, 3 W elektrische Leistungsaufnahme je Pumpe:** rechnerisch 0,25 A, fuer genau sechs Pumpen 18 W / 1,50 A bei gleichzeitigem Normalbetrieb. Anlauf-/Blockierstrom unbekannt, keine daraus abgeleitete Fertigungsfreigabe.
 
 
-**Festlegung Förderrichtung (12.11.2026):** Die 12-V-Peristaltikpumpen koennen laut Nutzer zwar CW/CCW durch Umpolung, sollen im Grow-Controller aber **nur in einer festen Foerderrichtung** laufen. **Keine Polaritaetsumkehr und keine H-Bruecken vorsehen**. Es bleibt bei **sieben unabhaengigen einseitigen MOSFET-DC-Motorschaltstufen**, einer je Pumpe, und **PCA9685 OUT0–OUT6**. Die Motorpolung wird bei der Montage fuer die richtige Foerderrichtung festgelegt; Rueckwaertsbetrieb ist nicht vorgesehen. Alle sieben Kanaele samt Anschluss werden bestueckt, anfangs nur sechs Pumpen angeschlossen. **Nennstrom rechnerisch 0,25 A pro Motor (3 W / 12 V); Anlauf-/Blockierstrom weiter unbekannt.**
+**Festlegung Förderrichtung (12.11.2026):** Genau sechs Pumpen, feste Motorpolung, keine H-Bruecken. PCA9685 OUT0–OUT5 treiben sechs einzelne einseitige MOSFET-Stufen. Kein Reservekanal. Anlauf-/Blockierstrom weiter offen.
