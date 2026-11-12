@@ -1199,7 +1199,7 @@ static void handleSummary() {
 static void handleActuatorTargets() {
   if (!localAuthorized()) return sendUnauthorized();
 
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<1536> doc;
   doc["ok"] = true;
   doc["power_controller_connected"] = c3Connected();
   doc["pump_count"] = DOSING_PUMP_COUNT;
