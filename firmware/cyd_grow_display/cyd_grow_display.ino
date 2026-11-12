@@ -235,12 +235,14 @@ void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
                   float waterC, bool waterValid,
                   float ecMeasurementC, bool ecMeasurementValid,
                   float lux, bool luxValid, float areaLumens, bool areaLumensValid,
-                  bool light, bool heat, bool circ, bool exh,
-                  const char *alert, const char *alertSev) {
+                  bool light, bool heat, bool circ, bool exh, bool water, bool fan,
+                   const char *alert, const char *alertSev) {
   relay_light = light;
   relay_heater = heat;
   relay_circ = circ;
   relay_exh = exh;
+  relay_water = water;
+  relay_fan = fan;
 
   lv_label_set_text_fmt(lbl_mode, "Modus: %s", mode ? mode : "?");
   lv_label_set_text_fmt(lbl_temp, "Temperatur: %.1f C", t);
@@ -261,11 +263,10 @@ void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
     lv_label_set_text_fmt(lbl_light, "BH %.0f lx | Lumen --", lux);
   else
     lv_label_set_text_static(lbl_light, "BH1750: --");
-  lv_label_set_text_fmt(lbl_relay, "L:%s H:%s C:%s E:%s",
-                        light ? "ON" : "off",
-                        heat ? "ON" : "off",
-                        circ ? "ON" : "off",
-                        exh ? "ON" : "off");
+  lv_label_set_text_fmt(lbl_relay, "L:%s H:%s C:%s E:%s W:%s F:%s",
+                        light ? "1" : "0", heat ? "1" : "0",
+                        circ ? "1" : "0", exh ? "1" : "0",
+                        water ? "1" : "0", fan ? "1" : "0");
   if (alert && strlen(alert) > 0) {
     lv_label_set_text_fmt(lbl_alert, "[%s] %s", alertSev ? alertSev : "?", alert);
     lv_obj_set_style_text_color(lbl_alert, lv_color_hex(0xFCA000), 0);
@@ -278,6 +279,9 @@ void updateLabels(const char *mode, float t, float rh, float tdsPpm, float ph,
   setBtnState(btn_heater, heat);
   setBtnState(btn_circ, circ);
   setBtnState(btn_exh, exh);
+  setBtnState(btn_water, water);
+  setBtnState(btn_fan, fan);
+  setBtnState(btn_mode, manual_mode);
 }
 
 void fetchSummaryAndUpdate() {
@@ -306,7 +310,19 @@ void fetchSummaryAndUpdate() {
   }
 
   JsonObject c = doc["control"];
-  const char *mode = c["control_mode"];
+  const char *mode = c["control_mode"] | "auto";
+  manual_mode = strcmp(mode, "manual") == 0;
+  JsonObject power = doc["actuators"];
+  const bool online = power["connected"] | false;
+  const bool enabled = power["outputs_enabled"] | false;
+  const bool failsafe = power["failsafe"] | true;
+  c3_ready = online && enabled && !failsafe;
+  c3_active_pump = power["pump_active"] | 0;
+  lv_label_set_text_fmt(lbl_c3, "C3: %s | Pumpen: 6 | aktiv: %u",
+                        c3_ready ? "BEREIT" : online ? "GESPERRT" : "OFFLINE",
+                        (unsigned)c3_active_pump);
+  lv_label_set_text_fmt(lbl_pumps, "P1-P6 | Sperre: %s",
+                        (power["pump_service_off"] | true) ? "EIN" : "AUS");
 
   float t = 0, rh = 0, tdsPpm = 0, ph = 0, ec = 0;
   float waterC = 0, ecMeasurementC = 0, lux = 0, areaLumens = 0;
@@ -358,12 +374,16 @@ void fetchSummaryAndUpdate() {
   }
 
   bool light = false, heat = false, circ = false, exh = false;
-  JsonObject targets = c["targets"];
+  bool water = false, fan = false;
+  // Nur bestaetigte Istwerte, nie die unbestaetigten Sollwerte.
+  JsonObject targets = power["actual"];
   if (!targets.isNull()) {
     light = targets["light"] | false;
     heat = targets["heater"] | false;
     circ = targets["circulation_vent"] | false;
     exh = targets["exhaust_vent"] | false;
+    water = targets["water_pump"] | false;
+    fan = targets["lamp_cooling"] | false;
   }
 
   // pH-Alarm direkt aus der lokalen ESP32-Zusammenfassung lesen.
@@ -377,7 +397,7 @@ void fetchSummaryAndUpdate() {
   updateLabels(mode, t, rh, tdsPpm, ph, ec, ecValid,
                waterC, waterValid, ecMeasurementC, ecMeasurementValid,
                lux, luxValid, areaLumens, areaLumensValid,
-               light, heat, circ, exh, alertMsg, alertSev);
+               light, heat, circ, exh, water, fan, alertMsg, alertSev);
   lv_label_set_text_fmt(lbl_wifi, "WiFi OK | %s", WiFi.localIP().toString().c_str());
 }
 
@@ -515,6 +535,10 @@ void setup() {
 }
 
 void loop() {
+  static uint32_t lastTickMs = millis();
+  const uint32_t nowTick = millis();
+  lv_tick_inc(nowTick - lastTickMs);
+  lastTickMs = nowTick;
   uint32_t ms = lv_timer_handler();
 
   if (WiFi.status() != WL_CONNECTED) {
