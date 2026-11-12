@@ -1,3 +1,5 @@
+> **VERBINDLICHER AKTUELLER STAND (12.11.2026):** **GENAU 6** Dosierpumpen, **6** MOSFET-Kanaele, PCA9685 **OUT0–OUT5**, **6** Pumpenklemmen; keine siebte Pumpe und kein Reservekanal. Motor 12 V DC/3 W (rechnerisch je 0,25 A, insgesamt 18 W/1,50 A bei sechs gleichzeitig). Zuordnung der 6 Pumpen zu Duenger/pH noch offen. ESP32-C3 SuperMini **ohne Display**; gesondertes LVGL-CYD ist die Remote. C3-Ausgaenge standardmaessig gesperrt bis zum verifizierten Hardwaretest. Keine automatische Dosierung. Die vorherigen 7-Pumpen-Platzierungsstudien sind veraltet.
+
 # Grow-Controller – eindeutige Pinout-Tabelle (Stand 21.10.2026)
 
 **Geltungsbereich:** zwei getrennte Boards. Sensor-ESP32-OLED fuer Kleinspannungs-Messung/Bedienfeld; ESP32-C3 SuperMini fuer geplante 3,3-V-SSR-Steuersignale in einer gesonderten Leistungsbox. **Keinerlei Netzspannungs-/SSR-Lastverdrahtung auf der Sensorplatine.**
@@ -52,7 +54,7 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 
 **Versorgungen:** ADS1115/DHT22/BH1750 benutzen 3V3, gemeinsame Signalmasse. PH4502C behält die bestehende externe Sensorversorgung; EC- und MLX-VCC nicht auf Verdacht zuordnen. 3V3 und VIN niemals zusammenschalten.
 
-## C. ESP32-C3 SuperMini – alle 16 Kontakte + 7 Dosierpumpen
+## C. ESP32-C3 SuperMini – alle 16 Kontakte + 6 Dosierpumpen
 
 **Ansicht des vom Nutzer gelieferten Fotos: Bauteilseite, USB-C OBEN.** Je 8 Kontakte links/rechts, Position **von oben**. Achtung: Eine fruehere Tabelle hatte die **linke und rechte C3-Pinreihe vertauscht** – korrigiert auf die Aufdrucke des tatsaechlich abgebildeten Boards!
 
@@ -80,21 +82,20 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 | **PCA9685 SDA (I²C)** | **3 links** | **GPIO7** | I²C SDA, 4,7 kΩ Pull-up nach 3V3 nur einmal auf dem Bus |
 | **PCA9685 SCL (I²C)** | **6 links** | **GPIO10** | I²C SCL, 4,7 kΩ Pull-up nach 3V3 nur einmal auf dem Bus |
 | **PCA9685 OE** | **7 links** | **GPIO20** | Freigabe **LOW=aktiv, HIGH=gesperrt**; OE mit 10 kΩ nach 3V3, Ausgangszustand AUS |
-| **Dosierpumpe 1 – Dünger 1** | **PCA9685 Kanal 0** | kein weiterer ESP-GPIO | PCA OUT0 → MOSFET-Treiber 1 → 2-polige PUMP1-Klemme |
-| **Dosierpumpe 2 – Dünger 2** | **PCA9685 Kanal 1** | kein weiterer ESP-GPIO | PCA OUT1 → MOSFET-Treiber 2 → 2-polige PUMP2-Klemme |
-| **Dosierpumpe 3 – Dünger 3** | **PCA9685 Kanal 2** | kein weiterer ESP-GPIO | PCA OUT2 → MOSFET-Treiber 3 → 2-polige PUMP3-Klemme |
-| **Dosierpumpe 4 – Dünger 4** | **PCA9685 Kanal 3** | kein weiterer ESP-GPIO | PCA OUT3 → MOSFET-Treiber 4 → 2-polige PUMP4-Klemme |
-| **Dosierpumpe 5 – Dünger 5** | **PCA9685 Kanal 4** | kein weiterer ESP-GPIO | PCA OUT4 → MOSFET-Treiber 5 → 2-polige PUMP5-Klemme |
-| **Dosierpumpe 6 – pH−** | **PCA9685 Kanal 5** | kein weiterer ESP-GPIO | PCA OUT5 → MOSFET-Treiber 6 → 2-polige PUMP6-Klemme |
-| **Dosierpumpe 7 – pH+** | **PCA9685 Kanal 6** | kein weiterer ESP-GPIO | PCA OUT6 → MOSFET-Treiber 7 → 2-polige PUMP7-Klemme |
+| **Dosierpumpe 1** | **PCA9685 Kanal 0** | kein weiterer ESP-GPIO | PCA OUT0 → MOSFET-Treiber 1 → 2-polige PUMP1-Klemme |
+| **Dosierpumpe 2** | **PCA9685 Kanal 1** | kein weiterer ESP-GPIO | PCA OUT1 → MOSFET-Treiber 2 → 2-polige PUMP2-Klemme |
+| **Dosierpumpe 3** | **PCA9685 Kanal 2** | kein weiterer ESP-GPIO | PCA OUT2 → MOSFET-Treiber 3 → 2-polige PUMP3-Klemme |
+| **Dosierpumpe 4** | **PCA9685 Kanal 3** | kein weiterer ESP-GPIO | PCA OUT3 → MOSFET-Treiber 4 → 2-polige PUMP4-Klemme |
+| **Dosierpumpe 5** | **PCA9685 Kanal 4** | kein weiterer ESP-GPIO | PCA OUT4 → MOSFET-Treiber 5 → 2-polige PUMP5-Klemme |
+| **Dosierpumpe 6** | **PCA9685 Kanal 5** | kein weiterer ESP-GPIO | PCA OUT5 → MOSFET-Treiber 6 → 2-polige PUMP6-Klemme |
 | PCB-Kleinspannungsversorgung | 1 rechts | 5V | stabilisierte 5 V |
 | Steuermasse | 2 rechts | GND | GND Kleinspannung; keine Verbindung zu Netzleitern |
 | Logik | 3 rechts | 3V3 | Versorgung I²C-Logik |
 | Pumpen-Leistungsversorgung | separater PCB-Stecker | V_PUMP+/GND | **eigener Niedervolt-DC-Eingang**, NICHT an 3V3/5V anschliessen; zulässige Spannung/Strom nach Pumpenauswahl dimensionieren |
 
-**Montage:** Die physischen sieben Peristaltikpumpen sitzen NICHT auf der C3-Platine, sondern separat unten bei den Vorratsbehältern. Die vom Nutzer angesprochene typische Ansaughöhe von etwa 50 cm bezieht sich auf **Flüssigkeitsspiegel zu Pumpeneinlass**, nicht auf die Distanz zur Steuerplatine. Von der C3-Platine werden lediglich elektrische Leitungen zu den sieben Pumpen geführt. Die Platinengröße darf deshalb keine Pumpenkörper einrechnen; für die Pumpen werden separate mechanische Halterungen benötigt. Verbindliche Ansaughöhen und Strom-/Spannungswerte erst anhand der konkreten Modelle festlegen.
+**Montage:** Genau sechs Peristaltikpumpen separat bei den Vorratsbehaeltern; auf der C3-PCB nur sechs zweipolige Motoranschluesse, sechs MOSFET-Treiber und die Steuer-/Schutzbeschaltung. Die alte 7-Pumpen-Konstruktion ist nicht mehr gueltig.
 
-**Dosierpumpen sind auf derselben C3-Leistungscontroller-Platine wie SSR-Ansteuerung und Lampenkuehlung zu integrieren – kein Zusatz-Board!** Physisch vorsehen: PCA9685-IC auf dem PCB (I²C-Adresse 0x40), **sieben** Leistungs-MOSFETs, je eine Freilaufdiode passend zum Motor, je ein Gate-Widerstand und Gate-Pulldown, **sieben** eigene 2-polige Pumpenklemmen, gemeinsame externe Pumpen-DC-Versorgung mit passend bemessener Absicherung und 3V3-I²C-Pullups. Ein getrennter Leistungs-DC-Zweig ist zu planen; keine Spannung aus C3-5V/3V3 fuer Motoren ziehen. PWM und Dosiermenge erst nach Pumpendaten bestimmen.
+**C3-Platine:** PCA9685 (0x40) direkt auf PCB; genau **6** MOSFET-Motortreiber, **6** Freilaufdioden, Gate-Beschaltung und **6** zweipolige Pumpenklemmen, ein DC-Motorversorgungszweig. Keine Zusatzplatine, kein siebter Reserveanschluss. Keine direkte Motorversorgung ueber 3V3/5V.
 
 **Sichere Ausgangsruhe:** OE des PCA9685 durch externen 10-kΩ-Pull-up standardmaessig HIGH (=Ausgaenge gesperrt). MOSFET-Gate-Pulldowns machen die Motoren stromlos, solange der C3 nicht initialisiert ist. GPIO20 senkt OE nur bei initialisiertem Controller ab. **Das ersetzt keinen unabhängigen Hardware-Schutz gegen Software-Haenger oder Ueberdosierung**; entsprechende Abschaltung/Timeout vor Inbetriebnahme implementieren. **pH+ und pH− duerfen nicht gleichzeitig angesteuert werden; beide Kanaele bleiben bei fehlendem/ungueltigem pH-Signal oder Kommunikationsverlust gesperrt.**
 
@@ -112,14 +113,14 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 
 - Motorversorgung fuer die vorgesehenen Mikro-/Mini-Peristaltikpumpen: **12 V DC**, Einspeisung ueber eigenen Pumpen-Leistungseingang der gemeinsamen C3-Platine, nicht ueber ESP-5V/3V3.
 - Laut Anbieter **10–90 ml/min**, zusaetzlich **>80 ml/min**; Silikonschlauch 3×5 (Einheit unbekannt), Pumpenkopf ABS, 3 Rollen, ca. 83 g.
-- **7** vollstaendige zweipolige Pumpenklemmen mit eigenen Treibern; **nur 6 Pumpen werden anfangs installiert**. Welcher der 7 Kanaele frei bleibt, ist noch nicht festgelegt.
+- **GENAU 6** Pumpenklemmen samt Treibern vollstaendig vorgesehen und alle sechs Pumpen installiert. Keine Reserve.
 - **Fehlt fuer elektrische Endauslegung:** Nennstrom/Anlaufstrom/Blockierstrom je Motor, Lastschutz, Stecker-Teilenummer. Motor-Abmessungen/Befestigung fuer externe Pumpenhalterung ebenfalls offen.
 - **PCB-Planmass 180×110 mm** laut Platzierungsstudie, noch keine mechanische/elektrische Fertigungsfreigabe.
 
 
-### Motorleistung der sieben Dosierkanaele (Nutzerangabe 12.11.2026)
+### Motorleistung der sechs Dosierkanaele (12.11.2026)
 
-Angegebene **Leistungsaufnahme 3 W bei 12 V DC** => rechnerischer **Motor-Betriebsstrom 0,25 A**. 6 installierte Pumpen: **1,50 A / 18 W** insgesamt bei gleichzeitigem Nennbetrieb; 7 vorbereitete Kanaele: **1,75 A / 21 W**, falls spaeter alle sieben laufen. Keine Rueckschluesse auf Anlauf-/Blockierstrom oder die finale Netzteil-/Sicherungsdimensionierung ziehen. Die elektrischen Verbindungen und das bisherige Konstruktionsmass 180 × 110 mm sind deshalb weiterhin nicht fertigungsfreigegeben.
+**12 V DC, 3 W pro Motor** => rechnerisch 0,25 A je Pumpe, 1,50 A / 18 W fuer exakt sechs Motoren. Keine siebte Stufe. Anlauf-/Blockierstrom und Netzteil-/Leiterbahnfreigabe fehlen.
 
 
-**Festlegung Förderrichtung (12.11.2026):** Die 12-V-Peristaltikpumpen koennen laut Nutzer zwar CW/CCW durch Umpolung, sollen im Grow-Controller aber **nur in einer festen Foerderrichtung** laufen. **Keine Polaritaetsumkehr und keine H-Bruecken vorsehen**. Es bleibt bei **sieben unabhaengigen einseitigen MOSFET-DC-Motorschaltstufen**, einer je Pumpe, und **PCA9685 OUT0–OUT6**. Die Motorpolung wird bei der Montage fuer die richtige Foerderrichtung festgelegt; Rueckwaertsbetrieb ist nicht vorgesehen. Alle sieben Kanaele samt Anschluss werden bestueckt, anfangs nur sechs Pumpen angeschlossen. **Nennstrom rechnerisch 0,25 A pro Motor (3 W / 12 V); Anlauf-/Blockierstrom weiter unbekannt.**
+**Förderrichtung:** Alle sechs Motoren in fester Drehrichtung, keine Umpolung oder H-Bruecke. PCA9685 OUT0–OUT5 mit 6 unabhaengigen MOSFET-Stufen, keine Reserve.
