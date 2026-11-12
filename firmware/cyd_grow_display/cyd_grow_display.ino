@@ -289,7 +289,7 @@ void fetchSummaryAndUpdate() {
   String payload = http.getString();
   http.end();
 
-  StaticJsonDocument<2048> doc;
+  DynamicJsonDocument doc(6144);
   if (deserializeJson(doc, payload) || !doc["ok"].as<bool>()) {
     lv_label_set_text_static(lbl_wifi, "JSON-Fehler");
     return;
