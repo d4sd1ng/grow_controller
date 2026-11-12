@@ -1180,10 +1180,14 @@ static void handleSummary() {
   }
 
   JsonObject outputs = doc.createNestedObject("actuators");
-  outputs["source"] = "esp32_c3_not_connected";
-  outputs["connected"] = false;
-  // Bestaetigung der physischen Abschaltung ist noch nicht verfuegbar.
-  outputs["pump_service_off_confirmed"] = pumpServiceOffConfirmed;
+  outputs["source"] = "esp32_c3";
+  outputs["connected"] = c3Connected();
+  outputs["outputs_enabled"] = c3Connected() && c3OutputsEnabled;
+  outputs["failsafe"] = c3Failsafe;
+  outputs["pump_count"] = DOSING_PUMP_COUNT;
+  outputs["pump_active"] = c3Connected() ? c3PumpActive : 0;
+  outputs["pump_service_off"] = pumpServiceOff;
+  outputs["pump_service_off_confirmed"] = false; // keine physische Isolation belegt
   JsonObject actualObj = outputs.createNestedObject("actual");
   writeActuators(actualObj, actual);
 
@@ -1197,7 +1201,13 @@ static void handleActuatorTargets() {
 
   StaticJsonDocument<512> doc;
   doc["ok"] = true;
-  doc["power_controller_connected"] = false;
+  doc["power_controller_connected"] = c3Connected();
+  doc["pump_count"] = DOSING_PUMP_COUNT;
+  doc["pump_service_off"] = pumpServiceOff;
+  doc["pump_pending"] = pendingPumpIndex != 0 && (millis() - pumpCommandMs) < 3000UL;
+  doc["pump_index"] = pendingPumpIndex;
+  doc["pump_duration_ms"] = pendingPumpDurationMs;
+  doc["pump_seq"] = pumpCommandSeq;
   doc["control_mode"] = controlMode;
   doc["phase"] = phaseName(growPhase);
   writeNutrientTargets(doc.as<JsonObject>());
@@ -1237,6 +1247,10 @@ static void handleControlMode() {
   strncpy(controlMode, mode, sizeof(controlMode) - 1);
   controlMode[sizeof(controlMode) - 1] = '\0';
   ++commandSeq;
+  pendingPumpIndex = 0;
+  pendingPumpDurationMs = 0;
+  ++pumpCommandSeq;
+  if (strcmp(controlMode, "auto") == 0) targets = ActuatorState{};
   autoControl();
   applyActuators();
   localServer.send(200, "application/json", "{\"ok\":true}");
@@ -1309,6 +1323,8 @@ static void setupLocalApi() {
   localServer.on("/api/local/summary", HTTP_GET, handleSummary);
   localServer.on("/api/local/actuators", HTTP_GET, handleActuatorTargets);
   localServer.on("/api/local/control/targets", HTTP_POST, handleControlTargets);
+  localServer.on("/api/local/control/pump", HTTP_POST, handlePumpPulse);
+  localServer.on("/api/local/actuator-status", HTTP_POST, handleActuatorStatus);
   localServer.on("/api/local/control/mode", HTTP_POST, handleControlMode);
   localServer.on("/api/local/control/week", HTTP_POST, handleGrowWeek);
   localServer.on("/api/local/control/phase", HTTP_POST, handleGrowPhase);
@@ -1397,7 +1413,8 @@ static bool sendTelemetry() {
   dev["ec_temp_compensation"] = "ds18b20_live_temperature_or_null";
   dev["water_ds_rom_selected"] = waterSensorRomSelected;
   dev["to_case_calibrated"] = toCalibrated;
-  dev["actuator_controller"] = "esp32_c3_not_connected";
+  dev["actuator_controller"] = c3Connected() ? "esp32_c3_online" : "esp32_c3_offline";
+  dev["dosing_pump_count"] = DOSING_PUMP_COUNT;
 
   String body;
   serializeJson(doc, body);
