@@ -411,7 +411,8 @@ void build_ui() {
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   lv_obj_set_style_pad_all(cont, 4, 0);
-  lv_obj_set_style_pad_row(cont, 2, 0); // zwei Licht-/Wassertemperaturzeilen ohne UI-Ueberlauf
+  lv_obj_set_style_pad_row(cont, 2, 0);
+  lv_obj_set_scroll_dir(cont, LV_DIR_VER); // mehr als 240 px Inhalt: vertikal scrollbar
   lv_obj_set_style_bg_color(cont, lv_color_hex(0x0C11), 0);
   lv_obj_set_style_border_width(cont, 0, 0);
 
@@ -419,6 +420,9 @@ void build_ui() {
   lv_obj_set_style_text_color(lbl_wifi, lv_color_hex(0x9CF0), 0);
   lv_label_set_text_static(lbl_wifi, "Verbinde...");
 
+  lbl_c3 = lv_label_create(cont);
+  lv_obj_set_style_text_color(lbl_c3, lv_color_hex(0xFFE0), 0);
+  lv_label_set_text_static(lbl_c3, "C3: OFFLINE | Pumpen: 6");
   lbl_mode = lv_label_create(cont);
   lv_obj_set_style_text_color(lbl_mode, lv_color_hex(0xFFE0), 0);
   lv_label_set_text_static(lbl_mode, "Modus: ?");
@@ -453,6 +457,9 @@ void build_ui() {
   lv_obj_set_width(lbl_alert, 300);
   lv_label_set_text_static(lbl_alert, "Keine Alerts");
 
+  lbl_pumps = lv_label_create(cont);
+  lv_obj_set_style_text_color(lbl_pumps, lv_color_hex(0xFFFFFF), 0);
+  lv_label_set_text_static(lbl_pumps, "Pumpen P1-P6: gesperrt");
   // Relay toggle buttons
   lv_obj_t *btn_cont = lv_obj_create(cont);
   lv_obj_set_size(btn_cont, 300, 44);
@@ -493,6 +500,61 @@ void build_ui() {
   lv_obj_center(l);
   lv_obj_set_user_data(btn_exh, (void *)"exhaust_vent");
   lv_obj_add_event_cb(btn_exh, btnToggleRelay, LV_EVENT_CLICKED, NULL);
+
+  // SSR5, Lampenkuehlung und Betriebsart.
+  lv_obj_t *other = lv_obj_create(cont);
+  lv_obj_set_size(other, 300, 44);
+  lv_obj_set_flex_flow(other, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(other, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(other, 2, 0);
+  lv_obj_set_style_bg_opa(other, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(other, 0, 0);
+
+  btn_water = lv_btn_create(other);
+  lv_obj_set_size(btn_water, 90, 34);
+  lv_obj_t *w = lv_label_create(btn_water);
+  lv_label_set_text_static(w, "WATER");
+  lv_obj_center(w);
+  lv_obj_set_user_data(btn_water, (void *)"water_pump");
+  lv_obj_add_event_cb(btn_water, btnToggleRelay, LV_EVENT_CLICKED, NULL);
+
+  btn_fan = lv_btn_create(other);
+  lv_obj_set_size(btn_fan, 90, 34);
+  lv_obj_t *fl = lv_label_create(btn_fan);
+  lv_label_set_text_static(fl, "FAN");
+  lv_obj_center(fl);
+  lv_obj_set_user_data(btn_fan, (void *)"lamp_cooling");
+  lv_obj_add_event_cb(btn_fan, btnToggleRelay, LV_EVENT_CLICKED, NULL);
+
+  btn_mode = lv_btn_create(other);
+  lv_obj_set_size(btn_mode, 90, 34);
+  lv_obj_t *m = lv_label_create(btn_mode);
+  lv_label_set_text_static(m, "AUTO/MAN");
+  lv_obj_center(m);
+  lv_obj_add_event_cb(btn_mode, btnToggleMode, LV_EVENT_CLICKED, NULL);
+
+  // Exakt sechs individuelle Pumpen: manuelle 500-ms-Testimpulse.
+  // C3-Sperren und Sensor-Betriebsmodus werden separat geprueft.
+  for (uint8_t row = 0; row < 2; ++row) {
+    lv_obj_t *pumpRow = lv_obj_create(cont);
+    lv_obj_set_size(pumpRow, 300, 42);
+    lv_obj_set_flex_flow(pumpRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(pumpRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(pumpRow, 2, 0);
+    lv_obj_set_style_bg_opa(pumpRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(pumpRow, 0, 0);
+    for (uint8_t col = 0; col < 3; ++col) {
+      const uint8_t index = row * 3 + col;
+      pumpButtons[index] = lv_btn_create(pumpRow);
+      lv_obj_set_size(pumpButtons[index], 90, 32);
+      lv_obj_t *pl = lv_label_create(pumpButtons[index]);
+      lv_label_set_text_fmt(pl, "P%u 0.5s", (unsigned)(index+1));
+      lv_obj_center(pl);
+      lv_obj_add_event_cb(pumpButtons[index], btnPumpPulse, LV_EVENT_CLICKED,
+                          (void *)PUMP_IDS[index]);
+    }
+  }
+
 }
 
 void setup() {
