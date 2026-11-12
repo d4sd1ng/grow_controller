@@ -326,7 +326,7 @@ void drawOled() {
 bool sendTelemetry() {
   if (WiFi.status() != WL_CONNECTED) return false;
 
-  StaticJsonDocument<1024> doc;
+  DynamicJsonDocument doc(3072);
   doc["air_temperature"] = sensors.airC;
   doc["water_temperature"] = nullptr;  // DS18B20 noch nicht verifiziert
   doc["case_temperature"] = sensors.caseC;
