@@ -1,3 +1,5 @@
+> **VERBINDLICHER AKTUELLER STAND (12.11.2026):** **GENAU 6** Dosierpumpen, **6** MOSFET-Kanaele, PCA9685 **OUT0–OUT5**, **6** Pumpenklemmen; keine siebte Pumpe und kein Reservekanal. Motor 12 V DC/3 W (rechnerisch je 0,25 A, insgesamt 18 W/1,50 A bei sechs gleichzeitig). Zuordnung der 6 Pumpen zu Duenger/pH noch offen. ESP32-C3 SuperMini **ohne Display**; gesondertes LVGL-CYD ist die Remote. C3-Ausgaenge standardmaessig gesperrt bis zum verifizierten Hardwaretest. Keine automatische Dosierung. Die vorherigen 7-Pumpen-Platzierungsstudien sind veraltet.
+
 # Current State — Grow Controller
 
 **Stand:** 2026-10-15  
@@ -47,7 +49,7 @@ Die Wochenzahl ist im separaten ESP32-NVS `growweek_v1` manuell wählbar (`k1` b
 
 ## Zweites Gerät — ESP32-C3 SuperMini
 
-Separate Installation im Leistungsgehäuse fuer **1× SSR25 (LED-Stromversorgung) und 4× SSR10 (Abluft/Umluft/Heizung/Wasserpumpe)**. Die vier 12-V-Lampenkuehler erhalten eine eigene MOSFET-Ansteuerung. Die Dimmung ist auf Nutzerwunsch zurueckgestellt. **Mechanische Klarstellung:** Die sieben Peristaltikpumpen werden separat nahe den bodennahen Vorratsbehältern montiert; auf der einen C3-Leistungscontroller-Platine sitzen nur die sieben DC-Motortreiber mit Schutzbauteilen, deren Versorgung und sieben elektrische Pumpenklemmen sowie die restliche Steuerung. Die vom Nutzer genannten ca. 50 cm Ansaughöhe sind modellabhängig und betreffen die Höhendifferenz Flüssigkeitsspiegel → Pumpeneinlass. Keine Pumpen und keine Flüssigkeitsschläuche im Steuergehäuse einplanen. Separate Pumpenhalterung/Gehäuse erforderlich; Elektronikplatinengröße separat bemessen. **NEU (22.10.2026): Genau dieselbe EINE C3-Leistungscontroller-PCB soll **sieben** spaetere Mikro-/Mini-Dosierpumpen (**5 × Dünger, 1 × pH−, 1 × pH+**) vollstaendig als Bestueckungsplaetze fuer **sieben** Treiberstufen und **sieben** 2-polige Pumpenklemmen enthalten; KEINE zusaetzliche Dosierpumpen-PCB.** Steuerung ueber **PCA9685 (Adresse 0x40) an C3 GPIO7/SDA (links 3 von oben), GPIO10/SCL (links 6)**; **PCA OUT0–OUT4** steuern **fuenf Dünger-Pumpen**, **OUT5 pH−**, **OUT6 pH+**; insgesamt **sieben** getrennte MOSFET-Ausgaenge. pH+ und pH− gegenseitig verriegeln, bei Mess- oder Kommunikationsfehler sperren. **GPIO20 (links 7)** steuert PCA-OE mit externem Pull-up nach 3V3 (Reset = Ausgang gesperrt). MOSFET-Gate-Pulldowns, passende Freilaufdioden und ein separater abgesicherter DC-Pumpeneingang sind im endgueltigen PCB vorzusehen. Versorgungsspannung/Motoranlaufstroeme nicht erraten, bis Pumpenmodelle feststehen. **Andere C3-GPIOs unveraendert:** SSR GPIO0/1/3/4/5, Lampenkuehlung GPIO6; GPIO2/8/9 Boot-unbelegt; GPIO21 Reserve/UART. **C3-Pinreihe korrigiert auf Nutzerfoto (USB oben): links GPIO5/6/7/8/9/10/20/21, rechts 5V/GND/3V3/GPIO4/3/2/1/0.** Sensor-Pumpen-Wartungstaster ist gemaess juengster Nutzerkorrektur **GPIO19/D19 (rechts 10 von unten)** statt frueher GPIO18. Die bisherige Sensor-Firmware ist an diese Pinveraenderung noch nicht angepasst; keine C3-SSR-/Dosierpumpen-Firmware implementiert, keine elektrische Leistungsfreigabe und kein fertigungstaugliches geroutetes C3-KiCad-PCB vorhanden. Pumpenwartung muss elektrisch sicher gegen Wiederanlauf freigeschaltet werden, Dosierdauer benoetigt Limit/Watchdog und Kalibrierung.
+**Aktuelle C3-Leistungsbox:** 5 SSR-Steueranschluesse, 1 gemeinsamer 12-V-Lampenkuehlungs-Ausgang und genau 6 Pumpenkanaele. Keine Pumpen oder Fluessigkeitsschlaeuche in der Leistungsplatine. C3-Pins GPIO0/1/3/4/5 SSR, GPIO6 Lampenkuehlung, GPIO7/10 I²C, GPIO20 PCA OE, OUT0–OUT5 6 MOSFET-Treiber. Vorhandene ältere Siebenpumpen-Planung und ungeroutete 230×135/180×110-mm-Vorlagen sind nicht mehr gueltig; das Sechskanal-Layout ist erneut zu bemaßen und zu pruefen. Netzseitige Arbeiten gehoeren nicht zur PCB-Firmware.
 
 ### Zentrales Bedienfeld (neu geplant)
 
@@ -90,9 +92,9 @@ Der OLED zeigt Lux und `~lm` im Wechsel mit einer bestehenden Informationszeile 
 
 ### Leistungscontroller-PCB – mechanisches Konstruktionsmaß (24.10.2026)
 
-**Sieben elektrische Dosierpumpen-Anschlüsse vollständig vorbereiten; zunächst nur sechs externe Pumpen tatsächlich installieren.** Welcher Kanal unbestückt bleibt, wurde nicht festgelegt; die Controller-Platine erhält dennoch alle sieben gleichwertigen Anschlüsse. Die Pumpenkörper werden separat montiert, nicht auf der Platine.
+**Genau sechs Pumpenanschluesse werden vollstaendig bestueckt und sechs Pumpen installiert. Kein Reservekanal.**
 
-Als **mechanisches Entwurfsmaß** ist nach einer ersten rechteckigen Platzierungsstudie **180 × 110 mm** vorgesehen, mit **vier geplanten Ø3,2-mm-Montagebohrungen** auf **168 × 98 mm** Mittenabstand. Die Zeichnung berücksichtigt sieben 2-polige Pumpenklemmen an der unteren Platinenkante, fünf SSR-Steueranschlüsse oben, vier Lüfteranschlüsse rechts und getrennte Kleinspannungs-Einspeisungen. Anschlussgehäuse wurden in der Studie mit 13 × 12 mm reserviert. Rechteckige Baugruppen-Umrisse überschneiden sich nicht, aber **echte Footprints, Leiterbahnführung, thermische Abstände, Strombelastbarkeit, Kabelzugang und KiCad-DRC sind noch nicht überprüft**. Das Maß ist deshalb **keine Fertigungs-/Gehäuse-Bestellfreigabe**. Das Gesamtgehäuse muss die externen SSR-Leistungselemente und deren Installation gesondert aufnehmen.
+**PCB-Abmessung offen:** Alte Platzierungsstudie 180×110 mm bezog sich auf 7 Pumpen, nicht als Endmass fuer die 6-Pumpen-Platine oder Gehaeuse freigeben. Vier Bohrungen/Montageflaechen erst nach aktualisierter Footprint- und Kabelraumpruefung verbindlich festlegen.
 
 
 ### Daten der ausgewaehlten Peristaltikpumpen (Nutzer-Screenshot 12.11.2026)
@@ -111,7 +113,7 @@ Quelle: vom Nutzer bereitgestellter Screenshot der Produktbeschreibung; **keine 
 | Pumpengewicht | ca. **83 g** |
 | Lieferumfang | 1 Pumpe je Artikel |
 
-**Folgerung fuer die EINE C3-Leistungsplatine:** Pumpen-Versorgungszweig **12 V DC** vorsehen, **7× zweipolige Pumpenanschluesse und 7× separat schaltbare Motortreiber** beibehalten; **zunaechst nur 6 Pumpen extern installieren**. Der siebte Anschluss und Treiber werden vollstaendig vorbereitet; welcher physische Pumpenkanal zunaechst frei bleibt, ist noch offen. Versorgungseingang, Schutzbauteile, MOSFET-Typen, Stecker-Nennstroeme, Leiterbahnbreiten und Netzteilgroesse **erst nach Kenntnis von Nenn-, Anlauf- und Blockierstrom pro Pumpe festlegen**. Anbieterscreenshot liefert dazu keine Angaben. Ebenfalls fehlen Pumpenabmessungen sowie die tatsaechlichen Befestigungsbohrungen; Pumpe bleibt mechanisch getrennt von der PCB. Das bisherige **180 × 110 mm** ist nur eine mechanische Platzierungsstudie, **nicht fertigungssicher bestaetigt**.
+**C3-Leistungsplatine:** 12 V DC, genau 6 zweipolige Pumpenklemmen, 6 separate MOSFET-Treiber und PCA9685 OUT0–OUT5, ohne Reserve. Gesamtbetriebsleistung rechnerisch 18 W; Motor-Blockierstrom bleibt offen. Pumpen sind ausserhalb der Platine mechanisch zu montieren; automatisches Dosieren mangels Pumpenzuordnung/Kalibrierung noch gesperrt.
 
 **Besonderheit pH-Regelung:** Durchflussangaben des Anbieters sind keine Kalibrierwerte. Vor automatischer pH-Dosierung sind die tatsaechlichen ml/s pro Pumpe am eingebauten Schlauch zu messen sowie Dosiergrenzen/Verriegelung zu pruefen.
 
@@ -125,7 +127,7 @@ Nutzer nennt **3 W elektrische Leistungsaufnahme je 12-V-DC-Motor**. Daraus folg
 | Anfangs vorhandene Pumpen | 6 | **1,50 A** | **18 W** |
 | Alle geplanten Pumpen | 7 | **1,75 A** | **21 W** |
 
-Diese Summen setzen voraus, dass alle genannten Pumpen gleichzeitig mit ihrer angegebenen Leistungsaufnahme laufen; sie sind **keine Netzteil- oder Leiterbahn-Nennwertfreigabe**. Die sieben Motoranschluesse und Treiber bleiben vollstaendig vorgesehen, auch wenn anfangs nur sechs Pumpen installiert werden. **Anlaufstrom, Blockierstrom, Netzteilreserve, Schutzkomponenten und die benoetigten Leiterbahnquerschnitte bleiben vor Fertigung zu verifizieren.**
+Die 18 W / 1,50 A fuer genau sechs Motoren gelten nur rechnerisch bei gleichzeitigem Normalbetrieb. Kein siebter Kanal. Anlauf-/Blockierstrom, Netzteilreserve und Stromschutz sind noch nicht verifiziert.
 
 
-**Festlegung Förderrichtung (12.11.2026):** Die 12-V-Peristaltikpumpen koennen laut Nutzer zwar CW/CCW durch Umpolung, sollen im Grow-Controller aber **nur in einer festen Foerderrichtung** laufen. **Keine Polaritaetsumkehr und keine H-Bruecken vorsehen**. Es bleibt bei **sieben unabhaengigen einseitigen MOSFET-DC-Motorschaltstufen**, einer je Pumpe, und **PCA9685 OUT0–OUT6**. Die Motorpolung wird bei der Montage fuer die richtige Foerderrichtung festgelegt; Rueckwaertsbetrieb ist nicht vorgesehen. Alle sieben Kanaele samt Anschluss werden bestueckt, anfangs nur sechs Pumpen angeschlossen. **Nennstrom rechnerisch 0,25 A pro Motor (3 W / 12 V); Anlauf-/Blockierstrom weiter unbekannt.**
+**Förderrichtung (12.11.2026):** Sechs 12-V-DC-Motoren werden festpolig in nur einer Richtung betrieben, ohne H-Bruecken; sechs unabhaengige einseitige MOSFET-Treiber an PCA9685 OUT0–OUT5. Motorleistung 3 W je Pumpe, rechnerischer Betriebsstrom 0,25 A. Keine siebte Pumpenstufe, kein Reserveausgang.
