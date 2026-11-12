@@ -115,3 +115,8 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 - **7** vollstaendige zweipolige Pumpenklemmen mit eigenen Treibern; **nur 6 Pumpen werden anfangs installiert**. Welcher der 7 Kanaele frei bleibt, ist noch nicht festgelegt.
 - **Fehlt fuer elektrische Endauslegung:** Nennstrom/Anlaufstrom/Blockierstrom je Motor, Lastschutz, Stecker-Teilenummer. Motor-Abmessungen/Befestigung fuer externe Pumpenhalterung ebenfalls offen.
 - **PCB-Planmass 180×110 mm** laut Platzierungsstudie, noch keine mechanische/elektrische Fertigungsfreigabe.
+
+
+### Motorleistung der sieben Dosierkanaele (Nutzerangabe 12.11.2026)
+
+Angegebene **Leistungsaufnahme 3 W bei 12 V DC** => rechnerischer **Motor-Betriebsstrom 0,25 A**. 6 installierte Pumpen: **1,50 A / 18 W** insgesamt bei gleichzeitigem Nennbetrieb; 7 vorbereitete Kanaele: **1,75 A / 21 W**, falls spaeter alle sieben laufen. Keine Rueckschluesse auf Anlauf-/Blockierstrom oder die finale Netzteil-/Sicherungsdimensionierung ziehen. Die elektrischen Verbindungen und das bisherige Konstruktionsmass 180 × 110 mm sind deshalb weiterhin nicht fertigungsfreigegeben.
