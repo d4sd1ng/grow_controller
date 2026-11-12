@@ -69,8 +69,10 @@ bool layoutValid = false;
 bool pinAllowed(int8_t pin) {
   // GPIO18/19 haeufig USB, GPIO8/9 Boot-Funktionen des C3.
   // Keine dieser Leitungen ohne gesonderte Hardwarepruefung verwenden.
-  return pin >= 0 && pin <= 21 && pin != 8 && pin != 9 &&
-         pin != 18 && pin != 19;
+  // Nur auf den ueblichen C3-Pad-Gruppen, nicht im Flash-/USB-Bereich.
+  // GPIO2 ist ein Strapping-Pin und bleibt OHNE Hardwarefreigabe gesperrt.
+  return ((pin >= 0 && pin <= 10 && pin != 2 && pin != 8 && pin != 9) ||
+          pin == 20 || pin == 21);
 }
 
 bool verifyLayout() {
@@ -229,9 +231,9 @@ void setup() {
   server.onNotFound([]() {
     server.send(404, "application/json", "{\"ok\":false,\"error\":\"not_found\"}");
   });
-  server.begin();
   WiFi.mode(WIFI_STA);
   if (WIFI_SSID && WIFI_SSID[0]) WiFi.begin(WIFI_SSID, WIFI_PASS);
+  server.begin();
 }
 
 void loop() {
