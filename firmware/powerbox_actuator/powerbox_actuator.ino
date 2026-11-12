@@ -67,6 +67,7 @@ IPAddress sensorIp;
 unsigned long lastGoodMs = 0, lastPollMs = 0, lastStatusMs = 0;
 unsigned long lastWifiRetry = 0, lastMdnsRetry = 0;
 bool failSafe = true, pcaReady = false, pumpServiceOff = true;
+bool mdnsReady = false;
 bool firstSync = true;
 uint8_t pumpActive = 0;
 uint32_t lastPumpSeq = 0;
@@ -285,10 +286,13 @@ void loop() {
       firstSync = true;
     }
     if (!failSafe) { failSafe = true; allOff(); }
-  } else if (sensorIp == IPAddress(0,0,0,0) &&
-             now - lastMdnsRetry >= MDNS_RETRY_MS) {
-    lastMdnsRetry = now;
-    resolveSensor();
+  } else {
+    if (!mdnsReady) mdnsReady = MDNS.begin("grow-power");
+    if (mdnsReady && sensorIp == IPAddress(0,0,0,0) &&
+        now - lastMdnsRetry >= MDNS_RETRY_MS) {
+      lastMdnsRetry = now;
+      resolveSensor();
+    }
   }
   if (now - lastPollMs >= POLL_MS) {
     lastPollMs = now;
