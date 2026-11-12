@@ -1224,11 +1224,93 @@ static void handleActuatorTargets() {
   localServer.send(200, "application/json", body);
 }
 
+static void c3ApiError(int code, const char *reason) {
+  StaticJsonDocument<128> d;
+  d["ok"] = false;
+  d["error"] = reason;
+  String response;
+  serializeJson(d, response);
+  localServer.send(code, "application/json", response);
+}
 static void handleControlTargets() {
   if (!localAuthorized()) return sendUnauthorized();
-  // Aktorbefehle nicht als angewendet ausgeben, solange C3 fehlt.
-  localServer.send(503, "application/json",
-                   "{\"ok\":false,\"error\":\"esp32_c3_not_connected\"}");
+  if (strcmp(controlMode, "manual") != 0)
+    return c3ApiError(409, "manual_mode_required");
+  if (!c3Connected() || !c3OutputsEnabled)
+    return c3ApiError(503, "c3_not_ready");
+  StaticJsonDocument<256> in;
+  if (deserializeJson(in, localServer.arg("plain")))
+    return c3ApiError(400, "bad_json");
+  ActuatorState next = targets;
+  const char *names[6] = {"light", "heater", "circulation_vent",
+                          "exhaust_vent", "water_pump", "lamp_cooling"};
+  bool *fields[6] = {&next.light, &next.heater, &next.circulation,
+                     &next.exhaust, &next.waterPump, &next.lampCooling};
+  bool any = false;
+  for (uint8_t i=0; i<6; ++i) {
+    if (!in.containsKey(names[i])) continue;
+    if (!in[names[i]].is<bool>()) return c3ApiError(400, "boolean_required");
+    *fields[i] = in[names[i]].as<bool>();
+    any = true;
+  }
+  if (!any) return c3ApiError(400, "no_target");
+  if (next.heater && !sensors.dht[0].ok)
+    return c3ApiError(409, "heater_sensor_unavailable");
+  if (!sameState(next, targets)) {
+    targets = next;
+    ++commandSeq;
+  }
+  localServer.send(200, "application/json",
+                   "{\"ok\":true,\"status\":\"requested_not_confirmed\"}");
+}
+static void handlePumpPulse() {
+  if (!localAuthorized()) return sendUnauthorized();
+  if (strcmp(controlMode, "manual") != 0 || pumpServiceOff ||
+      !c3Connected() || !c3OutputsEnabled || c3Failsafe ||
+      c3PumpActive != 0 || pendingPumpIndex != 0)
+    return c3ApiError(409, "pump_interlock");
+  StaticJsonDocument<192> in;
+  if (deserializeJson(in, localServer.arg("plain")))
+    return c3ApiError(400, "bad_json");
+  const int index = in["pump"].as<int>();
+  const int duration = in["duration_ms"].as<int>();
+  if (index < 1 || index > DOSING_PUMP_COUNT ||
+      duration < 100 || duration > PUMP_PULSE_MAX_MS)
+    return c3ApiError(400, "invalid_pump_or_duration");
+  pendingPumpIndex = static_cast<uint8_t>(index);
+  pendingPumpDurationMs = static_cast<uint16_t>(duration);
+  pumpCommandMs = millis();
+  ++pumpCommandSeq;
+  localServer.send(200, "application/json",
+                   "{\"ok\":true,\"status\":\"queued_not_dosed\"}");
+}
+static void handleActuatorStatus() {
+  if (!localAuthorized()) return sendUnauthorized();
+  StaticJsonDocument<768> doc;
+  if (deserializeJson(doc, localServer.arg("plain")) ||
+      doc["pump_count"].as<int>() != DOSING_PUMP_COUNT)
+    return c3ApiError(400, "bad_actuator_status");
+  JsonObject a = doc["actual"];
+  if (a.isNull()) return c3ApiError(400, "missing_actual");
+  actual.light = a["light"] | false;
+  actual.heater = a["heater"] | false;
+  actual.circulation = a["circulation_vent"] | false;
+  actual.exhaust = a["exhaust_vent"] | false;
+  actual.waterPump = a["water_pump"] | false;
+  actual.lampCooling = a["lamp_cooling"] | false;
+  c3Failsafe = doc["failsafe"] | true;
+  c3OutputsEnabled = doc["outputs_enabled"] | false;
+  c3PumpActive = doc["pump_active"] | 0;
+  c3PumpAckSeq = doc["pump_ack_seq"] | 0U;
+  lastC3StatusMs = millis();
+  if (pendingPumpIndex != 0 && c3PumpAckSeq == pumpCommandSeq) {
+    pendingPumpIndex = 0;
+    pendingPumpDurationMs = 0;
+  }
+  // Keine elektrische Trennung nachweisbar: blaue Wartungs-LED bleibt AUS.
+  pumpServiceOffConfirmed = false;
+  refreshPhaseRgb();
+  localServer.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handleControlMode() {
