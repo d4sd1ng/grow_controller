@@ -46,6 +46,7 @@ def main() -> int:
     password = os.environ.get("IOT_WIFI_PASSWORD", "").strip()
     host = os.environ.get("IOT_TELEMETRY_SERVER_HOST", "").strip()
     api_key = get_telemetry_api_key() or ""
+    actuator_host = os.environ.get("IOT_ACTUATOR_HOST", "").strip()
 
     use_https = _env_truthy("IOT_USE_HTTPS", False)
     tls_insecure = _env_truthy("IOT_TLS_INSECURE", use_https)
@@ -83,6 +84,7 @@ def main() -> int:
         f"const char *SERVER_HOST = {_c_string_literal(host)};",
         f"const uint16_t SERVER_PORT = {client_port};",
         f"const char *TELEMETRY_API_KEY = {key_decl};",
+        f"const char *ACTUATOR_HOST = {_c_string_literal(actuator_host)};",
         f"const bool SERVER_USE_HTTPS = {'true' if use_https else 'false'};",
         f"const bool SERVER_TLS_INSECURE = {'true' if tls_insecure else 'false'};",
         "#endif",
@@ -94,6 +96,7 @@ def main() -> int:
         root / "firmware" / "growroom_telemetry_client",
         root / "firmware" / "cyd_remote_control",
         root / "firmware" / "cyd_grow_display",
+        root / "firmware" / "esp32_c3_power_controller",
     ]
     for d in sketch_dirs:
         if not d.is_dir():
