@@ -377,7 +377,7 @@ void fetchSummaryAndUpdate() {
   bool water = false, fan = false;
   // Nur bestaetigte Istwerte, nie die unbestaetigten Sollwerte.
   JsonObject targets = power["actual"];
-  if (!targets.isNull()) {
+  if (online && !targets.isNull()) {
     light = targets["light"] | false;
     heat = targets["heater"] | false;
     circ = targets["circulation_vent"] | false;
