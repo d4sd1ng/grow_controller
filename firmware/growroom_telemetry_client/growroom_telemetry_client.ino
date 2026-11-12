@@ -1,20 +1,21 @@
 /**
- * ESP32-WROOM Sensorcontroller mit passivem OLED.
- * I2C (OLED + ADS1115) GPIO21/22; BH1750 separater Bus GPIO13/14.
- * DHT22 an GPIO25/26/27. DS18B20 GPIO23 bleibt bis zur
- * Bibliotheks-/Kalibrierpruefung deaktiviert.
- * Keine lokalen SSR- oder Dosierpumpen-Ausgaenge.
- * Fuenf SSR-Funktionen werden ueber WLAN an den C3 weitergeleitet.
- * pH/EC sind erst nach Kalibrierung als Messwerte gueltig.
+ * Grow Controller - ESP32-WROOM Sensor- / Regelcontroller ohne OLED
+ * Version 3.2.0 (Entwicklungsstand)
+ * Sensoren: DHT22 x3, DS18B20 x2 auf GPIO23, ADS1115 A0=pH A1=TDS,
+ * BH1750 auf eigenem I2C Bus. Keine lokalen Leistungs- oder SSR-Ausgaenge.
+ * Wachstum/Bluete wird AUSSCHLIESSLICH mit dem physischen Taster umgeschaltet.
+ * Wasserpumpen-Filterpause ebenfalls per physischem Taster.
+ * Kommunikation: optionaler FastAPI-Server fuer Telemetrie / MANUAL,
+ * direkter C3-HTTP-Aufruf fuer 4 legacy SSR-Zustaende.
  */
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <DHT.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include <Preferences.h>
 #include <WebServer.h>
 
@@ -41,16 +42,16 @@ const bool SERVER_TLS_INSECURE = false;
 #define PIN_DHT_3 27
 #define PIN_BH_SDA 13
 #define PIN_BH_SCL 14
+#define PIN_ONEWIRE 23
 // Physische Eingaben und Status-LEDs, Festlegung vom 15.10.
 #define PIN_BUTTON_PHASE 19
 #define PIN_BUTTON_PUMP 18
-#define PIN_LED_GREEN 4
+#define PIN_LED_GREEN 32
 #define PIN_LED_RED 33
 
 // --- Intervale ---
 const unsigned long TELEMETRY_INTERVAL_MS = 10000;
 const unsigned long CONTROL_POLL_MS = 5000;
-const unsigned long OLED_REFRESH_MS = 1000;
 const unsigned long SENSOR_READ_MS = 2000;
 
 // --- Sollwerte (Setpoints) ---
@@ -64,18 +65,46 @@ const unsigned long SENSOR_READ_MS = 2000;
 #define TEMP_HYST 0.5f
 #define HUM_HYST 2.0f
 
-/* ---------- OLED ---------- */
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET -1
-#define OLED_ADDR 0x3C
-
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
 /* ---------- DHT22 ---------- */
 DHT dht1(PIN_DHT_1, DHT22);
 DHT dht2(PIN_DHT_2, DHT22);
 DHT dht3(PIN_DHT_3, DHT22);
+OneWire waterBus(PIN_ONEWIRE);
+DallasTemperature ds18b20(&waterBus);
+static constexpr uint8_t DS_MAX_SENSORS = 2;
+DeviceAddress dsAddress[DS_MAX_SENSORS];
+bool dsKnown[DS_MAX_SENSORS] = {false, false};
+float dsCelsius[DS_MAX_SENSORS] = {NAN, NAN};
+uint8_t dsCount = 0;
+
+void initOneWire() {
+  ds18b20.begin();
+  ds18b20.setWaitForConversion(true);
+  dsCount = 0;
+  const uint8_t detected = ds18b20.getDeviceCount();
+  for (uint8_t i=0; i<detected && dsCount<DS_MAX_SENSORS; ++i) {
+    DeviceAddress rom;
+    if (!ds18b20.getAddress(rom, i)) continue;
+    memcpy(dsAddress[dsCount], rom, 8);
+    dsKnown[dsCount] = true;
+    ds18b20.setResolution(dsAddress[dsCount], 11);
+    dsCount++;
+  }
+  Serial.printf("1-Wire: %u DS18B20 erkannt (max. %u)\n", dsCount, DS_MAX_SENSORS);
+}
+void readOneWire() {
+  if (dsCount == 0) return;
+  ds18b20.requestTemperatures();
+  for (uint8_t i=0;i<dsCount;++i) {
+    float c = ds18b20.getTempC(dsAddress[i]);
+    dsCelsius[i] = (!isnan(c) && c != DEVICE_DISCONNECTED_C && c > -30.0f && c < 90.0f) ? c : NAN;
+  }
+}
+String addressAsHex(const DeviceAddress a) {
+  char hex[17] = {0};
+  for (uint8_t i=0; i<8; ++i) snprintf(hex + i*2, 3, "%02X", a[i]);
+  return String(hex);
+}
 TwoWire lightWire = TwoWire(1);
 float zoneTemp[3] = {NAN, NAN, NAN};
 float zoneRh[3] = {NAN, NAN, NAN};
@@ -90,8 +119,6 @@ struct I2CDevice {
 };
 static const I2CDevice KNOWN_I2C_DEVICES[] = {
   { 0x48, "ADS1115" },
-  { 0x3C, "OLED_SSD1306" },
-  { 0x3D, "OLED_SSD1306_ALT" },
   { 0x23, "BH1750_ADDR_LOW" },
   { 0x5C, "BH1750_ADDR_HIGH" },
   { 0x76, "BME280_0x76" },
@@ -102,7 +129,6 @@ static const I2CDevice KNOWN_I2C_DEVICES[] = {
 static uint8_t detectedI2C[16];
 static char detectedNames[16][32];
 static int detectedCount = 0;
-static uint8_t i2cOledAddr = 0;
 static bool hasBh1750 = false;
 static uint8_t bh1750Addr = 0;
 
@@ -202,16 +228,15 @@ void pollButtons(unsigned long now) {
 
 unsigned long lastTelemetry = 0;
 unsigned long lastControl = 0;
-unsigned long lastOled = 0;
 unsigned long lastSensor = 0;
 unsigned long lastActuatorSend = 0;
+unsigned long lastWifiAttempt = 0;
 
 /* ---------- Prototypen ---------- */
 void scanI2CDevices();
 void readSensors();
 void applyRelays();
 void controlLogic();
-void drawOled();
 bool sendTelemetry();
 void fetchControlState();
 uint32_t readBH1750();
@@ -258,9 +283,8 @@ bool sendActuatorSnapshot() {
 }
 
 void scanI2CDevices() {
-  Wire.begin(GPIO_NUM_21, GPIO_NUM_22);
+  Wire.begin(21, 22);
   detectedCount = 0;
-  i2cOledAddr = 0;
   hasBh1750 = false;
   bh1750Addr = 0;
   adsAvailable = false;
@@ -273,7 +297,6 @@ void scanI2CDevices() {
       for (size_t i = 0; i < sizeof(KNOWN_I2C_DEVICES) / sizeof(KNOWN_I2C_DEVICES[0]); ++i) {
         if (KNOWN_I2C_DEVICES[i].address == addr) {
           name = KNOWN_I2C_DEVICES[i].name;
-          if (addr == 0x3C || addr == 0x3D) i2cOledAddr = addr;
           if (addr == 0x48) adsAvailable = true;
 
           break;
@@ -330,6 +353,7 @@ void readSensors() {
   sensors.ph = NAN;  // pH7/pH4-Kalibrierung noch nicht freigegeben
   sensors.ec = NAN;  // temperaturkompensierte TDS-Kalibrierung noch offen
   sensors.lux = readBH1750();
+  readOneWire();
   sensors.caseC = temperatureRead();
 }
 
@@ -368,58 +392,14 @@ void controlLogic() {
   relayPump = !pumpPaused;
 }
 
-void drawOled() {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-
-  // Zeile 1: Temp + RH
-  display.setCursor(0, 0);
-  if (sensors.dhtOk) {
-    display.print("T:");
-    display.print(sensors.airC, 1);
-    display.print("C H:");
-    display.print(sensors.rh, 0);
-    display.print("%");
-  } else {
-    display.print("DHT Fehler");
-  }
-
-  // Zeile 2: Case-Temp
-  display.setCursor(0, 16);
-  display.print("CASE:");
-  display.print(sensors.caseC, 1);
-  display.print("C");
-
-  // Zeile 3: EC + pH
-  display.setCursor(0, 32);
-  display.print("EC:-- pH:--");
-
-  // Zeile 4: Relais + Modus
-  display.setCursor(0, 48);
-  display.print(controlMode);
-  display.print(" H");
-  display.print(relayHeater);
-  display.print(" P");
-  display.print(relayPump);
-  display.print(" C");
-  display.print(relayCirculation);
-  display.print(" E");
-  display.print(relayExhaust);
-  display.setCursor(75, 56);
-  display.print(bloomPhase ? "BL" : "WU");
-  display.print(growthWeek);
-  if (pumpPaused) display.print(" P!");
-
-  display.display();
-}
-
 bool sendTelemetry() {
   if (WiFi.status() != WL_CONNECTED) return false;
 
-  DynamicJsonDocument doc(3072);
+  DynamicJsonDocument doc(4096);
   doc["air_temperature"] = sensors.airC;
-  doc["water_temperature"] = nullptr;  // DS18B20 noch nicht verifiziert
+  // Die beiden DS18B20 sind physisch nicht per ROM dem Tank zugeordnet.
+  // Niemals einen Index stillschweigend als Tanktemperatur deklarieren.
+  doc["water_temperature"] = nullptr;
   doc["case_temperature"] = sensors.caseC;
   doc["humidity"] = sensors.rh;
   doc["ec"] = sensors.ec;
@@ -434,7 +414,7 @@ bool sendTelemetry() {
 
   JsonObject devInfo = doc.createNestedObject("device_info");
   devInfo["device_id"] = "growroom_esp32_01";
-  devInfo["firmware_version"] = "3.1.0-c3";
+  devInfo["firmware_version"] = "3.2.0-no-oled";
   devInfo["ads1115_available"] = adsAvailable;
   devInfo["ph_voltage_raw"] = phAdcVolts;
   devInfo["tds_voltage_raw"] = ecAdcVolts;
@@ -453,9 +433,16 @@ bool sendTelemetry() {
   }
   devInfo["control_mode"] = controlMode;
   devInfo["i2c_device_count"] = detectedCount;
-  devInfo["has_oled"] = (i2cOledAddr != 0);
+  devInfo["has_oled"] = false;
   devInfo["has_bh1750"] = hasBh1750;
   devInfo["bh1750_address"] = bh1750Addr;
+  devInfo["ds18b20_detected"] = dsCount;
+  JsonArray dsList = devInfo.createNestedArray("ds18b20");
+  for (uint8_t i = 0; i < dsCount; ++i) {
+    JsonObject ds = dsList.createNestedObject();
+    ds["rom"] = addressAsHex(dsAddress[i]);
+    ds["temperature_c"] = dsCelsius[i];
+  }
 
   JsonArray i2cArr = devInfo.createNestedArray("i2c_devices");
   for (int i = 0; i < detectedCount; ++i) {
@@ -536,20 +523,9 @@ void setup() {
   sensorApi.on("/api/v1/sensor/state", HTTP_GET, sensorApiState);
   sensorApi.begin();
   // Der ESP Pro besitzt keine Leistungs-GPIOs.
-  // I2C + OLED-Adresse ermitteln
+  // ADS1115 Hauptbus und BH1750 auf separatem I2C-Bus
   scanI2CDevices();
-
-  // OLED init (falls gefunden)
-  if (i2cOledAddr != 0) {
-    if (display.begin(SSD1306_SWITCHCAPVCC, i2cOledAddr)) {
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setTextColor(SSD1306_WHITE);
-      display.setCursor(0, 24);
-      display.print("WiFi verbinden...");
-      display.display();
-    }
-  }
+  initOneWire();
 
   // DHT init
   dht1.begin();
@@ -572,7 +548,10 @@ void loop() {
   unsigned long now = millis();
   pollButtons(now);
   if (WiFi.status() == WL_CONNECTED) sensorApi.handleClient();
-  else if (now % 5000 < 10) WiFi.reconnect();
+  else if (now - lastWifiAttempt > 5000) {
+    lastWifiAttempt = now;
+    WiFi.reconnect();
+  }
 
   if (strcmp(controlMode, "manual") == 0 &&
       (lastValidServerControl == 0 ||
@@ -590,12 +569,6 @@ void loop() {
   controlLogic();
   if (pumpPaused) relayPump = false;
   applyRelays();
-
-  // OLED aktualisieren
-  if (now - lastOled >= OLED_REFRESH_MS) {
-    lastOled = now;
-    if (i2cOledAddr != 0) drawOled();
-  }
 
   // Control-State vom Server holen (fuer MANUAL-Modus oder Setpoint-Updates)
   if (now - lastControl >= CONTROL_POLL_MS) {
