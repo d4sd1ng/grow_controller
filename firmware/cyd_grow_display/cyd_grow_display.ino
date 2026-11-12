@@ -78,6 +78,11 @@ static lv_obj_t *lbl_light;
 static lv_obj_t *lbl_relay;
 static lv_obj_t *lbl_alert;
 static lv_obj_t *lbl_wifi;
+static lv_obj_t *lbl_c3;
+static lv_obj_t *lbl_pumps;
+static lv_obj_t *btn_water;
+static lv_obj_t *btn_fan;
+static lv_obj_t *btn_mode;
 
 static lv_obj_t *btn_heater;
 static lv_obj_t *btn_light;
@@ -88,6 +93,17 @@ static bool relay_heater = false;
 static bool relay_light = false;
 static bool relay_circ = false;
 static bool relay_exh = false;
+static bool relay_water = false;
+static bool relay_fan = false;
+static bool c3_ready = false;
+static bool manual_mode = false;
+static uint8_t c3_active_pump = 0;
+static constexpr uint8_t PUMP_COUNT = 6;
+static lv_obj_t *pumpButtons[PUMP_COUNT] = {};
+static const char *PUMP_IDS[PUMP_COUNT] = {"1", "2", "3", "4", "5", "6"};
+static const char *PUMP_PATH = "/api/local/control/pump";
+static const char *MODE_PATH = "/api/local/control/mode";
+bool httpPostJson(const char *path, const String &jsonBody);
 
 unsigned long lastFetch = 0;
 unsigned long lastWifiReconnect = 0;
@@ -135,15 +151,51 @@ static void btnToggleRelay(lv_event_t *e) {
   else if (strcmp(key, "heater") == 0) current = relay_heater;
   else if (strcmp(key, "circulation_vent") == 0) current = relay_circ;
   else if (strcmp(key, "exhaust_vent") == 0) current = relay_exh;
+  else if (strcmp(key, "water_pump") == 0) current = relay_water;
+  else if (strcmp(key, "lamp_cooling") == 0) current = relay_fan;
   else return;
 
+  if (!c3_ready || !manual_mode) {
+    lv_label_set_text_static(lbl_alert, "C3 gesperrt oder Modus AUTO");
+    return;
+  }
   lv_obj_set_style_bg_color(btn, lv_color_hex(0xFCA000), 0);
 
   StaticJsonDocument<64> doc;
   doc[key] = !current;
   String body;
   serializeJson(doc, body);
-  httpPostJson(CONTROL_PATH, body);
+  if (!httpPostJson(CONTROL_PATH, body))
+    lv_label_set_text_static(lbl_alert, "Relaisbefehl nicht angenommen");
+}
+
+
+static void btnToggleMode(lv_event_t *e) {
+  (void)e;
+  StaticJsonDocument<64> doc;
+  doc["mode"] = manual_mode ? "auto" : "manual";
+  String body;
+  serializeJson(doc, body);
+  if (!httpPostJson(MODE_PATH, body))
+    lv_label_set_text_static(lbl_alert, "Moduswechsel fehlgeschlagen");
+}
+static void btnPumpPulse(lv_event_t *e) {
+  if (!c3_ready || !manual_mode) {
+    lv_label_set_text_static(lbl_alert, "Pumpen gesperrt");
+    return;
+  }
+  const char *id = static_cast<const char *>(lv_event_get_user_data(e));
+  const int index = atoi(id);
+  if (index < 1 || index > PUMP_COUNT) return;
+  StaticJsonDocument<96> doc;
+  doc["pump"] = index;
+  doc["duration_ms"] = 500; // begrenzter manueller Test, kein Dosierplan
+  String body;
+  serializeJson(doc, body);
+  if (!httpPostJson(PUMP_PATH, body))
+    lv_label_set_text_static(lbl_alert, "Pumpenimpuls abgelehnt");
+  else
+    lv_label_set_text_fmt(lbl_alert, "Pumpenimpuls P%d angefragt", index);
 }
 
 void my_touchpad_read(lv_indev_drv_t *indev, lv_indev_data_t *data) {
