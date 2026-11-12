@@ -17,7 +17,7 @@ Diese Platine integriert zugleich die Logik fuer **1 x ESP32-C3 SuperMini**, **5
 | ESP32-C3 SuperMini mit bestellbarem/modulspezifischem Footprint | 1 | C3-Hauptsteuerung |
 | PCA9685PW, direkt auf PCB, **kein Breakout** | 1 | I²C-Steuerung 6 Pumpenausgaenge |
 | Logic-Level-MOSFET mit passendem thermischen Design, direkt auf PCB | 6 | Ein DC-Leistungsausgang je Pumpenmotor |
-| Gate-Widerstaende + Gate-Pulldowns | 7 + 7 | Treiberansteuerung und definierter Ruhepegel |
+| Gate-Widerstaende + Gate-Pulldowns | 6 + 6 | Treiberansteuerung und definierter Ruhepegel |
 | Motor-Freilauf-/Stoerschutz | 6 | Induktive Motorabschaltung, Auslegung nach Pumpendaten |
 | Pumpenanschluss 2-polig, steck-/schraubbar | **6** | PUMP1–PUMP6: nur Motor+ und Motor− |
 | Ueberstromschutz je Motorzweig (Footprint) | **6** | Bei blockiertem oder kurzgeschlossenem Motor |
