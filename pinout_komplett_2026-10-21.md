@@ -106,3 +106,12 @@ Die farbige Pinlegende des tatsaechlichen Sensorboards bezeichnet unten rechts i
 
 **Datenblattgrundlagen:** [Espressif ESP32-C3 GPIO](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/peripherals/gpio.html), [NXP PCA9685](https://www.nxp.com/docs/en/data-sheet/PCA9685.pdf).
 
+
+
+### Pumpen-Daten – neue Anbieterangaben (Screenshot 12.11.2026)
+
+- Motorversorgung fuer die vorgesehenen Mikro-/Mini-Peristaltikpumpen: **12 V DC**, Einspeisung ueber eigenen Pumpen-Leistungseingang der gemeinsamen C3-Platine, nicht ueber ESP-5V/3V3.
+- Laut Anbieter **10–90 ml/min**, zusaetzlich **>80 ml/min**; Silikonschlauch 3×5 (Einheit unbekannt), Pumpenkopf ABS, 3 Rollen, ca. 83 g.
+- **7** vollstaendige zweipolige Pumpenklemmen mit eigenen Treibern; **nur 6 Pumpen werden anfangs installiert**. Welcher der 7 Kanaele frei bleibt, ist noch nicht festgelegt.
+- **Fehlt fuer elektrische Endauslegung:** Nennstrom/Anlaufstrom/Blockierstrom je Motor, Lastschutz, Stecker-Teilenummer. Motor-Abmessungen/Befestigung fuer externe Pumpenhalterung ebenfalls offen.
+- **PCB-Planmass 180×110 mm** laut Platzierungsstudie, noch keine mechanische/elektrische Fertigungsfreigabe.
