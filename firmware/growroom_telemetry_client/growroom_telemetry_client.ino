@@ -24,7 +24,7 @@
 #else
 const char *WIFI_SSID = "";
 const char *WIFI_PASS = "";
-const char *SERVER_HOST = "192.168.1.70";
+const char *SERVER_HOST = "";
 const uint16_t SERVER_PORT = 8765;
 const char *TELEMETRY_API_KEY = "";
 const char *ACTUATOR_HOST = "";
@@ -73,7 +73,6 @@ OneWire waterBus(PIN_ONEWIRE);
 DallasTemperature ds18b20(&waterBus);
 static constexpr uint8_t DS_MAX_SENSORS = 2;
 DeviceAddress dsAddress[DS_MAX_SENSORS];
-bool dsKnown[DS_MAX_SENSORS] = {false, false};
 float dsCelsius[DS_MAX_SENSORS] = {NAN, NAN};
 uint8_t dsCount = 0;
 
@@ -86,14 +85,21 @@ void initOneWire() {
     DeviceAddress rom;
     if (!ds18b20.getAddress(rom, i)) continue;
     memcpy(dsAddress[dsCount], rom, 8);
-    dsKnown[dsCount] = true;
     ds18b20.setResolution(dsAddress[dsCount], 11);
     dsCount++;
   }
   Serial.printf("1-Wire: %u DS18B20 erkannt (max. %u)\n", dsCount, DS_MAX_SENSORS);
 }
 void readOneWire() {
-  if (dsCount == 0) return;
+  if (dsCount == 0) {
+    // Suche bei fehlenden Sensoren erneut, ohne einen Reset zu erzwingen.
+    static uint32_t lastSearch = 0;
+    if (millis() - lastSearch > 30000UL) {
+      lastSearch = millis();
+      initOneWire();
+    }
+    if (dsCount == 0) return;
+  }
   ds18b20.requestTemperatures();
   for (uint8_t i=0;i<dsCount;++i) {
     float c = ds18b20.getTempC(dsAddress[i]);
@@ -119,12 +125,6 @@ struct I2CDevice {
 };
 static const I2CDevice KNOWN_I2C_DEVICES[] = {
   { 0x48, "ADS1115" },
-  { 0x23, "BH1750_ADDR_LOW" },
-  { 0x5C, "BH1750_ADDR_HIGH" },
-  { 0x76, "BME280_0x76" },
-  { 0x77, "BME280_0x77" },
-  { 0x44, "SHT30_0x44" },
-  { 0x45, "SHT30_0x45" },
 };
 static uint8_t detectedI2C[16];
 static char detectedNames[16][32];
@@ -146,12 +146,11 @@ bool relayExhaust = false;
 
 char controlMode[8] = "auto";  // "auto" oder "manual"
 
-// Wachstum/Bluete und Woche werden auf dem Sensor-ESP gespeichert.
+// Wachstum/Bluete wird auf dem Sensor-ESP gespeichert.
 // Der Pumpentaster ist ein Wartungs-Override, kein Dosierpumpen-Taster.
 Preferences preferences;
 WebServer sensorApi(80);
 bool bloomPhase = false;
-uint8_t growthWeek = 1;
 bool pumpPaused = false;
 unsigned long lastValidServerControl = 0;
 const unsigned long MANUAL_CONTROL_STALE_MS = 15000;
@@ -183,7 +182,6 @@ void updatePhaseLeds() {
 }
 void savePhase() {
   preferences.putBool("bloom", bloomPhase);
-  preferences.putUChar("week", growthWeek);
   updatePhaseLeds();
 }
 void savePumpPause() {
@@ -195,7 +193,6 @@ void sensorApiState() {
   StaticJsonDocument<256> doc;
   doc["ok"] = true;
   doc["phase"] = bloomPhase ? "bloom" : "grow";
-  doc["week"] = growthWeek;
   doc["pump_paused"] = pumpPaused;
   doc["pump_enabled"] = relayPump && !pumpPaused;
   String out;
@@ -374,7 +371,8 @@ void controlLogic() {
     if (strcmp(controlMode, "auto") == 0) {
       relayCirculation = false;
       relayExhaust = false;
-      relayPump = false;
+      // Der Filterkreislauf ist unabhaengig vom Luftsensor.
+      relayPump = !pumpPaused;
     }
     return;
   }
@@ -397,8 +395,7 @@ bool sendTelemetry() {
 
   DynamicJsonDocument doc(4096);
   doc["air_temperature"] = sensors.airC;
-  // Die beiden DS18B20 sind physisch nicht per ROM dem Tank zugeordnet.
-  // Niemals einen Index stillschweigend als Tanktemperatur deklarieren.
+  // DS-IDs werden als Diagnose geliefert, keine unbestaetigte Tankzuordnung.
   doc["water_temperature"] = nullptr;
   doc["case_temperature"] = sensors.caseC;
   doc["humidity"] = sensors.rh;
@@ -420,7 +417,6 @@ bool sendTelemetry() {
   devInfo["tds_voltage_raw"] = ecAdcVolts;
   devInfo["dht_control_ok"] = sensors.dhtOk;
   devInfo["phase"] = bloomPhase ? "bloom" : "grow";
-  devInfo["week"] = growthWeek;
   devInfo["pump_paused"] = pumpPaused;
   devInfo["ph_calibrated"] = false;
   devInfo["tds_calibrated"] = false;
@@ -455,6 +451,7 @@ bool sendTelemetry() {
   serializeJson(doc, body);
 
   HTTPClient http;
+  http.setTimeout(1500);
   if (!growHttpBegin(http, "/api/v1/telemetry")) return false;
   http.addHeader("Content-Type", "application/json");
   if (strlen(TELEMETRY_API_KEY) > 0)
@@ -467,6 +464,7 @@ bool sendTelemetry() {
 void fetchControlState() {
   if (WiFi.status() != WL_CONNECTED) return;
   HTTPClient http;
+  http.setTimeout(1500);
   if (!growHttpBegin(http, "/api/v1/control/state")) return;
   if (strlen(TELEMETRY_API_KEY) > 0)
     http.addHeader("X-Telemetry-Key", TELEMETRY_API_KEY);
@@ -514,8 +512,6 @@ void setup() {
   pinMode(PIN_LED_RED, OUTPUT);
   preferences.begin("grow-phase", false);
   bloomPhase = preferences.getBool("bloom", false);
-  growthWeek = preferences.getUChar("week", 1);
-  if (growthWeek < 1 || growthWeek > 12) growthWeek = 1;
   pumpPaused = preferences.getBool("pumpPause", false);
   updatePhaseLeds();
   const char *headers[] = {"X-Telemetry-Key"};
@@ -534,14 +530,18 @@ void setup() {
 
   // WiFi
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  if (WIFI_SSID && WIFI_SSID[0]) WiFi.begin(WIFI_SSID, WIFI_PASS);
   Serial.print("WiFi");
   unsigned long wifiStart = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 15000) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("\nConnected: " + WiFi.localIP().toString());
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nConnected: " + WiFi.localIP().toString());
+  } else {
+    Serial.println("\nOffline: Steuerung und Taster bleiben lokal aktiv.");
+  }
 }
 
 void loop() {
@@ -550,7 +550,7 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) sensorApi.handleClient();
   else if (now - lastWifiAttempt > 5000) {
     lastWifiAttempt = now;
-    WiFi.reconnect();
+    if (WIFI_SSID && WIFI_SSID[0]) WiFi.reconnect();
   }
 
   if (strcmp(controlMode, "manual") == 0 &&
@@ -576,8 +576,14 @@ void loop() {
     fetchControlState();
   }
 
-  // Telemetry senden
+  // Telemetrie senden (lokale Anzeige erfolgt ausschliesslich ueber Serial).
   if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
+    Serial.printf("Phase=%s Pumpe=%s DHT1=%s T=%.1f RH=%.1f pH-ADC=%.3fV TDS-ADC=%.3fV DS=%u C3=%s\n",
+      bloomPhase ? "BLUETE" : "WACHSTUM",
+      pumpPaused ? "PAUSE" : (relayPump ? "EIN" : "AUS"),
+      sensors.dhtOk ? "OK" : "FEHLER",
+      sensors.airC, sensors.rh, phAdcVolts, ecAdcVolts, dsCount,
+      ACTUATOR_HOST && ACTUATOR_HOST[0] ? ACTUATOR_HOST : "NICHT_KONFIGURIERT");
     lastTelemetry = now;
     sendTelemetry();
   }
