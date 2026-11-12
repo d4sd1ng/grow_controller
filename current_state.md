@@ -93,3 +93,24 @@ Der OLED zeigt Lux und `~lm` im Wechsel mit einer bestehenden Informationszeile 
 **Sieben elektrische Dosierpumpen-Anschlüsse vollständig vorbereiten; zunächst nur sechs externe Pumpen tatsächlich installieren.** Welcher Kanal unbestückt bleibt, wurde nicht festgelegt; die Controller-Platine erhält dennoch alle sieben gleichwertigen Anschlüsse. Die Pumpenkörper werden separat montiert, nicht auf der Platine.
 
 Als **mechanisches Entwurfsmaß** ist nach einer ersten rechteckigen Platzierungsstudie **180 × 110 mm** vorgesehen, mit **vier geplanten Ø3,2-mm-Montagebohrungen** auf **168 × 98 mm** Mittenabstand. Die Zeichnung berücksichtigt sieben 2-polige Pumpenklemmen an der unteren Platinenkante, fünf SSR-Steueranschlüsse oben, vier Lüfteranschlüsse rechts und getrennte Kleinspannungs-Einspeisungen. Anschlussgehäuse wurden in der Studie mit 13 × 12 mm reserviert. Rechteckige Baugruppen-Umrisse überschneiden sich nicht, aber **echte Footprints, Leiterbahnführung, thermische Abstände, Strombelastbarkeit, Kabelzugang und KiCad-DRC sind noch nicht überprüft**. Das Maß ist deshalb **keine Fertigungs-/Gehäuse-Bestellfreigabe**. Das Gesamtgehäuse muss die externen SSR-Leistungselemente und deren Installation gesondert aufnehmen.
+
+
+### Daten der ausgewaehlten Peristaltikpumpen (Nutzer-Screenshot 12.11.2026)
+
+Quelle: vom Nutzer bereitgestellter Screenshot der Produktbeschreibung; **keine unabhaengige elektrische oder mechanische Verifikation**.
+
+| Eigenschaft | Anbieterangabe |
+|---|---|
+| Motor-Betriebsspannung | **12 V Gleichspannung (DC)** |
+| Angegebener Durchflussbereich | **10–90 ml/min** |
+| Zusaetzliche Durchfluss-Angabe | **>80 ml/min** (genaue Variante/Betriebsbedingung unbekannt) |
+| Pumpenschlauch | **3 × 5** (Einheit im Screenshot nicht genannt) |
+| Schlauchmaterial | transparentes Silikon |
+| Pumpenkopfmaterial | ABS |
+| Rollen | 3 |
+| Pumpengewicht | ca. **83 g** |
+| Lieferumfang | 1 Pumpe je Artikel |
+
+**Folgerung fuer die EINE C3-Leistungsplatine:** Pumpen-Versorgungszweig **12 V DC** vorsehen, **7× zweipolige Pumpenanschluesse und 7× separat schaltbare Motortreiber** beibehalten; **zunaechst nur 6 Pumpen extern installieren**. Der siebte Anschluss und Treiber werden vollstaendig vorbereitet; welcher physische Pumpenkanal zunaechst frei bleibt, ist noch offen. Versorgungseingang, Schutzbauteile, MOSFET-Typen, Stecker-Nennstroeme, Leiterbahnbreiten und Netzteilgroesse **erst nach Kenntnis von Nenn-, Anlauf- und Blockierstrom pro Pumpe festlegen**. Anbieterscreenshot liefert dazu keine Angaben. Ebenfalls fehlen Pumpenabmessungen sowie die tatsaechlichen Befestigungsbohrungen; Pumpe bleibt mechanisch getrennt von der PCB. Das bisherige **180 × 110 mm** ist nur eine mechanische Platzierungsstudie, **nicht fertigungssicher bestaetigt**.
+
+**Besonderheit pH-Regelung:** Durchflussangaben des Anbieters sind keine Kalibrierwerte. Vor automatischer pH-Dosierung sind die tatsaechlichen ml/s pro Pumpe am eingebauten Schlauch zu messen sowie Dosiergrenzen/Verriegelung zu pruefen.
