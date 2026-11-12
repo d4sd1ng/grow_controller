@@ -126,3 +126,6 @@ Nutzer nennt **3 W elektrische Leistungsaufnahme je 12-V-DC-Motor**. Daraus folg
 | Alle geplanten Pumpen | 7 | **1,75 A** | **21 W** |
 
 Diese Summen setzen voraus, dass alle genannten Pumpen gleichzeitig mit ihrer angegebenen Leistungsaufnahme laufen; sie sind **keine Netzteil- oder Leiterbahn-Nennwertfreigabe**. Die sieben Motoranschluesse und Treiber bleiben vollstaendig vorgesehen, auch wenn anfangs nur sechs Pumpen installiert werden. **Anlaufstrom, Blockierstrom, Netzteilreserve, Schutzkomponenten und die benoetigten Leiterbahnquerschnitte bleiben vor Fertigung zu verifizieren.**
+
+
+**Festlegung Förderrichtung (12.11.2026):** Die 12-V-Peristaltikpumpen koennen laut Nutzer zwar CW/CCW durch Umpolung, sollen im Grow-Controller aber **nur in einer festen Foerderrichtung** laufen. **Keine Polaritaetsumkehr und keine H-Bruecken vorsehen**. Es bleibt bei **sieben unabhaengigen einseitigen MOSFET-DC-Motorschaltstufen**, einer je Pumpe, und **PCA9685 OUT0–OUT6**. Die Motorpolung wird bei der Montage fuer die richtige Foerderrichtung festgelegt; Rueckwaertsbetrieb ist nicht vorgesehen. Alle sieben Kanaele samt Anschluss werden bestueckt, anfangs nur sechs Pumpen angeschlossen. **Nennstrom rechnerisch 0,25 A pro Motor (3 W / 12 V); Anlauf-/Blockierstrom weiter unbekannt.**
