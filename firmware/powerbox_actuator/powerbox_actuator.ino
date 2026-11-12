@@ -32,6 +32,10 @@ const char *TELEMETRY_API_KEY = "";
 #ifndef ENABLE_OUTPUTS_AFTER_HARDWARE_VALIDATION
 #define ENABLE_OUTPUTS_AFTER_HARDWARE_VALIDATION 0
 #endif
+// Unabhaengiger thermischer Grenzschutz ist vor einer Heizungsfreigabe notwendig.
+#ifndef ENABLE_HEATER_AFTER_INDEPENDENT_LIMIT_TEST
+#define ENABLE_HEATER_AFTER_INDEPENDENT_LIMIT_TEST 0
+#endif
 
 static constexpr uint8_t PUMP_COUNT = 6; // genau sechs; KEIN siebter Kanal
 static constexpr uint8_t PIN_SSR_LIGHT = 0;
@@ -175,7 +179,7 @@ bool fetchTargets() {
 
   Outputs next;
   next.light = c["light"] | false;
-  next.heater = c["heater"] | false;
+  next.heater = (ENABLE_HEATER_AFTER_INDEPENDENT_LIMIT_TEST != 0) && (c["heater"] | false);
   next.circulation = c["circulation_vent"] | false;
   next.exhaust = c["exhaust_vent"] | false;
   next.water = c["water_pump"] | false;
