@@ -114,3 +114,15 @@ Quelle: vom Nutzer bereitgestellter Screenshot der Produktbeschreibung; **keine 
 **Folgerung fuer die EINE C3-Leistungsplatine:** Pumpen-Versorgungszweig **12 V DC** vorsehen, **7× zweipolige Pumpenanschluesse und 7× separat schaltbare Motortreiber** beibehalten; **zunaechst nur 6 Pumpen extern installieren**. Der siebte Anschluss und Treiber werden vollstaendig vorbereitet; welcher physische Pumpenkanal zunaechst frei bleibt, ist noch offen. Versorgungseingang, Schutzbauteile, MOSFET-Typen, Stecker-Nennstroeme, Leiterbahnbreiten und Netzteilgroesse **erst nach Kenntnis von Nenn-, Anlauf- und Blockierstrom pro Pumpe festlegen**. Anbieterscreenshot liefert dazu keine Angaben. Ebenfalls fehlen Pumpenabmessungen sowie die tatsaechlichen Befestigungsbohrungen; Pumpe bleibt mechanisch getrennt von der PCB. Das bisherige **180 × 110 mm** ist nur eine mechanische Platzierungsstudie, **nicht fertigungssicher bestaetigt**.
 
 **Besonderheit pH-Regelung:** Durchflussangaben des Anbieters sind keine Kalibrierwerte. Vor automatischer pH-Dosierung sind die tatsaechlichen ml/s pro Pumpe am eingebauten Schlauch zu messen sowie Dosiergrenzen/Verriegelung zu pruefen.
+
+
+### Leistungsaufnahme der Dosierpumpen (Nutzerangabe 12.11.2026)
+
+Nutzer nennt **3 W elektrische Leistungsaufnahme je 12-V-DC-Motor**. Daraus folgt der **rechnerische Betriebsstrom 0,25 A je Pumpe** (3 W / 12 V), nicht der Anlauf- oder Blockierstrom.
+
+| Betrieb | Anzahl | Nennstrom gesamt bei 12 V | Elektrische Leistung |
+|---|---:|---:|---:|
+| Anfangs vorhandene Pumpen | 6 | **1,50 A** | **18 W** |
+| Alle geplanten Pumpen | 7 | **1,75 A** | **21 W** |
+
+Diese Summen setzen voraus, dass alle genannten Pumpen gleichzeitig mit ihrer angegebenen Leistungsaufnahme laufen; sie sind **keine Netzteil- oder Leiterbahn-Nennwertfreigabe**. Die sieben Motoranschluesse und Treiber bleiben vollstaendig vorgesehen, auch wenn anfangs nur sechs Pumpen installiert werden. **Anlaufstrom, Blockierstrom, Netzteilreserve, Schutzkomponenten und die benoetigten Leiterbahnquerschnitte bleiben vor Fertigung zu verifizieren.**
