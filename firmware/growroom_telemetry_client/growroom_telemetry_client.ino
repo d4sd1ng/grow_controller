@@ -27,8 +27,8 @@
 #if __has_include("device_secrets.h")
 #include "device_secrets.h"
 #else
-const char *WIFI_SSID = "M3thlab";
-const char *WIFI_PASS = "!Butch*20052023";
+const char *WIFI_SSID = "";
+const char *WIFI_PASS = "";
 const char *SERVER_HOST = "192.168.1.70";
 const uint16_t SERVER_PORT = 8765;
 const char *TELEMETRY_API_KEY = "";
