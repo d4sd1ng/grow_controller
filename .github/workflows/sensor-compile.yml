@@ -1,0 +1,51 @@
+name: Sensor ESP32 Compile
+on:
+  pull_request:
+    paths:
+      - "firmware/Sensor/**"
+      - ".github/workflows/sensor-compile.yml"
+  push:
+    branches: [main]
+    paths:
+      - "firmware/Sensor/**"
+      - ".github/workflows/sensor-compile.yml"
+  workflow_dispatch:
+
+jobs:
+  sensor-esp32:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+      - name: Install ESP32 core 3.3.12
+        run: |
+          arduino-cli config init --overwrite --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.12
+      - name: Install sensor libraries
+        run: |
+          arduino-cli lib update-index
+          arduino-cli lib install "ArduinoJson@7.4.3"
+          arduino-cli lib install "Adafruit GFX Library"
+          arduino-cli lib install "Adafruit SSD1306"
+          arduino-cli lib install "Adafruit ADS1X15"
+          arduino-cli lib install "DHT sensor library"
+          arduino-cli lib install "OneWire"
+          arduino-cli lib install "DallasTemperature"
+      - name: Generate dummy build-only device secrets
+        run: |
+          cat > firmware/Sensor/device_secrets.h <<'EOF'
+          #pragma once
+          const char *WIFI_SSID = "CI_NO_WIFI";
+          const char *WIFI_PASS = "CI_NON_SECRET_PLACEHOLDER";
+          const char *SERVER_HOST = "example.invalid";
+          const uint16_t SERVER_PORT = 8765;
+          const char *TELEMETRY_API_KEY = "CI_DUMMY_KEY_ONLY";
+          const char *ACTUATOR_HOST = "";
+          const bool SERVER_USE_HTTPS = false;
+          const bool SERVER_TLS_INSECURE = false;
+          EOF
+      - name: Compile Sensor for ESP32-WROOM
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 --warnings all firmware/Sensor
