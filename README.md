@@ -1,5 +1,7 @@
 # Growroom Control System
 
+**Firmware (aktuelle Struktur):** [Sensor, Remote und C3](firmware/README.md). Die früheren Sketch-Ordner wurden entfernt; kein altes Installationsskript verwenden.
+
 Streamlit dashboard for simulated sensors, VPD helpers, optional Telegram alerts, and GPIO simulation (runs anywhere with Python 3.11+).
 
 **Geräte-Setup (Server, Growroom-ESP, CYD):** [installation_instructions.md](installation_instructions.md) · **Verdrahtung:** [wiring_instructions.md](wiring_instructions.md) · **Deployment (RPi + optional VPS/VPN):** [deployment_vps.md](deployment_vps.md)
@@ -26,7 +28,7 @@ streamlit run main.py
 python run_telemetry_api.py
 ```
 
-Standard: `http://<PC-IP>:8765` — u. a. `GET /api/v1/health` (SQLite-Ping, **ohne** API-Key), `POST /api/v1/telemetry`, `GET /api/v1/telemetry/series` (**echte Historie** aus SQLite, Parameter `hours` / `minutes` / `max_points`), `GET /api/v1/mobile/summary` (CYD: Messwerte + Relais + **Alerts**), `GET/POST /api/v1/control/*`. Optional **`X-Telemetry-Key`**. **`firmware/`**: `cyd_remote_control` nutzt `/telemetry/series` für die drei rechten Kurven.
+Standard: `http://<PC-IP>:8765` — u. a. `GET /api/v1/health` (SQLite-Ping, **ohne** API-Key), `POST /api/v1/telemetry`, `GET /api/v1/telemetry/series` (**echte Historie** aus SQLite, Parameter `hours` / `minutes` / `max_points`), `GET /api/v1/mobile/summary` (CYD: Messwerte + Relais + **Alerts**), `GET/POST /api/v1/control/*`. Optional **`X-Telemetry-Key`**. **`firmware/`**: Die aktuelle LVGL-Remote verwendet `/api/v1/mobile/summary` für Messwerte und `/api/v1/actuator/state` für den C3-Status.
 
 Optional Telegram command bot (separate process; uses the same `.env` token):
 
