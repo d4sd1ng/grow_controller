@@ -1,9 +1,11 @@
 /**
  * Portable Cheap Yellow Display mit LVGL v8:
- * Zentrale Mobilanzeige gegen den Server.
+ * LVGL-Fernbedienung: Telemetrie vom Server, C3-Status und vorhandene Steuerfunktionen.
  *
  * GET /api/v1/mobile/summary → reading, control.targets, alerts
- * Relais umschalten: POST /api/v1/control/targets
+ * Manuelle Klima-Ziele: POST /api/v1/control/targets (HEAT/CIRC/EXH)
+ * C3 direkt: GET /api/v1/actuator/state, POST /fans, /dose, /stop
+ * Wasserpumpe und Wachstum/Bluete: Anzeige, KEINE Umschaltung in LVGL.
  *
  * Libs: lvgl (v8), TFT_eSPI, XPT2046_Touchscreen, ArduinoJson v6
  *
@@ -35,12 +37,13 @@
 #if __has_include("device_secrets.h")
 #include "device_secrets.h"
 #else
-#error "Credentials missing: fill local .env and run python export_firmware_secrets_from_env.py"
+#error "Credentials missing: configure local .env and run python export_firmware_secrets_from_env.py"
 const char *WIFI_SSID = "";
 const char *WIFI_PASS = "";
-const char *SERVER_HOST = "192.168.1.50";
+const char *SERVER_HOST = "";
 const uint16_t SERVER_PORT = 8765;
 const char *TELEMETRY_API_KEY = "";
+const char *ACTUATOR_HOST = "";
 const bool SERVER_USE_HTTPS = false;
 const bool SERVER_TLS_INSECURE = false;
 #endif
@@ -74,8 +77,20 @@ static lv_obj_t *lbl_relay;
 static lv_obj_t *lbl_alert;
 static lv_obj_t *lbl_wifi;
 
+static lv_obj_t *lbl_dosers;
+static lv_obj_t *dose_btns[6];
+static bool relay_light = false;
+static bool fan_group_1 = false;
+static bool fan_group_2 = false;
+static lv_obj_t *btn_fan_1;
+static lv_obj_t *btn_fan_2;
+static lv_obj_t *btn_stop;
+static bool c3_hardware_ready = false;
+static constexpr uint8_t DOSER_COUNT = 6;
+// Bis die Foerdermengen pro Pumpe kalibriert und freigegeben sind: 0 ms.
+static constexpr uint32_t DOSER_UI_DURATION_MS = 0;
+
 static lv_obj_t *btn_heater;
-static lv_obj_t *btn_pump;
 static lv_obj_t *btn_circ;
 static lv_obj_t *btn_exh;
 
@@ -106,23 +121,119 @@ static void setBtnState(lv_obj_t *btn, bool on) {
   }
 }
 
+static bool c3Request(const char *path, const String &body) {
+  if (!ACTUATOR_HOST || !ACTUATOR_HOST[0] || !TELEMETRY_API_KEY ||
+      !TELEMETRY_API_KEY[0] || WiFi.status() != WL_CONNECTED) return false;
+  HTTPClient http;
+  http.setTimeout(2000);
+  String url = String("http://") + ACTUATOR_HOST + path;
+  if (!http.begin(url)) return false;
+  http.addHeader("X-Telemetry-Key", TELEMETRY_API_KEY);
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST(body);
+  http.end();
+  return code == 200;
+}
+
+
+static void btnToggleFan(lv_event_t *e) {
+  const unsigned int group = (unsigned int)(uintptr_t)lv_event_get_user_data(e);
+  if (group != 1 && group != 2) return;
+  if (!c3_hardware_ready) {
+    lv_label_set_text_static(lbl_dosers, "C3 gesperrt - keine Lueftersteuerung");
+    return;
+  }
+  StaticJsonDocument<64> cmd;
+  if (group == 1) cmd["fan_group_1"] = !fan_group_1;
+  else cmd["fan_group_2"] = !fan_group_2;
+  String body;
+  serializeJson(cmd, body);
+  const bool ok = c3Request("/api/v1/actuator/fans", body);
+  lv_label_set_text_static(lbl_dosers, ok ? "Luefterbefehl angenommen" : "Luefterbefehl fehlgeschlagen");
+}
+static void btnStopC3(lv_event_t *) {
+  const bool ok = c3Request("/api/v1/actuator/stop", "{}");
+  c3_hardware_ready = false;
+  lv_label_set_text_static(lbl_dosers, ok ? "C3 STOP: verriegelt bis Neustart" : "C3 STOP nicht bestaetigt");
+}
+
+static void btnDose(lv_event_t *e) {
+  unsigned int channel = (unsigned int)(uintptr_t)lv_event_get_user_data(e);
+  if (channel < 1 || channel > DOSER_COUNT) return;
+  if (!c3_hardware_ready || DOSER_UI_DURATION_MS == 0) {
+    lv_label_set_text_static(lbl_dosers, "Dosierung gesperrt: Kalibrierung/Pinout fehlt");
+    return;
+  }
+  StaticJsonDocument<96> doc;
+  doc["pump"] = channel;
+  doc["duration_ms"] = DOSER_UI_DURATION_MS;
+  String body;
+  serializeJson(doc, body);
+  bool ok = c3Request("/api/v1/actuator/dose", body);
+  lv_label_set_text_static(lbl_dosers, ok ? "Dosierimpuls angefordert" : "Dosierung nicht bestaetigt");
+}
+
+static void fetchC3State() {
+  if (!ACTUATOR_HOST || !ACTUATOR_HOST[0] || !TELEMETRY_API_KEY ||
+      !TELEMETRY_API_KEY[0] || WiFi.status() != WL_CONNECTED) {
+    c3_hardware_ready = false;
+    lv_label_set_text_static(lbl_dosers, "C3: Verbindung nicht konfiguriert");
+    return;
+  }
+  HTTPClient http;
+  http.setTimeout(2000);
+  String url = String("http://") + ACTUATOR_HOST + "/api/v1/actuator/state";
+  if (!http.begin(url)) return;
+  http.addHeader("X-Telemetry-Key", TELEMETRY_API_KEY);
+  int code = http.GET();
+  String body = code == 200 ? http.getString() : "";
+  http.end();
+  if (code != 200) {
+    c3_hardware_ready = false;
+    lv_label_set_text_static(lbl_dosers, "C3: offline/HTTP-Fehler");
+    return;
+  }
+  StaticJsonDocument<768> doc;
+  if (deserializeJson(doc, body) || !doc["ok"].as<bool>()) {
+    c3_hardware_ready = false;
+    return;
+  }
+  c3_hardware_ready = doc["hardware_ready"] | false;
+  relay_light = doc["relays"]["light"] | false;
+  relay_pump = doc["relays"]["water_pump"] | false;
+  fan_group_1 = doc["fans"]["fan_group_1"] | false;
+  fan_group_2 = doc["fans"]["fan_group_2"] | false;
+  setBtnState(btn_fan_1, fan_group_1);
+  setBtnState(btn_fan_2, fan_group_2);
+  lv_label_set_text_fmt(lbl_relay, "L:%s W:%s H:%s C:%s E:%s",
+                        relay_light ? "ON" : "off", relay_pump ? "ON" : "off",
+                        relay_heater ? "ON" : "off", relay_circ ? "ON" : "off",
+                        relay_exh ? "ON" : "off");
+  const int active = doc["dosing"]["active_pump"] | 0;
+  if (!c3_hardware_ready)
+    lv_label_set_text_static(lbl_dosers, "C3: Pinout/Leistungsstufen nicht freigegeben");
+  else if (active > 0)
+    lv_label_set_text_fmt(lbl_dosers, "Dosierpumpe %d laeuft", active);
+  else
+    lv_label_set_text_static(lbl_dosers, "P1-P6 bereit (nur kalibrierte Impulse)");
+}
+
 static void btnToggleRelay(lv_event_t *e) {
   lv_obj_t *btn = lv_event_get_target(e);
   const char *key = (const char *)lv_obj_get_user_data(btn);
-  bool current = false;
+  if (!key) return;
+  bool current;
   if (strcmp(key, "heater") == 0) current = relay_heater;
-  else if (strcmp(key, "pump") == 0) current = relay_pump;
   else if (strcmp(key, "circulation_vent") == 0) current = relay_circ;
   else if (strcmp(key, "exhaust_vent") == 0) current = relay_exh;
   else return;
-
-  lv_obj_set_style_bg_color(btn, lv_color_hex(0xFCA000), 0);
 
   StaticJsonDocument<64> doc;
   doc[key] = !current;
   String body;
   serializeJson(doc, body);
-  httpPostJson(CONTROL_PATH, body);
+  if (!httpPostJson(CONTROL_PATH, body))
+    lv_label_set_text_static(lbl_wifi, "Manueller Schaltbefehl fehlgeschlagen");
 }
 
 void my_touchpad_read(lv_indev_drv_t *indev, lv_indev_data_t *data) {
@@ -170,10 +281,8 @@ void updateLabels(const char *mode, float t, float rh, float ec, float ph,
   lv_label_set_text_fmt(lbl_hum, "Luftfeuchte: %.0f %%", rh);
   lv_label_set_text_fmt(lbl_ecph, "EC %.2f | pH %.1f", ec, ph);
   lv_label_set_text_fmt(lbl_relay, "H:%s P:%s C:%s E:%s",
-                        heat ? "ON" : "off",
-                        pump ? "ON" : "off",
-                        circ ? "ON" : "off",
-                        exh ? "ON" : "off");
+                        heat ? "ON" : "off", pump ? "ON" : "off",
+                        circ ? "ON" : "off", exh ? "ON" : "off");
   if (alert && strlen(alert) > 0) {
     lv_label_set_text_fmt(lbl_alert, "[%s] %s", alertSev ? alertSev : "?", alert);
     lv_obj_set_style_text_color(lbl_alert, lv_color_hex(0xFCA000), 0);
@@ -183,7 +292,6 @@ void updateLabels(const char *mode, float t, float rh, float ec, float ph,
   }
 
   setBtnState(btn_heater, heat);
-  setBtnState(btn_pump, pump);
   setBtnState(btn_circ, circ);
   setBtnState(btn_exh, exh);
 }
@@ -206,7 +314,7 @@ void fetchSummaryAndUpdate() {
   String payload = http.getString();
   http.end();
 
-  StaticJsonDocument<2048> doc;
+  DynamicJsonDocument doc(6144);
   if (deserializeJson(doc, payload) || !doc["ok"].as<bool>()) {
     lv_label_set_text_static(lbl_wifi, "JSON-Fehler");
     return;
@@ -243,6 +351,12 @@ void fetchSummaryAndUpdate() {
   }
 
   updateLabels(mode, t, rh, ec, ph, heat, pump, circ, exh, alertMsg, alertSev);
+  if (r.isNull() || r["air_temperature"].isNull())
+    lv_label_set_text_static(lbl_temp, "Temperatur: -- (Sensor fehlt)");
+  if (r.isNull() || r["humidity"].isNull())
+    lv_label_set_text_static(lbl_hum, "Luftfeuchte: -- (Sensor fehlt)");
+  if (r.isNull() || r["ec"].isNull() || r["ph"].isNull())
+    lv_label_set_text_static(lbl_ecph, "EC -- | pH -- (Kalibrierung offen)");
   lv_label_set_text_fmt(lbl_wifi, "WiFi OK | %s", WiFi.localIP().toString().c_str());
 }
 
@@ -258,6 +372,7 @@ void build_ui() {
   lv_obj_set_style_pad_all(cont, 6, 0);
   lv_obj_set_style_bg_color(cont, lv_color_hex(0x0C11), 0);
   lv_obj_set_style_border_width(cont, 0, 0);
+  lv_obj_set_scroll_dir(cont, LV_DIR_VER);
 
   lbl_wifi = lv_label_create(cont);
   lv_obj_set_style_text_color(lbl_wifi, lv_color_hex(0x9CF0), 0);
@@ -281,6 +396,8 @@ void build_ui() {
 
   lbl_relay = lv_label_create(cont);
   lv_obj_set_style_text_color(lbl_relay, lv_color_hex(0xB7FF), 0);
+  lv_obj_set_width(lbl_relay, 298);
+  lv_label_set_long_mode(lbl_relay, LV_LABEL_LONG_WRAP);
   lv_label_set_text_static(lbl_relay, "Relais: --");
 
   lbl_alert = lv_label_create(cont);
@@ -289,7 +406,12 @@ void build_ui() {
   lv_obj_set_width(lbl_alert, 300);
   lv_label_set_text_static(lbl_alert, "Keine Alerts");
 
-  // Relay toggle buttons
+  lbl_dosers = lv_label_create(cont);
+  lv_obj_set_width(lbl_dosers, 300);
+  lv_label_set_long_mode(lbl_dosers, LV_LABEL_LONG_WRAP);
+  lv_label_set_text_static(lbl_dosers, "C3-Pumpenstatus wird geladen");
+
+  // Bestehende manuelle Klimasteuerung; Wasserpumpe und Licht nur Anzeige.
   lv_obj_t *btn_cont = lv_obj_create(cont);
   lv_obj_set_size(btn_cont, 300, 44);
   lv_obj_set_flex_flow(btn_cont, LV_FLEX_FLOW_ROW);
@@ -299,23 +421,15 @@ void build_ui() {
   lv_obj_set_style_border_width(btn_cont, 0, 0);
 
   btn_heater = lv_btn_create(btn_cont);
-  lv_obj_set_size(btn_heater, 68, 34);
-  lv_obj_t *l = lv_label_create(btn_heater);
+  lv_obj_set_size(btn_heater, 88, 34);
+  l = lv_label_create(btn_heater);
   lv_label_set_text_static(l, "HEAT");
   lv_obj_center(l);
   lv_obj_set_user_data(btn_heater, (void *)"heater");
   lv_obj_add_event_cb(btn_heater, btnToggleRelay, LV_EVENT_CLICKED, NULL);
 
-  btn_pump = lv_btn_create(btn_cont);
-  lv_obj_set_size(btn_pump, 68, 34);
-  l = lv_label_create(btn_pump);
-  lv_label_set_text_static(l, "PUMP");
-  lv_obj_center(l);
-  lv_obj_set_user_data(btn_pump, (void *)"pump");
-  lv_obj_add_event_cb(btn_pump, btnToggleRelay, LV_EVENT_CLICKED, NULL);
-
   btn_circ = lv_btn_create(btn_cont);
-  lv_obj_set_size(btn_circ, 68, 34);
+  lv_obj_set_size(btn_circ, 88, 34);
   l = lv_label_create(btn_circ);
   lv_label_set_text_static(l, "CIRC");
   lv_obj_center(l);
@@ -323,12 +437,63 @@ void build_ui() {
   lv_obj_add_event_cb(btn_circ, btnToggleRelay, LV_EVENT_CLICKED, NULL);
 
   btn_exh = lv_btn_create(btn_cont);
-  lv_obj_set_size(btn_exh, 68, 34);
+  lv_obj_set_size(btn_exh, 88, 34);
   l = lv_label_create(btn_exh);
   lv_label_set_text_static(l, "EXH");
   lv_obj_center(l);
   lv_obj_set_user_data(btn_exh, (void *)"exhaust_vent");
   lv_obj_add_event_cb(btn_exh, btnToggleRelay, LV_EVENT_CLICKED, NULL);
+
+
+  // Die zwei vorhandenen Lueftergruppen werden ueber die C3-API geschaltet.
+  lv_obj_t *fan_row = lv_obj_create(cont);
+  lv_obj_set_size(fan_row, 300, 43);
+  lv_obj_set_flex_flow(fan_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(fan_row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(fan_row, 2, 0);
+  lv_obj_set_style_bg_opa(fan_row, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(fan_row, 0, 0);
+  btn_fan_1 = lv_btn_create(fan_row);
+  lv_obj_set_size(btn_fan_1, 88, 32);
+  l = lv_label_create(btn_fan_1);
+  lv_label_set_text_static(l, "FAN 1");
+  lv_obj_center(l);
+  lv_obj_add_event_cb(btn_fan_1, btnToggleFan, LV_EVENT_CLICKED, (void *)(uintptr_t)1);
+  btn_fan_2 = lv_btn_create(fan_row);
+  lv_obj_set_size(btn_fan_2, 88, 32);
+  l = lv_label_create(btn_fan_2);
+  lv_label_set_text_static(l, "FAN 2");
+  lv_obj_center(l);
+  lv_obj_add_event_cb(btn_fan_2, btnToggleFan, LV_EVENT_CLICKED, (void *)(uintptr_t)2);
+  btn_stop = lv_btn_create(fan_row);
+  lv_obj_set_size(btn_stop, 88, 32);
+  l = lv_label_create(btn_stop);
+  lv_label_set_text_static(l, "C3 STOP");
+  lv_obj_center(l);
+  lv_obj_add_event_cb(btn_stop, btnStopC3, LV_EVENT_CLICKED, NULL);
+
+  // Sechs Dosierkanaele; Impulse bis zur Kalibrierung gesperrt.
+  // Buttons bleiben ohne freigegebene Impulsdauer wirkungslos.
+  for (uint8_t row = 0; row < 2; ++row) {
+    lv_obj_t *dose_row = lv_obj_create(cont);
+    lv_obj_set_size(dose_row, 300, 40);
+    lv_obj_set_flex_flow(dose_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(dose_row, LV_FLEX_ALIGN_SPACE_EVENLY,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(dose_row, 2, 0);
+    lv_obj_set_style_bg_opa(dose_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(dose_row, 0, 0);
+    for (uint8_t col = 0; col < 3; ++col) {
+      uint8_t index = row * 3 + col;
+      dose_btns[index] = lv_btn_create(dose_row);
+      lv_obj_set_size(dose_btns[index], 88, 30);
+      lv_obj_t *txt = lv_label_create(dose_btns[index]);
+      lv_label_set_text_fmt(txt, "Dose P%d", index + 1);
+      lv_obj_center(txt);
+      lv_obj_add_event_cb(dose_btns[index], btnDose, LV_EVENT_CLICKED,
+                          (void *)(uintptr_t)(index + 1));
+    }
+  }
 }
 
 void setup() {
@@ -388,15 +553,7 @@ void loop() {
   if (now - lastFetch >= POLL_MS) {
     lastFetch = now;
     fetchSummaryAndUpdate();
-  }
-
-  if (Serial.available()) {
-    String cmd = Serial.readStringUntil('\n');
-    cmd.trim();
-    if (cmd == "H1")
-      exampleToggleHeater(true);
-    else if (cmd == "H0")
-      exampleToggleHeater(false);
+    fetchC3State();
   }
 
   delay(ms > 0 ? ms : 5);
