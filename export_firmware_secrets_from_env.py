@@ -46,9 +46,10 @@ def main() -> int:
     password = os.environ.get("IOT_WIFI_PASSWORD", "").strip()
     host = os.environ.get("IOT_TELEMETRY_SERVER_HOST", "").strip()
     api_key = get_telemetry_api_key() or ""
+    actuator_host = os.environ.get("IOT_ACTUATOR_HOST", "").strip()
 
     use_https = _env_truthy("IOT_USE_HTTPS", False)
-    tls_insecure = _env_truthy("IOT_TLS_INSECURE", use_https)
+    tls_insecure = _env_truthy("IOT_TLS_INSECURE", False)
     raw_client_port = os.environ.get("IOT_TELEMETRY_SERVER_PORT", "").strip()
     if raw_client_port:
         try:
@@ -60,7 +61,14 @@ def main() -> int:
     else:
         client_port = get_telemetry_api_port()
 
-    missing = [n for n, v in (("IOT_WIFI_SSID", ssid), ("IOT_TELEMETRY_SERVER_HOST", host)) if not v]
+    missing = [
+        name for name, value in (
+            ("IOT_WIFI_SSID", ssid),
+            ("IOT_WIFI_PASSWORD", password),
+            ("IOT_TELEMETRY_SERVER_HOST", host),
+            ("TELEMETRY_API_KEY", api_key),
+        ) if not value
+    ]
     if missing:
         print(
             "Fehler: in .env fehlen: " + ", ".join(missing),
@@ -83,6 +91,7 @@ def main() -> int:
         f"const char *SERVER_HOST = {_c_string_literal(host)};",
         f"const uint16_t SERVER_PORT = {client_port};",
         f"const char *TELEMETRY_API_KEY = {key_decl};",
+        f"const char *ACTUATOR_HOST = {_c_string_literal(actuator_host)};",
         f"const bool SERVER_USE_HTTPS = {'true' if use_https else 'false'};",
         f"const bool SERVER_TLS_INSECURE = {'true' if tls_insecure else 'false'};",
         "#endif",
@@ -94,6 +103,8 @@ def main() -> int:
         root / "firmware" / "growroom_telemetry_client",
         root / "firmware" / "cyd_remote_control",
         root / "firmware" / "cyd_grow_display",
+        root / "firmware" / "powerbox_actuator",
+        root / "firmware" / "esp32_c3_power_controller",
     ]
     for d in sketch_dirs:
         if not d.is_dir():
@@ -101,6 +112,9 @@ def main() -> int:
             continue
         out = d / "device_secrets.h"
         out.write_text(body, encoding="utf-8")
+        # Generated secret contains actual credentials and must remain local.
+        if os.name == "posix":
+            out.chmod(0o600)
         print(f"OK: {out}")
 
     return 0
