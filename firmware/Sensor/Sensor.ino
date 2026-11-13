@@ -217,7 +217,7 @@ struct ActuatorState {
 ActuatorState targets;
 ActuatorState actual;
 uint32_t commandSeq = 0;
-static constexpr uint8_t DOSING_PUMP_COUNT = 6; // exakt 6
+static constexpr uint8_t DOSING_PUMP_COUNT = 5; // exakt 5, gemeinsam mit C3/Remote
 static constexpr uint16_t PUMP_PULSE_MAX_MS = 2000;
 static constexpr unsigned long C3_HEARTBEAT_TIMEOUT_MS = 8000UL;
 unsigned long lastC3StatusMs = 0;
@@ -813,8 +813,7 @@ static bool sameState(const ActuatorState &a, const ActuatorState &b) {
 }
 
 static void applyActuators() {
-  // C3-Kommunikation ist noch nicht implementiert. Sollwerte nur speichern,
-  // NIEMALS einen Pin des Sensor-ESP32 fuer einen Aktor schalten.
+  // Der C3 holt Sollwerte ueber HTTP ab. Keine Sensor-GPIOs fuer Aktoren.
   if (!sensors.dht[0].ok && targets.heater) {
     targets.heater = false;
     ++commandSeq;
@@ -1260,24 +1259,10 @@ static void handleControlTargets() {
 }
 static void handlePumpPulse() {
   if (!localAuthorized()) return sendUnauthorized();
-  if (strcmp(controlMode, "manual") != 0 || pumpServiceOff ||
-      !c3Connected() || !c3OutputsEnabled || c3Failsafe ||
-      c3PumpActive != 0 || pendingPumpIndex != 0)
-    return c3ApiError(409, "pump_interlock");
-  StaticJsonDocument<192> in;
-  if (deserializeJson(in, localServer.arg("plain")))
-    return c3ApiError(400, "bad_json");
-  const int index = in["pump"].as<int>();
-  const int duration = in["duration_ms"].as<int>();
-  if (index < 1 || index > DOSING_PUMP_COUNT ||
-      duration < 100 || duration > PUMP_PULSE_MAX_MS)
-    return c3ApiError(400, "invalid_pump_or_duration");
-  pendingPumpIndex = static_cast<uint8_t>(index);
-  pendingPumpDurationMs = static_cast<uint16_t>(duration);
-  pumpCommandMs = millis();
-  ++pumpCommandSeq;
-  localServer.send(200, "application/json",
-                   "{\"ok\":true,\"status\":\"queued_not_dosed\"}");
+  // The C3 does not yet process Sensor pump_seq/pump_index requests. Do not
+  // report a queued request as successful or set a pending command that is
+  // never acknowledged. Manual dosing is locked until integration + calibration.
+  c3ApiError(503, "dosing_not_implemented");
 }
 static void handleActuatorStatus() {
   if (!localAuthorized()) return sendUnauthorized();
