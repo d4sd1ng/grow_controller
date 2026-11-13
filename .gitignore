@@ -18,3 +18,14 @@ firmware/**/device_secrets.h
 growroom_pid.txt
 replit_zip_error_log.txt
 Textdokument (neu) (2).txt
+
+# Secrets are local only. Never put real credentials in a tracked file.
+**/.env
+**/.env.*
+!**/.env.example
+**/device_secrets.h
+**/secrets.h
+**/*.pem
+**/*.key
+**/credentials.json
+**/secrets.json
