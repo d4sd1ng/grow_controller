@@ -326,13 +326,20 @@ void pollSensor() {
 void sendStatus() {
   if (WiFi.status() != WL_CONNECTED || sensorIp == IPAddress(0,0,0,0) ||
       !TELEMETRY_API_KEY || !TELEMETRY_API_KEY[0]) return;
-  StaticJsonDocument<384> d;
+  // Contract: Sensor::handleActuatorStatus() requires pump_count and actual.
+  // Report real state only; pending sensor dosing commands are NOT implemented.
+  StaticJsonDocument<1024> d;
   d["device_id"] = "grow_power_c3_01";
-  d["firmware_version"] = "1.2.0";
+  d["firmware_version"] = "1.2.1";
+  d["pump_count"] = 5;
+  d["outputs_enabled"] = hardwareReady && outputsEnabled && !stoppedLatch;
+  d["pump_active"] = activeDose < 0 ? 0 : activeDose + 1;
+  d["pump_ack_seq"] = 0U;  // No dosing command acknowledged via sensor API.
   d["failsafe"] = !hardwareReady || !outputsEnabled || stoppedLatch ||
                     lastCommandMs == 0 || millis() - lastCommandMs > COMMAND_TIMEOUT_MS;
   JsonObject actual = d.createNestedObject("actual");
   for (int i = 0; i < 5; ++i) actual[SSR_KEY[i]] = ssr[i];
+  actual["lamp_cooling"] = false; // C3 firmware has no lamp-cooling driver.
   String body;
   serializeJson(d, body);
   HTTPClient http;
