@@ -47,7 +47,7 @@
  * Je Kanal zwei 220-Ohm-Widerstaende in Reihe (440 Ohm).
  * BLAU darf nur bei vom Leistungscontroller bestaetigter Pumpenabschaltung
  * waehrend Filterwartung leuchten. C3-Kommunikation fehlt noch:
- * B bleibt aktuell bewusst AUS; GPIO18-Taster ist noch nicht aktiv.
+ * B bleibt aktuell bewusst AUS; Wartungstaster ist GPIO19, nicht GPIO18.
  */
 #ifndef GROW_ENABLE_PHASE_RGB
 #define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode: LED gruen D4, rot D33; DS18B20 D23
