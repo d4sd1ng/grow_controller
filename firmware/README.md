@@ -1,92 +1,34 @@
-## Firmwarestand auf `main` (13.11.2026)
+# Grow Controller – Firmwarestruktur
 
-| Ordner | Stand | Funktion |
-|---|---|---|
-| `growroom_telemetry_client/` | Alter Repository-Stand, nicht als finale Sensorcontroller-Firmware verifiziert | Sensor- und Steuercontroller; keinesfalls automatisch mit alten Varianten ueberschreiben |
-| `cyd_grow_display/` | LVGL Remote, C3-Schnittstelle Stand 1.2 | Server-Messwerte, HEAT/CIRC/EXH, C3-Luefter 1/2, gesperrte Dosierimpulse, C3 STOP; keine LVGL-Bedienung fuer Wasserpumpe oder Wachstum/Bluete |
-| `esp32_c3_power_controller/` | C3-Firmware v1.2.0 mit PCA9685 | 5 SSR (inkl. Wasserpumpe vom Sensor-ESP), 6 Dosierpumpen, 2 Lueftergruppen, Watchdog und Status-API |
-| `cyd_remote_control/` | Historische Alternative, nicht die LVGL-Firmware | Nicht mit dem LVGL-Sketch verwechseln |
+Stand: 13.11.2026. **Drei getrennte Arduino-Sketches, eindeutige Namen.**
 
-**Integration nicht abschliessend nachgewiesen:** Der C3 liest `GET /api/local/actuators`
-auf dem Sensor-ESP (`grow-sensor.local:8081`). Diese Schnittstelle und das Feld
-`commands.water_pump` sind in der endgueltig verwendeten Sensor-Firmware noch
-gegenzupruefen. Sie wurde bewusst nicht durch eine aeltere Version ersetzt.
-Die LVGL-Remote liest Server-Telemetrie unter `/api/v1/mobile/summary`
-und den C3-Status direkt unter `/api/v1/actuator/state`.
+| Rolle | Firmware | Board | Status |
+| --- | --- | --- | --- |
+| Sensor | `firmware/Sensor/Sensor.ino` | ESP32-WROOM mit OLED, ADS1115, DHT22 und DS18B20 | Historisch aus PR #1 wiederhergestellt; Hardwarestand nicht erneut verifiziert |
+| Remote | `firmware/Remote/Remote.ino` | CYD ESP32-2432S028R mit LVGL 8.4 / TFT_eSPI | Neu strukturierte 320×240-Querformatoberfläche, Hardwaretest offen |
+| C3 | `firmware/C3/C3.ino` | ESP32-C3 SuperMini + PCA9685 | Hardwareausgänge gesperrt, fünf Dosierkanäle, Hardwaretest offen |
 
-Aus Sicherheitsgruenden sind `HARDWARE_OUTPUTS_ARMED=false` und die
-Dosiervorgabe `DOSER_UI_DURATION_MS=0`. Es wurden **kein Arduino-Compile,
-kein ESP32-Hardwaretest und kein Systemintegrationstest** durchgefuehrt.
+**Keine der drei Rollen darf eine Firmwaredatei einer anderen Rolle ersetzen.** Es gibt kein Installationsskript, das Dateien anderer Geräte überschreibt. Der Arduino-Sketchname entspricht immer dem jeweiligen Ordnernamen.
 
-# ESP32-Firmware (Growroom + portables CYD)
+## Wiederherstellung Sensor
 
-## Rollen
+`Sensor.ino` wurde aus dem letzten erhaltenen umfangreichen Sensor-Entwicklungsstand des geschlossenen, nicht gemergten PR #1 (Commit `48e2677dc9094118a16ebd9a58c9afefb57a5f9e`) wiederhergestellt, statt den veralteten Stand von `main` zu verwenden. Enthalten sind drei DHT22 (GPIO25/26/27), DS18B20 (GPIO23), ADS1115 (A0 pH / A1 TDS; I²C GPIO21/22), integriertes OLED, optionaler BH1750 (GPIO13/14), pH-/EC-Kalibrierbehandlung, Phasentaster GPIO16 und Wartungstaster GPIO19. Die lokale API auf Port 8081 bietet `/api/local/summary`, `/api/local/actuators` und weitere Funktionen. **Der Stand ist rekonstruiert, nicht auf realer Hardware als identisch mit der zuletzt installierten Firmware bestätigt.** Lokale, nicht in Git gespeicherte Änderungen und Kalibrierwerte lassen sich nicht aus GitHub rekonstruieren.
 
-| Gerät | Aufgabe |
-|-------|---------|
-| **Growroom-ESP** (fest, mit optionalem lokalem Display) | `GET /api/v1/control/state` → Relais am Hardware-GPIO. Sensoren messen; `POST /api/v1/telemetry` → Server/SQLite (Dashboard-Charts). Lokale Anzeige: z. B. dieselben Messwerte auf OLED/TFT oder wie im Sketch über **Serial**. |
-| **Cheap Yellow Display** (portable) | `cyd_remote_control`: **3 Tafeln** — links Relais, Mitte Werte + Alert-Liste, rechts Mini-Verläufe T/rH/VPD (Ringpuffer aus Polls). Alternativ: `cyd_grow_display` (kompakt). |
+## Remote
 
-**Server** (`run_telemetry_api.py` + optional Streamlit): eine SQLite-Datei — `app_control` (Modus + Relais-Soll), `readings`, `alerts_log`.
+`Remote.ino` ist die LVGL-Fernbedienung, keine Sensorfirmware. Querformat 320×240 mit separaten Ansichten für Werte, Klima, Lüfter und fünf Dosierpumpen. Die Gerätedaten werden aus `GET /api/v1/mobile/summary` gelesen, C3-Status aus `GET /api/v1/actuator/state`. `lv_label_set_text_static` wird nicht verwendet, um den nachgewiesenen LVGL-Absturz beim Punkte-Kürzungsmodus auszuschließen. Display wird beim Start vollständig gelöscht. Alle Dosieraktionen sind gesperrt. **Klima-/Lüfter-Schaltflächen bleiben deaktiviert, solange der Touchscreen nicht verifiziert ist** (`TOUCH_ACTUATION_VERIFIED=false`).
 
-- **Automatik**: Streamlit regelt Relais (wenn Tab läuft + Modus „auto“) und schreibt Soll in die DB.
-- **Manuell**: Soll kommt vom **CYD** oder Tastern im Dashboard; Growroom-ESP liest nur noch `control/state`.
+Die Datei `Remote/TFT_eSPI_User_Setup.h` ist eine *Referenzkonfiguration* für den im Sketch genannten CYD-Boardtyp. TFT_eSPI verwendet zur Kompilierzeit die globale `~/Arduino/libraries/TFT_eSPI/User_Setup.h` und nicht automatisch die Datei im Sketch-Ordner. Nicht blind auf andere Boards übertragen, nicht andere Sketches damit überschreiben. Die bereits lokal eingerichteten numerischen GPIOs überprüfen. Die Touch-Koordinaten sind noch nicht kalibriert.
 
-## Endpoints (Header `X-Telemetry-Key` wenn `TELEMETRY_API_KEY` gesetzt)
+## C3
 
-- `POST /api/v1/telemetry` — Messwerte (+ optional `relays`)
-- `GET /api/v1/control/state` — `{ control_mode, targets }`
-- `POST /api/v1/control/targets` — Teilupdate Relais → Modus **manual**
-- `POST /api/v1/control/mode` — `{"mode":"auto"|"manual"}`
-- `GET /api/v1/mobile/summary` — Steuerung + letzte Messung + Alert-Liste
-- `GET /api/v1/telemetry/series` — Zeitreihe aus SQLite (`minutes`, `hours`, `max_points`) für CYD-/Web-Charts
-- `GET /api/v1/alerts/recent` — nur Meldungen
-- `POST /api/v1/alerts` — Gerät kann Fehler an den Server melden (`message`, `severity`, `source`)
+Fünf 12-V-Dosierpumpen an PCA9685-Ausgängen 0–4 vorgesehen; PCA-Kanal 5 ist unbenutzt. Die beiden Lüftergruppen bleiben auf PCA-Kanälen 6 und 7. Die vorhandenen fünf SSR-Steuersignale bleiben im Code. `HARDWARE_OUTPUTS_ARMED=false`, alle Dosier-Maximalzeiten sind 0: Es erfolgen **keine** wirksamen Leistungsschaltungen vor gesonderter Hardwarevalidierung. Diese Dokumentation umfasst keine 230-V-Verdrahtung. Die C3-Firmware erwartet den Sensor unter `grow-sensor.local:8081`, die Abstimmung der APIs ist noch nicht auf Hardware bestätigt.
 
-## Sensible Konfiguration
+## Lokaler Update- und Build-Ablauf
 
-- **Nicht** WLAN-Passwort oder API-Key dauerhaft in den `.ino` im Repo pflegen.
-- Im Projektroot **`.env`** mit u. a. **`IOT_WIFI_SSID`**, **`IOT_WIFI_PASSWORD`**, **`IOT_TELEMETRY_SERVER_HOST`**, **`TELEMETRY_API_PORT`**, **`TELEMETRY_API_KEY`** (siehe `.env.example`).
-- **HTTPS** (VPS mit Reverse-Proxy): **`IOT_USE_HTTPS=1`**, optional **`IOT_TELEMETRY_SERVER_PORT=443`**, **`IOT_TLS_INSECURE=1`** für ESP ohne Zertifikatscheck (oder `0` + eigenes Root-CA im Code).
-- Dann: **`python export_firmware_secrets_from_env.py`** — schreibt **`device_secrets.h`** in jeden Sketch-Ordner (gitignored). HTTP(S) läuft über **`grow_http_client.h`**.
+1. Einmal den gewünschten Git-Branch beziehen; vor Änderungen `git status --short` prüfen. **Nicht** `git reset --hard` einsetzen, um lokale Dateien zu entfernen.
+2. Nur im Projektroot `python export_firmware_secrets_from_env.py` ausführen. Das erzeugt die ignorierten `device_secrets.h`-Dateien für `Sensor`, `Remote`, `C3`. Persönliche Zugangsdaten gehören weder ins Repository noch in Support-Ausgaben.
+3. In der Arduino IDE jeweils **genau eine** Datei öffnen: `Sensor.ino`, `Remote.ino` oder `C3.ino`; Board und Port entsprechend der realen Hardware wählen.
+4. Zuerst kompilieren und den seriellen Monitor prüfen; danach getrennt flashen und die Hardwarefunktion verifizieren. Keine automatisch ausführbaren Kopier-/Installationsskripte.
 
-## WLAN und API-Zugangsdaten ohne Git-Commit
-
-Die Git-Historie und Pull Requests duerfen keine Zugangsdaten enthalten.
-**Nie** echte SSIDs, WLAN-Passwoerter, API-Keys oder Tokens in .ino, .h,
-Markdown, Issues oder Pull Requests schreiben.
-
-1. Im Projektroot eine lokale Datei `.env` verwenden.
-   Wenn diese noch nicht existiert: `cp .env.example .env`
-   (eine vorhandene `.env` **nicht** ueberschreiben).
-2. Lokal `IOT_WIFI_SSID`, `IOT_WIFI_PASSWORD`,
-   `IOT_TELEMETRY_SERVER_HOST` und `TELEMETRY_API_KEY` setzen.
-   Den gleichen API-Key am Telemetrie-Server konfigurieren.
-3. `python export_firmware_secrets_from_env.py` im Projektroot ausfuehren.
-   Das erstellt `firmware/<sketch>/device_secrets.h` fuer bestehende Sketchordner.
-4. **Erst danach** den entsprechenden Arduino-Sketch kompilieren und flashen.
-   Ohne die generierte Headerdatei bricht die Kompilierung absichtlich ab.
-5. `.env` und `device_secrets.h` sind gitignored, bleiben lokal und duerfen
-   nicht in Pull Requests, Support-Tickets oder Chats kopiert werden.
-
-Achtung: Die Entfernung aus aktuellen Dateien entfernt fruehere Commits und
-GitHub-PR-Diffs nicht. Bereits veroeffentlichte Zugangsdaten sofort austauschen.
-Git-Verlauf und GitHub-Caches sind getrennt zu bereinigen.
-
-## Arduino IDE
-
-Sketch-Ordner = Dateiname des `.ino`.
-
-- **TFT_eSPI** + CYD-`User_Setup` (siehe [ESP32-Cheap-Yellow-Display](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)).
-- **cyd_remote_control**: zusätzlich **XPT2046_Touchscreen** (SPI-Touch). Die Konstanten `CAL_*` und ggf. XPT-Pins musst du einmal an dein Board anpassen (Kalibrier-Sketch aus dem CYD-Repo).
-- **ArduinoJson** v6.
-
-### Noch mehr „Grafik“?
-
-Auf dem CYD geht mit **TFT_eSPI** schon einiges (Rundungen, Farben, „LED“-Punkte, Layout wie oben). Wer **mehr UI** will (Screens, Slider, Animationen): **LVGL** mit Display-Treiber — deutlich mehr Flash/RAM, dafür echte GUI-Bausteine. Für eine Fernbedienung reicht oft TFT_eSPI + Touch wie im Remote-Sketch.
-
-```bash
-python run_telemetry_api.py
-```
-
-Firewall-Port **8765** (oder `TELEMETRY_API_PORT`) im LAN freigeben.
+**Teststatus:** Git-Dateikonsistenz und Schnittstellen sind textuell überprüft. Ein vollständiger Arduino-Compile, reale Touch-Kalibrierung, Sensor-Kalibrierung und integrierter Hardwaretest sind **nicht** nachgewiesen. Keine automatische Dosierung freigeben.

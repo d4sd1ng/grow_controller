@@ -1,3 +1,5 @@
+> **Aktualisiert am 13.11.2026:** Für Firmware nur noch `firmware/Sensor/Sensor.ino`, `firmware/Remote/Remote.ino`, `firmware/C3/C3.ino` verwenden. Siehe [Firmware-README](firmware/README.md). Alte Dateinamen in früheren Screenshots gelten nicht mehr.
+
 # Installation — Growroom Control System v2.0.0
 
 Diese Anleitung führt dich Schritt für Schritt durch die Installation. **Keine Programmier-Vorkenntnisse nötig.** Wenn ein Begriff unklar ist, schau ins Glossar am Ende.
@@ -291,9 +293,8 @@ python export_firmware_secrets_from_env.py
 
 Erwartete Ausgabe:
 ```
-OK: E:\Documents\grow_controller\firmware\growroom_telemetry_client\device_secrets.h
-OK: E:\Documents\grow_controller\firmware\cyd_remote_control\device_secrets.h
-OK: E:\Documents\grow_controller\firmware\cyd_grow_display\device_secrets.h
+OK: E:\Documents\grow_controller\firmware\Sensor\device_secrets.h
+OK: E:\Documents\grow_controller\firmware\Remote\device_secrets.h
 ```
 
 Dieser Befehl erstellt drei Dateien namens `device_secrets.h` — eine für jeden ESP32-Sketch. Diese Datei enthält:
@@ -434,14 +435,14 @@ Du siehst:
 > **Wichtig vor dem Hochladen:**
 > - `device_secrets.h` muss im Sketch-Ordner vorhanden sein (wurde in Schritt 5 generiert). Ohne diese Datei kompiliert der Sketch zwar, verwendet aber Dummy-Werte (`YOUR_SSID`, `192.168.1.50`) und kann sich nicht verbinden.
 > - `grow_http_client.h` muss ebenfalls im selben Ordner wie die `.ino`-Datei liegen.
-> - **Für das CYD-Display (`cyd_grow_display`)**: Die Bibliothek **TFT_eSPI** muss zusätzlich installiert und für das CYD-Board konfiguriert sein (Pin-Mapping in `User_Setup.h` oder `platformio.ini`). Siehe Header-Kommentar in `cyd_grow_display.ino`.
+> - **Für das CYD-Display (`Remote`)**: Die Bibliothek **TFT_eSPI** muss zusätzlich installiert und für das CYD-Board konfiguriert sein (Pin-Mapping in `User_Setup.h` oder `platformio.ini`). Siehe Header-Kommentar in `Remote.ino`.
 
 ### Sketch öffnen
 
 1. Arduino IDE öffnen
 2. Datei → Öffnen
-3. Navigiere zu: `Documents\grow_controller\firmware\growroom_telemetry_client`
-4. Wähle `growroom_telemetry_client.ino`
+3. Navigiere zu: `Documents\grow_controller\firmware\Sensor`
+4. Wähle `Sensor.ino`
 
 ### Board einstellen
 

@@ -1,3 +1,5 @@
+> **HISTORISCHES DOKUMENT:** Frühere Firmware-Namen, Hardwareannahmen und Statusangaben sind archiviert und nicht der aktuelle Stand. Verbindliche Verzeichnisstruktur: [firmware/README.md](firmware/README.md) (`Sensor`, `Remote`, `C3`).
+
 # Current State — Growroom Control System
 
 **Stand**: 2026-04-25 (nach Session-Rücksetzung)

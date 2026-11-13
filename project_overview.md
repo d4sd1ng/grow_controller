@@ -1,5 +1,7 @@
 # Project Overview — Growroom Control System
 
+**Aktueller Firmwarestand (13.11.2026):** [firmware/README.md](firmware/README.md). Historische Architekturtexte unterhalb dieses Hinweises können veraltet sein.
+
 ## 1. Projekt-Zweck
 Autonome Steuerung eines Indoor-Growrooms mittels ESP32-Mikrocontroller, Sensoren und Relais. Visualisierung und Fernsteuerung über ein Python-basiertes Web-Dashboard. Mobile Überwachung via Cheap Yellow Display (CYD).
 
@@ -7,7 +9,7 @@ Autonome Steuerung eines Indoor-Growrooms mittels ESP32-Mikrocontroller, Sensore
 
 | Komponente | Technologie | Funktion |
 |-----------|-------------|----------|
-| **Growroom-ESP** | ESP32-WROOM-32D + SSD1306 OLED | Lokale Steuerzentrale: Sensor-Lesung, Regelung, Relais-Schaltung, OLED-Anzeige, Telemetry-Sendung |
+| **Sensor** | ESP32-WROOM + SSD1306 OLED | Sensoren, Kalibrierung, Telemetrie und lokale Aktor-Sollwert-API; keine direkten SSR-Lastpins |
 | **CYD** | ESP32-2432S028R (2.8" TFT + Touch) | Mobile Fernbedienung und Systemmonitor mit LVGL v8 |
 | **Server** | Python (FastAPI + Streamlit + SQLite) | Dashboard, API, Datenbank, Alert-Management |
 
@@ -67,18 +69,16 @@ grow_controller/
 ├── requirements.txt              # Python-Abhängigkeiten
 │
 ├── firmware/
-│   ├── growroom_telemetry_client/
-│   │   ├── growroom_telemetry_client.ino   # ESP32 Steuerzentrale + OLED
-│   │   └── grow_http_client.h              # HTTP-Helper (GET/POST)
-│   │
-│   ├── cyd_grow_display/
-│   │   ├── cyd_grow_display.ino            # CYD mit LVGL v8
-│   │   └── lv_conf.h                       # LVGL-Konfiguration
-│   │
-│   └── cyd_remote_control/
-│       ├── cyd_remote_control.ino          # CYD als Fernbedienung (TFT_eSPI)
-│       └── grow_http_client.h              # HTTP-Helper
-│
+│   ├── Sensor/
+│   │   ├── Sensor.ino
+│   │   └── grow_http_client.h
+│   ├── Remote/
+│   │   ├── Remote.ino
+│   │   ├── lv_conf.h
+│   │   ├── grow_http_client.h
+│   │   └── TFT_eSPI_User_Setup.h
+│   └── C3/
+│       └── C3.ino
 └── docs/                         # (leer — reserved)
 ```
 

@@ -1,3 +1,5 @@
+> **HISTORISCHES DOKUMENT:** Frühere Firmware-Namen, Hardwareannahmen und Statusangaben sind archiviert und nicht der aktuelle Stand. Verbindliche Verzeichnisstruktur: [firmware/README.md](firmware/README.md) (`Sensor`, `Remote`, `C3`).
+
 # Decision Log — Growroom Control System
 
 ## Format

@@ -1,5 +1,5 @@
 /*
- Grow Controller - ESP32-C3 SuperMini - Aktor-Firmware 1.2
+ Grow Controller - C3 SuperMini - Aktor-Firmware 1.2.1 (5 dosing channels)
  Kein OLED. Kein Sensor-Eingriff. Die Leistungsausgaenge sind bis zur
  Hardware-Freigabe standardmaessig elektronisch gesperrt.
 
@@ -37,7 +37,7 @@ const char *TELEMETRY_API_KEY = "";
 // Freigabe nach Plausibilisierung der Kleinspannungsplatine, nicht vorher.
 static constexpr bool HARDWARE_OUTPUTS_ARMED = false;
 // Keine Dosierdauer ohne pumpenspezifische Kalibrierung festlegen.
-static constexpr uint32_t MAX_DOSE_MS[6] = {0, 0, 0, 0, 0, 0};
+static constexpr uint32_t MAX_DOSE_MS[5] = {0, 0, 0, 0, 0};
 static constexpr int8_t PIN_SSR[5] = {0, 1, 3, 4, 5};
 static constexpr const char *SSR_KEY[5] = {
   "light", "exhaust_vent", "circulation_vent", "heater", "water_pump"
@@ -46,7 +46,7 @@ static constexpr uint8_t PIN_I2C_SDA = 7;
 static constexpr uint8_t PIN_I2C_SCL = 10;
 static constexpr uint8_t PIN_PCA_OE = 20;  // PCA9685 /OE, HIGH = deaktiviert
 static constexpr uint8_t PCA_ADDR = 0x40;
-static constexpr uint8_t PCA_DOSE_FIRST = 0;  // PWM-Ausgaenge 0-5: 6 Dosierstufen
+static constexpr uint8_t PCA_DOSE_FIRST = 0;  // PCA OUT0..4: 5 Dosierpumpen, OUT5 ungenutzt
 static constexpr uint8_t PCA_FAN_FIRST = 6;   // PWM-Ausgaenge 6-7: 2 Lueftergruppen
 static constexpr uint32_t COMMAND_TIMEOUT_MS = 10000UL;
 static constexpr uint32_t SENSOR_POLL_MS = 1000UL;
@@ -137,7 +137,7 @@ bool writeOutputPca(uint8_t channel, bool value) {
 }
 void stopDose() {
   if (doseGuardTimer) esp_timer_stop(doseGuardTimer);
-  if (activeDose >= 0 && activeDose < 6 && pcaAvailable) {
+  if (activeDose >= 0 && activeDose < 5 && pcaAvailable) {
     if (!setPcaChannel(PCA_DOSE_FIRST + uint8_t(activeDose), false)) {
       faultStop("Dose OFF I2C");
       return;
@@ -190,7 +190,7 @@ void stateApi() {
   if (!keyOkay()) return;
   StaticJsonDocument<1024> d;
   d["ok"] = true;
-  d["firmware"] = "c3-1.2.0-pca9685";
+  d["firmware"] = "c3-1.2.1-pca9685-5ch";
   d["hardware_ready"] = hardwareReady && outputsEnabled;
   d["hardware_config_valid"] = hardwareReady;
   d["pca9685_detected"] = pcaAvailable;
@@ -204,7 +204,7 @@ void stateApi() {
   f["fan_group_2"] = fans[1];
   JsonObject p = d.createNestedObject("dosing");
   p["active_pump"] = activeDose < 0 ? 0 : activeDose + 1;
-  p["channel_count"] = 6;
+  p["channel_count"] = 5;
   JsonArray limits = p.createNestedArray("max_duration_ms");
   for (uint32_t v : MAX_DOSE_MS) limits.add(v);
   String out;
@@ -248,7 +248,7 @@ void doseApi() {
     return replyError(422, "invalid_fields");
   const int pump = obj["pump"].as<int>();
   const uint32_t duration = obj["duration_ms"].as<uint32_t>();
-  if (pump < 1 || pump > 6 || duration == 0 ||
+  if (pump < 1 || pump > 5 || duration == 0 ||
       MAX_DOSE_MS[pump - 1] == 0 || duration > MAX_DOSE_MS[pump - 1])
     return replyError(422, "dose_not_calibrated_or_out_of_range");
   if (activeDose >= 0) return replyError(409, "another_pump_active");

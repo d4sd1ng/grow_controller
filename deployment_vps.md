@@ -1,3 +1,5 @@
+> **Firmwarestand 13.11.2026:** Der Sensor-Sketch ist jetzt `firmware/Sensor/Sensor.ino` (siehe [Firmware-README](firmware/README.md)).
+
 
 # Deployment auf Raspberry Pi v2.0.0 — Anleitung für Anfänger
 
@@ -432,7 +434,7 @@ scp pi@192.168.178.50:~/grow_controller/.env C:\Users\DeinName\Documents\grow_co
 ### 8.2 Arduino IDE
 
 1. Öffne Arduino IDE auf deinem PC
-2. Öffne den Sketch: `firmware/growroom_telemetry_client/growroom_telemetry_client.ino`
+2. Öffne den Sketch: `firmware/Sensor/Sensor.ino`
 3. Prüfe, ob `device_secrets.h` im gleichen Ordner liegt
 4. Stelle sicher, dass die Werte in `device_secrets.h` stimmen:
    - `SERVER_HOST` = IP des Pi (z.B. `192.168.178.50`)
