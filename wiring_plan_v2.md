@@ -1,3 +1,5 @@
+> **VERALTET / NICHT ALS PINOUT VERWENDEN (13.11.2026):** Dieses Dokument enthaelt fruehere, widerspruechliche GPIO-Zuordnungen und eine nicht mehr gueltige Architektur. Die letzte dokumentierte Sensor-Pinbelegung steht unter [firmware/Sensor/PINOUT.md](firmware/Sensor/PINOUT.md). Keine Leitungen nach dieser Datei umstecken oder Firmware danach flashen.
+
 # Wiringplan V2 — Grow Controller
 
 Stand: 2026-10-06
