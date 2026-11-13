@@ -218,6 +218,8 @@ static void fetchC3State() {
     lv_label_set_text_static(lbl_dosers, "P1-P6 bereit (nur kalibrierte Impulse)");
 }
 
+bool httpPostJson(const char *path, const String &jsonBody);
+
 static void btnToggleRelay(lv_event_t *e) {
   lv_obj_t *btn = lv_event_get_target(e);
   const char *key = (const char *)lv_obj_get_user_data(btn);
@@ -422,7 +424,7 @@ void build_ui() {
 
   btn_heater = lv_btn_create(btn_cont);
   lv_obj_set_size(btn_heater, 88, 34);
-  l = lv_label_create(btn_heater);
+  lv_obj_t *l = lv_label_create(btn_heater);
   lv_label_set_text_static(l, "HEAT");
   lv_obj_center(l);
   lv_obj_set_user_data(btn_heater, (void *)"heater");
