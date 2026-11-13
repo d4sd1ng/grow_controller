@@ -62,7 +62,8 @@
 #if __has_include("device_secrets.h")
 #include "device_secrets.h"
 #else
-#error "device_secrets.h missing; run python export_firmware_secrets_from_env.py from the repository root"\n#endif
+#error "device_secrets.h missing; run python export_firmware_secrets_from_env.py from the repository root"
+#endif
 
 #include "grow_http_client.h"
 
