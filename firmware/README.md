@@ -30,6 +30,29 @@
 - **HTTPS** (VPS mit Reverse-Proxy): **`IOT_USE_HTTPS=1`**, optional **`IOT_TELEMETRY_SERVER_PORT=443`**, **`IOT_TLS_INSECURE=1`** für ESP ohne Zertifikatscheck (oder `0` + eigenes Root-CA im Code).
 - Dann: **`python export_firmware_secrets_from_env.py`** — schreibt **`device_secrets.h`** in jeden Sketch-Ordner (gitignored). HTTP(S) läuft über **`grow_http_client.h`**.
 
+## WLAN und API-Zugangsdaten ohne Git-Commit
+
+Die Git-Historie und Pull Requests duerfen keine Zugangsdaten enthalten.
+**Nie** echte SSIDs, WLAN-Passwoerter, API-Keys oder Tokens in .ino, .h,
+Markdown, Issues oder Pull Requests schreiben.
+
+1. Im Projektroot eine lokale Datei `.env` verwenden.
+   Wenn diese noch nicht existiert: `cp .env.example .env`
+   (eine vorhandene `.env` **nicht** ueberschreiben).
+2. Lokal `IOT_WIFI_SSID`, `IOT_WIFI_PASSWORD`,
+   `IOT_TELEMETRY_SERVER_HOST` und `TELEMETRY_API_KEY` setzen.
+   Den gleichen API-Key am Telemetrie-Server konfigurieren.
+3. `python export_firmware_secrets_from_env.py` im Projektroot ausfuehren.
+   Das erstellt `firmware/<sketch>/device_secrets.h` fuer bestehende Sketchordner.
+4. **Erst danach** den entsprechenden Arduino-Sketch kompilieren und flashen.
+   Ohne die generierte Headerdatei bricht die Kompilierung absichtlich ab.
+5. `.env` und `device_secrets.h` sind gitignored, bleiben lokal und duerfen
+   nicht in Pull Requests, Support-Tickets oder Chats kopiert werden.
+
+Achtung: Die Entfernung aus aktuellen Dateien entfernt fruehere Commits und
+GitHub-PR-Diffs nicht. Bereits veroeffentlichte Zugangsdaten sofort austauschen.
+Git-Verlauf und GitHub-Caches sind getrennt zu bereinigen.
+
 ## Arduino IDE
 
 Sketch-Ordner = Dateiname des `.ino`.
