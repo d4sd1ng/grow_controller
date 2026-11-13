@@ -21,8 +21,9 @@
 #if __has_include("device_secrets.h")
 #include "device_secrets.h"
 #else
-const char *WIFI_SSID = "YOUR_SSID";
-const char *WIFI_PASS = "YOUR_PASSWORD";
+#error "Credentials missing: fill local .env and run python export_firmware_secrets_from_env.py"
+const char *WIFI_SSID = "";
+const char *WIFI_PASS = "";
 const char *SERVER_HOST = "192.168.1.50";
 const uint16_t SERVER_PORT = 8765;
 const char *TELEMETRY_API_KEY = "";
