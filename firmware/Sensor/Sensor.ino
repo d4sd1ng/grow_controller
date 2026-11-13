@@ -217,7 +217,7 @@ struct ActuatorState {
 ActuatorState targets;
 ActuatorState actual;
 uint32_t commandSeq = 0;
-static constexpr uint8_t DOSING_PUMP_COUNT = 6; // exakt 6
+static constexpr uint8_t DOSING_PUMP_COUNT = 5; // exakt 5, gemeinsam mit C3/Remote
 static constexpr uint16_t PUMP_PULSE_MAX_MS = 2000;
 static constexpr unsigned long C3_HEARTBEAT_TIMEOUT_MS = 8000UL;
 unsigned long lastC3StatusMs = 0;
