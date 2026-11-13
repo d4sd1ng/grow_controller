@@ -50,6 +50,19 @@ def get_grow_data_db_path() -> str | Path:
     return p
 
 
+def get_grow_database_backend() -> str:
+    """Select 'postgres' for the Raspberry Pi; 'sqlite' remains for local tests."""
+    backend = os.environ.get("GROW_DB_BACKEND", "sqlite").strip().lower()
+    if backend not in ("postgres", "sqlite"):
+        raise ValueError("GROW_DB_BACKEND must be 'postgres' or 'sqlite'")
+    return backend
+
+
+def get_grow_postgres_dsn() -> str:
+    """Connection URI is kept exclusively in the untracked local .env."""
+    return os.environ.get("GROW_POSTGRES_DSN", "").strip()
+
+
 def get_grow_data_retention_days() -> int:
     v = os.environ.get("GROW_DATA_RETENTION_DAYS", "90").strip()
     try:
