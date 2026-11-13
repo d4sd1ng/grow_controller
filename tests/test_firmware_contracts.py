@@ -34,7 +34,9 @@ class FirmwareContractTests(unittest.TestCase):
                 "PIN_ONEWIRE": 23, "PIN_PHASE_BUTTON": 16,
                 "PIN_PUMP_SERVICE_BUTTON": 19,
                 "PIN_I2C_SDA": 21, "PIN_I2C_SCL": 22,
-                "PIN_BH_SDA": 13, "PIN_BH_SCL": 14}
+                "PIN_BH_SDA": 13, "PIN_BH_SCL": 14,
+                "PIN_RGB_RED": 33, "PIN_RGB_GREEN": 4,
+                "PIN_RGB_BLUE": 17, "PIN_PH_BUZZER": 5}
         for name, pin in pins.items():
             with self.subTest(pin=name):
                 self.assertRegex(self.sensor, rf"\b{name}\s*=\s*{pin}\s*;")
