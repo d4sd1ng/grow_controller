@@ -72,7 +72,7 @@ CREATE INDEX IF NOT EXISTS idx_alerts_ts ON alerts_log(ts);
 
 _RELAY_COLS = ("heater", "circulation_vent", "exhaust_vent", "pump")
 
-_shared_production_store: TelemetryStore | None = None
+_shared_production_store: Any | None = None
 
 
 def _ts_iso(value: Any) -> str:
@@ -368,14 +368,36 @@ class TelemetryStore:
         ]
 
 
-def get_shared_telemetry_store() -> TelemetryStore:
-    """One DB handle for Streamlit + telemetry_api in the same process (default deploy)."""
+def get_shared_telemetry_store() -> Any:
+    """Select the data backend explicitly; PostgreSQL is used on the Raspberry Pi.
+
+    Existing SQLite dev/test instances remain supported for backward compatibility.
+    """
+
     global _shared_production_store
     if _shared_production_store is None:
-        from env_config import get_grow_data_db_path, get_grow_data_retention_days
-
-        _shared_production_store = TelemetryStore(
-            get_grow_data_db_path(),
-            get_grow_data_retention_days(),
+        from env_config import (
+            get_grow_data_db_path,
+            get_grow_data_retention_days,
+            get_grow_database_backend,
+            get_grow_postgres_dsn,
         )
+
+        if get_grow_database_backend() == "postgres":
+            from postgres_telemetry_store import PostgresTelemetryStore
+
+            dsn = get_grow_postgres_dsn()
+            if not dsn:
+                raise RuntimeError(
+                    "GROW_POSTGRES_DSN is required for GROW_DB_BACKEND=postgres; "
+                    "refusing to fall back to SQLite."
+                )
+            _shared_production_store = PostgresTelemetryStore(
+                dsn, get_grow_data_retention_days()
+            )
+        else:
+            _shared_production_store = TelemetryStore(
+                get_grow_data_db_path(),
+                get_grow_data_retention_days(),
+            )
     return _shared_production_store
