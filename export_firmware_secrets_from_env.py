@@ -100,11 +100,9 @@ def main() -> int:
     body = "\n".join(lines)
 
     sketch_dirs = [
-        root / "firmware" / "growroom_telemetry_client",
-        root / "firmware" / "cyd_remote_control",
-        root / "firmware" / "cyd_grow_display",
-        root / "firmware" / "powerbox_actuator",
-        root / "firmware" / "esp32_c3_power_controller",
+        root / "firmware" / "Sensor",
+        root / "firmware" / "Remote",
+        root / "firmware" / "C3",
     ]
     for d in sketch_dirs:
         if not d.is_dir():
