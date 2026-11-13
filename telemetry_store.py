@@ -384,14 +384,14 @@ def get_shared_telemetry_store() -> Any:
         )
 
         if get_grow_database_backend() == "postgres":
-            from postgres_telemetry_store import PostgresTelemetryStore
-
             dsn = get_grow_postgres_dsn()
             if not dsn:
                 raise RuntimeError(
                     "GROW_POSTGRES_DSN is required for GROW_DB_BACKEND=postgres; "
                     "refusing to fall back to SQLite."
                 )
+            from postgres_telemetry_store import PostgresTelemetryStore
+
             _shared_production_store = PostgresTelemetryStore(
                 dsn, get_grow_data_retention_days()
             )
