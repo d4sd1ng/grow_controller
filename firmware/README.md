@@ -1,3 +1,23 @@
+## Firmwarestand auf `main` (13.11.2026)
+
+| Ordner | Stand | Funktion |
+|---|---|---|
+| `growroom_telemetry_client/` | Alter Repository-Stand, nicht als finale Sensorcontroller-Firmware verifiziert | Sensor- und Steuercontroller; keinesfalls automatisch mit alten Varianten ueberschreiben |
+| `cyd_grow_display/` | LVGL Remote, C3-Schnittstelle Stand 1.2 | Server-Messwerte, HEAT/CIRC/EXH, C3-Luefter 1/2, gesperrte Dosierimpulse, C3 STOP; keine LVGL-Bedienung fuer Wasserpumpe oder Wachstum/Bluete |
+| `esp32_c3_power_controller/` | C3-Firmware v1.2.0 mit PCA9685 | 5 SSR (inkl. Wasserpumpe vom Sensor-ESP), 6 Dosierpumpen, 2 Lueftergruppen, Watchdog und Status-API |
+| `cyd_remote_control/` | Historische Alternative, nicht die LVGL-Firmware | Nicht mit dem LVGL-Sketch verwechseln |
+
+**Integration nicht abschliessend nachgewiesen:** Der C3 liest `GET /api/local/actuators`
+auf dem Sensor-ESP (`grow-sensor.local:8081`). Diese Schnittstelle und das Feld
+`commands.water_pump` sind in der endgueltig verwendeten Sensor-Firmware noch
+gegenzupruefen. Sie wurde bewusst nicht durch eine aeltere Version ersetzt.
+Die LVGL-Remote liest Server-Telemetrie unter `/api/v1/mobile/summary`
+und den C3-Status direkt unter `/api/v1/actuator/state`.
+
+Aus Sicherheitsgruenden sind `HARDWARE_OUTPUTS_ARMED=false` und die
+Dosiervorgabe `DOSER_UI_DURATION_MS=0`. Es wurden **kein Arduino-Compile,
+kein ESP32-Hardwaretest und kein Systemintegrationstest** durchgefuehrt.
+
 # ESP32-Firmware (Growroom + portables CYD)
 
 ## Rollen
