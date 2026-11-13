@@ -44,6 +44,8 @@
 #define LV_USE_SWITCH           0
 #define LV_USE_CHECKBOX         0
 #define LV_USE_IMG              0
+// Canvas derives from lv_img_t; both must be disabled together in LVGL v8.
+#define LV_USE_CANVAS           0
 #define LV_USE_CALENDAR         0
 #define LV_USE_CHART            0
 #define LV_USE_COLORWHEEL       0
