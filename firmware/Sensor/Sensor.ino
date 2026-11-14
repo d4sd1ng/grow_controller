@@ -524,7 +524,7 @@ static void loadPhaseClock() {
       targets = ActuatorState{};
       pumpServiceOff = true;
     }
-    Serial.printf("DURCHLAUF: UTC-Start %lu; Status %s\\n",
+    Serial.printf("DURCHLAUF: UTC-Start %lu; Status %s\n",
                   static_cast<unsigned long>(saved), stopped ? "STOP" : "aktiv");
   } else Serial.println(F("DURCHLAUF: Startdatum nicht konfiguriert."));
   refreshPhaseRgb();
@@ -537,7 +537,7 @@ static bool setGrowWeekManually(int week) {
   const uint32_t start = static_cast<uint32_t>(now) - elapsed;
   if (!setPhaseClockEpoch(start)) return false;
   const bool saved = setGrowWeek(week);
-  if (saved) Serial.printf("DURCHLAUF: Woche %d manuell gestartet\\n", week);
+  if (saved) Serial.printf("DURCHLAUF: Woche %d manuell gestartet\n", week);
   return saved;
 }
 static void stopCompletedCycle() {
@@ -586,7 +586,7 @@ static void pollPhaseClock() {
     }
     targets = ActuatorState{};
     ++commandSeq;
-    Serial.printf("AUTOMATISCHER PHASENWECHSEL: %s | NVS: %s\\n",
+    Serial.printf("AUTOMATISCHER PHASENWECHSEL: %s | NVS: %s\n",
                   phaseName(growPhase), saved ? "OK" : "FEHLER");
     refreshPhaseRgb();
   }
@@ -1317,7 +1317,10 @@ static void readSensors() {
 /* ---------- Steuerung ---------- */
 
 static void autoControl() {
-  if (cycleStopped || !phaseStartEpoch || !validatedUtcNow()) {
+  const time_t nowUtc = validatedUtcNow();
+  const bool pastEnd = phaseStartEpoch && nowUtc &&
+      grow_clock::evaluateCycle(phaseStartEpoch, static_cast<uint32_t>(nowUtc)).finished;
+  if (cycleStopped || pastEnd || !phaseStartEpoch || !nowUtc) {
     if (!sameState(targets, ActuatorState{})) ++commandSeq;
     targets = ActuatorState{};
     return;
@@ -1947,7 +1950,8 @@ static void drawOled() {
   display.setTextColor(SSD1306_WHITE);
 
   display.setCursor(0, 0);
-  display.print(growPhase == GrowPhase::Wuchs ? F("WUCHS") : F("BLUETE"));
+  if (cycleStopped) display.print(F("STOPP"));
+  else display.print(growPhase == GrowPhase::Wuchs ? F("WUCHS") : F("BLUETE"));
   if (growWeek) display.printf(" W%u", growWeek);
   else display.print(F(" W?"));
   if (!phaseProfile().configured) display.print(F(" !"));
@@ -2066,6 +2070,7 @@ void setup() {
 
   readSensors();
   lastSensorRead = millis();
+  pollPhaseClock(); // Laufzeit-Grenzen vor dem ersten automatischen Schaltkommando pruefen.
   autoControl();
   applyActuators();
   setupLocalApi();
