@@ -250,7 +250,8 @@ static bool c3Connected() {
 char controlMode[8] = "auto";
 
 
-/* Ein rastfreier Schliesser D19-GND, eine 4-Pin-RGB-LED.
+/* Zwei rastfreie Schliesser: Phase D16-GND, Pumpenwartung D19-GND;
+ * eine 4-Pin-RGB-LED.
  * Gruen (D4) = Wuchs, Rot+Gruen (D33+D4) = Bluete (Gelb).
  * Jeder Farbkanal hat zwei 220-Ohm-Widerstaende in Reihe (440 Ohm).
  * Gemeinsame Kathode an GND (bestaetigt).
@@ -553,7 +554,9 @@ static void pollPhaseClock() {
 static const char *phaseClockStatus() {
   if (phaseClockPending) return "waiting_for_ntp";
   if (!phaseStartEpoch) return "start_not_set";
-  if (!validatedUtcNow()) return "clock_unavailable";
+  const time_t now = validatedUtcNow();
+  if (!now) return "clock_unavailable";
+  if (now < static_cast<time_t>(phaseStartEpoch)) return "clock_before_phase_start";
   if (phaseDurationElapsed) return "duration_elapsed";
   return "running";
 }
@@ -1613,7 +1616,7 @@ static void handleGrowPhase() {
   }
   const GrowPhase next = strcmp(requested, "bluete") == 0
       ? GrowPhase::Bluete : GrowPhase::Wuchs;
-  // Unveraenderte, bereits vom D19-Taster verwendete Phasenfunktion.
+  // Dieselbe Phasenfunktion wie am D16-Taster.
   setGrowPhase(next);
   // Nur dann Erfolg melden, wenn der gewaehlte Zustand auch in NVS steht.
   Preferences prefs;
@@ -1682,7 +1685,11 @@ static void handlePhaseClock() {
   uint32_t start = 0;
   if (input["start_now"].as<bool>() && input.size() == 1) {
     start = static_cast<uint32_t>(now);
-  } else if (input["start_unix"].is<unsigned long>() && input.size() == 1) {
+  } else if (input.size() == 1 && input.containsKey("start_unix") &&
+             (input["start_unix"].is<int>() ||
+              input["start_unix"].is<long>() ||
+              input["start_unix"].is<unsigned int>() ||
+              input["start_unix"].is<unsigned long>())) {
     start = input["start_unix"].as<uint32_t>();
   } else {
     return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"start_now_or_start_unix_required\"}");
