@@ -94,6 +94,7 @@ static bool waterPumpState = false;
 static int activeDoser = 0;
 static bool pumpServiceOff = true;
 static bool pumpServiceOffConfirmed = false;
+static bool cycleStopped = true;
 static uint32_t lastSummary = 0;
 static uint32_t lastC3 = 0;
 static uint32_t lastWifiTry = 0;
@@ -230,7 +231,8 @@ void updateControls() {
     textIfChanged(fanValues[i], c3Online ? (fanStates[i] ? "EIN" : "AUS") : "--");
   }
   textIfChanged(c3Info, !c3Online ? "C3: offline / nicht konfiguriert" :
-               (c3HardwareReady ? "C3: online / freigegeben" : "C3: online / gesperrt"));
+               (cycleStopped ? "Durchlauf STOPP" :
+                (c3HardwareReady ? "C3: online / freigegeben" : "C3: online / gesperrt")));
   setButtonEnabled(stopButton, c3Online);
   for (int i = 0; i < PUMP_COUNT; ++i) {
     char label[32];
@@ -439,15 +441,17 @@ void fetchSummary() {
   updateReadingLabel(homeValues[2], reading["ph"], "%.2f");
   updateReadingLabel(homeValues[3], reading["ec"], "%.2f mS");
 
+  const bool runComplete = reading["extras"]["cycle_stopped"] | false;
   const char *phase = reading["extras"]["phase"] | "";
   const unsigned week = reading["extras"]["grow_week"] | 0U;
   char status[104];
-  if (week >= 1U && week <= 13U && strcmp(phase, "wuchs") == 0)
+  if (runComplete) textIfChanged(homeMode, "STOPP");
+  else if (week >= 1U && week <= 13U && strcmp(phase, "wuchs") == 0)
     snprintf(status, sizeof(status), "W%u Wuchs", week);
   else if (week >= 1U && week <= 13U && strcmp(phase, "bluete") == 0)
     snprintf(status, sizeof(status), "W%u Bluete", week);
   else textIfChanged(homeMode, "Woche: --");
-  if (week >= 1U && week <= 13U &&
+  if (!runComplete && week >= 1U && week <= 13U &&
       (!strcmp(phase, "wuchs") || !strcmp(phase, "bluete")))
     textIfChanged(homeMode, status);
   // Die Telemetrie-API speichert zusaetzliche Sensorfelder in reading.extras.
@@ -516,6 +520,7 @@ void fetchC3() {
   fanStates[0] = doc["fans"]["fan_group_1"] | false;
   fanStates[1] = doc["fans"]["fan_group_2"] | false;
   activeDoser = doc["dosing"]["active_pump"] | 0;
+  cycleStopped = doc["cycle_stopped"] | true;
   pumpServiceOff = doc["pump_service_off"] | true;
   pumpServiceOffConfirmed = doc["pump_service_off_confirmed"] | false;
   updateControls();
