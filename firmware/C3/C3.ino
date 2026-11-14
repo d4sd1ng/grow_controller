@@ -69,6 +69,8 @@ uint32_t lastSensorPoll = 0;
 uint32_t lastStatusPost = 0;
 uint32_t lastWifiAttempt = 0;
 bool sensorWaterPumpField = false;
+bool pumpServiceOff = true;  // Nach Neustart pumpenseitig gesperrt
+bool pumpServiceOffConfirmed = false; // nur Software-Rueckmeldung, KEINE elektrische Trennung
 // Der Timer laeuft unabhaengig von HTTP-Aufrufen: ein haengender Netzwerk-Request
 // darf den DOSIERIMPULS NICHT verlaengern. Nach Ablauf sperrt der Timer OE.
 esp_timer_handle_t doseGuardTimer = nullptr;
@@ -106,6 +108,7 @@ bool initPca() {
 void shutAllOutputs() {
   digitalWrite(PIN_PCA_OE, HIGH);
   outputsEnabled = false;
+  pumpServiceOffConfirmed = false;
   if (doseGuardTimer) esp_timer_stop(doseGuardTimer);
   doseGuardExpired = false;
   for (int i = 0; i < 5; ++i) {
@@ -154,6 +157,26 @@ void stopDose() {
     }
   }
 }
+// Pumpenausgaenge abschalten und Schreibbestaetigung vom PCA9685 erhalten.
+// Keine Aussage zur Spannungsfreiheit an Motoren oder Netzstromleitungen.
+bool lockPumpChannels() {
+  if (activeDose >= 0) stopDose();
+  if (!pcaAvailable || stoppedLatch) {
+    pumpServiceOffConfirmed = false;
+    return false;
+  }
+  for (uint8_t i = 0; i < 5; ++i) {
+    if (!setPcaChannel(PCA_DOSE_FIRST + i, false)) {
+      faultStop("Pump service PCA I2C");
+      pumpServiceOffConfirmed = false;
+      return false;
+    }
+  }
+  digitalWrite(PIN_SSR[4], LOW);
+  ssr[4] = false;
+  pumpServiceOffConfirmed = activeDose < 0 && !ssr[4];
+  return pumpServiceOffConfirmed;
+}
 bool applySsr(int channel, bool value) {
   if (channel < 0 || channel >= 5 || !hardwareReady || stoppedLatch) return false;
   digitalWrite(PIN_SSR[channel], value ? HIGH : LOW);
@@ -197,6 +220,9 @@ void stateApi() {
   d["stopped_latch"] = stoppedLatch;
   d["sensor_online"] = lastCommandMs != 0 && millis() - lastCommandMs <= COMMAND_TIMEOUT_MS;
   d["water_pump_control_available"] = sensorWaterPumpField;
+  d["pump_service_off"] = pumpServiceOff;
+  d["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed &&
+      lastCommandMs != 0 && millis() - lastCommandMs <= COMMAND_TIMEOUT_MS;
   JsonObject r = d.createNestedObject("relays");
   for (int i = 0; i < 5; ++i) r[SSR_KEY[i]] = ssr[i];
   JsonObject f = d.createNestedObject("fans");
@@ -234,6 +260,7 @@ void fanApi() {
 }
 void doseApi() {
   if (!keyOkay()) return;
+  if (pumpServiceOff) return replyError(423, "pump_service_locked");
   if (!hardwareReady || !outputsEnabled || stoppedLatch) return replyError(503, "hardware_locked");
   if (!lastCommandMs || millis() - lastCommandMs > COMMAND_TIMEOUT_MS)
     return replyError(503, "sensor_offline");
@@ -302,6 +329,13 @@ void pollSensor() {
   http.end();
   StaticJsonDocument<768> d;
   if (deserializeJson(d, body) || !d["ok"].as<bool>() || !d["commands"].is<JsonObject>()) return;
+  if (d["pump_count"].as<int>() != 5 || !d["pump_service_off"].is<bool>()) return;
+  pumpServiceOff = d["pump_service_off"].as<bool>();
+  if (pumpServiceOff) {
+    if (!lockPumpChannels()) return;
+  } else {
+    pumpServiceOffConfirmed = false;
+  }
   JsonObject c = d["commands"].as<JsonObject>();
   const char *required[] = {"light", "exhaust_vent", "circulation_vent", "heater"};
   for (auto k : required) if (!c[k].is<bool>()) return;
@@ -309,7 +343,7 @@ void pollSensor() {
                   c["circulation_vent"].as<bool>(), c["heater"].as<bool>(), false};
   // Ohne bestaetigtes Steuersignal bleibt die Filterwasserpumpe AUS.
   sensorWaterPumpField = c["water_pump"].is<bool>();
-  if (sensorWaterPumpField) next[4] = c["water_pump"].as<bool>();
+  if (sensorWaterPumpField && !pumpServiceOff) next[4] = c["water_pump"].as<bool>();
   if (hardwareReady && !stoppedLatch) {
     // Nach Boot oder Verbindungsabbruch erst ALLE PCA-Kanaele sperren.
     // Erst nach gueltigem Steuertelegramm OE wieder freigeben.
@@ -335,6 +369,9 @@ void sendStatus() {
   d["outputs_enabled"] = hardwareReady && outputsEnabled && !stoppedLatch;
   d["pump_active"] = activeDose < 0 ? 0 : activeDose + 1;
   d["pump_ack_seq"] = 0U;  // No dosing command acknowledged via sensor API.
+  d["pump_service_off"] = pumpServiceOff;
+  d["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed &&
+      lastCommandMs != 0 && millis() - lastCommandMs <= COMMAND_TIMEOUT_MS;
   d["failsafe"] = !hardwareReady || !outputsEnabled || stoppedLatch ||
                     lastCommandMs == 0 || millis() - lastCommandMs > COMMAND_TIMEOUT_MS;
   JsonObject actual = d.createNestedObject("actual");
@@ -411,6 +448,8 @@ void loop() {
     sensorIp = IPAddress();
   }
   if (activeDose >= 0 && (doseGuardExpired || now - doseStartMs >= doseTimeMs)) stopDose();
+  if (lastCommandMs != 0 && now - lastCommandMs > COMMAND_TIMEOUT_MS)
+    pumpServiceOffConfirmed = false;
   if (hardwareReady && outputsEnabled && (lastCommandMs == 0 ? now > COMMAND_TIMEOUT_MS :
                         now - lastCommandMs > COMMAND_TIMEOUT_MS)) {
     // Kommunikation verloren: keine Verbraucher eingeschaltet lassen.
