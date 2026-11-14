@@ -36,6 +36,33 @@ Fünf 12-V-Dosierpumpen an PCA9685-Ausgängen 0–4 vorgesehen; PCA-Kanal 5 ist 
 **Teststatus:** Git-Dateikonsistenz und Schnittstellen sind textuell überprüft. Ein vollständiger Arduino-Compile, reale Touch-Kalibrierung, Sensor-Kalibrierung und integrierter Hardwaretest sind **nicht** nachgewiesen. Keine automatische Dosierung freigeben.
 
 
+## Drei DHT22: gemeinsame Klima- und VPD-Messung
+
+Die Sensor-Firmware liest unveraendert DHT22 #1 (GPIO25), #2 (GPIO26)
+und #3 (GPIO27). Fuer die aktive Klimaregelung und Blatt-VPD-Berechnung
+werden nur **gueltige Temperatur-/Feuchtepaare** beruecksichtigt:
+
+- **3 gueltige**: Median der Temperaturen und Median der Feuchtewerte
+- **2 gueltige**: arithmetischer Mittelwert der beiden Wertepaare
+- **1 gueltiger**: Einzelmessung bleibt aktiv, Warnstatus
+  `air_sensor_warning=true`
+- **0 gueltige**: keine Ersatzwerte; Temperatur/RH/VPD werden ungueltig,
+  Heizung, Umluft und Abluft erhalten AUS-Sollwerte
+
+`air_valid_sensor_count` (0–3) und `air_measurement_quality`
+(`median_3`, `mean_2`, `warning_single_sensor`,
+`invalid_no_sensors`) werden in lokaler API und ESP32-Telemetrie
+ausgegeben. Der LVGL-Remote zeigt bei <3 gueltigen Sensoren einen
+Hinweis, sofern kein bestehender hoeher priorisierter Alarm vorliegt.
+Die Einzelmesswerte `dht1_*`, `dht2_*`, `dht3_*` bleiben fuer
+Diagnosezwecke erhalten. Die MLX90640 verwendet spaeter denselben
+fusionierten Luftmesswert und ersetzt nur die Blatt-Temperatur (nach
+Validierung). Ohne Kamera bleibt das -2-C-Modell aktiv.
+
+Host-Regression: `g++ -std=c++17 tests/test_air_fusion.cpp -o /tmp/test_air_fusion && /tmp/test_air_fusion`
+(vom Repositoryroot). Die ESP32-Gesamtfirmware benoetigt zusaetzlich
+einen Arduino-Build und Hardwaretests.
+
 ## VPD-Klimaregelung (Entwicklungsbranch, nicht hardwarevalidiert)
 
 Der Sensor-ESP32 berechnet ab jetzt Blatt-VPD aus DHT1 mit Blatt-Temperatur
