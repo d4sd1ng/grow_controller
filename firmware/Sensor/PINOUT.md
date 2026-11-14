@@ -1,40 +1,38 @@
-# Sensor-ESP32 — Pinout (verbindliche letzte dokumentierte Zuordnung)
+# Sensor-ESP32 Pro — GPIO-Belegung (ohne lokales Display)
 
-**Stand:** Abgleich 13.11.2026 mit `Sensor.ino` und der späteren, nutzerkorrigierten Pinout-Tabelle vom 21.10.2026. Die GPIO-Nummern sind **nicht** die physischen Kontaktnummern. Das tatsächliche angeschlossene Board wurde bei diesem Abgleich nicht neu fotografisch oder elektrisch geprüft. Nicht blind flashen, bevor die realen Leitungen kontrolliert sind.
+**Firmware:** `firmware/Sensor/Sensor.ino`. Diese Liste beschreibt die GPIO-Zuordnung im Firmwarestand; die Reihenfolge der physischen Kontakte des neu vorgesehenen Pro-Boards ist nicht verifiziert. Die vorher dokumentierten Kontaktpositionen bezogen sich auf ein anderes Board und gelten hier nicht als Anschlussplan.
 
-**Boardansicht:** integriertes OLED sichtbar, USB **unten**, Kontakte auf jeder Seite **von oben** zählen (1–15).
+| Funktion | GPIO |
+| --- | ---: |
+| DHT22 #1 DATA | 25 |
+| DHT22 #2 DATA | 26 |
+| DHT22 #3 DATA | 27 |
+| DS18B20 DATA (1-Wire) | 23 |
+| ADS1115 SDA (I²C) | 21 |
+| ADS1115 SCL (I²C) | 22 |
+| BH1750 SDA (separater I²C) | 13 |
+| BH1750 SCL (separater I²C) | 14 |
+| RGB Rot | 33 |
+| RGB Grün | 4 |
+| RGB Blau | 17 |
+| Wuchs-/Blüte-Taster | 16 |
+| Pumpen-Wartungstaster | 19 |
+| Buzzer (reserviert/deaktiviert) | 5 |
 
-| Funktion | Aufdruck | GPIO | Board-Kontakt |
-| --- | --- | ---: | --- |
-| DHT22 #1 DATA | D25 | 25 | links 8 |
-| DHT22 #2 DATA | D26 | 26 | links 9 |
-| DHT22 #3 DATA | D27 | 27 | links 10 |
-| DS18B20 DATA | D23 | 23 | rechts 1 |
-| ADS1115 & OLED SDA | D21 | 21 | rechts 5 |
-| ADS1115 & OLED SCL | D22 | 22 | rechts 2 |
-| BH1750 SDA | D13 | 13 | links 13 |
-| BH1750 SCL | D14 | 14 | links 11 |
-| RGB Rot | D33 | 33 | links 7 |
-| RGB Grün | D4 | 4 | rechts 11 |
-| RGB Blau | TX2 / D17 | 17 | rechts 9 |
-| Wuchs-/Blüte-Taster | RX2 / D16 | 16 | rechts 10 |
-| Pumpen-Wartungstaster | D19 | 19 | rechts 6 |
-| Buzzer (reserviert/deaktiviert) | D5 | 5 | rechts 8 |
+**ADS1115:** Adresse 0x48, A0 = pH, A1 = TDS/EC. ADS1115 und eine optionale MLX90640 verwenden GPIO21/22, nicht das lokale Display.
 
-**ADS1115:** I²C-Adresse 0x48; A0 = pH-Eingang, A1 = TDS/EC-Eingang; beide sind **ADS-Kanäle**, keine ESP32-GPIOs. **OLED:** I²C-Adresse 0x3C. **BH1750:** separater I²C-Bus mit SDA13/SCL14. **DS18B20:** gemeinsamer 1-Wire-Bus GPIO23.
+**DS18B20:** 1-Wire auf GPIO23. Für die Wassertemperatur ist ein wasserdichter Sensor vorgesehen. Der Pull-up liegt zwischen DATA und 3,3 V.
 
-**Belegte physische Kontakte:** Die Liste benutzt die aufgedruckten Board-Bezeichnungen. Strom-/GND-Anschlüsse und die Kleinspannungsversorgung müssen separat anhand des realen PCB-Aufdrucks kontrolliert werden. Keine Netzspannungs-/SSR-Lastverkabelung am Sensor-ESP32.
+**BH1750:** Separater I²C-Bus mit GPIO13/14.
 
-## Warum es widersprüchliche ältere Angaben gab
+Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
 
-Die vorangegangene Ausgabe einer Pinliste nannte **Wuchs/Blüte GPIO19, Pumpentaster GPIO18, Buzzer GPIO16** und zählte teils die physischen Boardkontakte verkehrt herum. Diese Werte wurden in späteren Nutzerkorrekturen auf **GPIO16/GPIO19/GPIO5** umgestellt. `wiring_plan_v2.md` ist älter (06.10.2026) und nennt für DS18B20 noch **GPIO32**. `wiring_instructions.md` beschreibt eine noch ältere, nicht mehr zu dieser Hardware passende Gerätearchitektur mit DHT auf GPIO36/39 und gehört **nicht** mehr zur aktiven Anleitung.
+Versorgung und Masse sowie physische Pinpositionen sind anhand des tatsächlich verbauten Pro-Boards zu verifizieren. Keine Netzspannungs-/SSR-Lastverkabelung am Sensorcontroller.
 
 ## Verifizierung
 
-- [x] Aktuelle Software-`PIN_*`-Definitionen mit der letzten Pinout-Tabelle abgeglichen
-- [x] Softwareverwendung der Konstanten kontrolliert (`Wire.begin`, `bhWire.begin`, `pinMode`, DHT und OneWire)
-- [ ] Reale Kabelverbindungen an den beschriebenen Kontakten kontrolliert
-- [ ] Arduino-Kompilierung vollständig erfolgreich
-- [ ] Sensor-/Taster-Test auf dem echten ESP32 abgeschlossen
-
-**Die letzten drei Punkte sind weiterhin offen.** Ein erfolgreicher Compile bestätigt keine Verdrahtung.
+- [x] Software-GPIOs und Sensorzuordnungen geprüft
+- [x] Alte lokale Display-Ansteuerung aus Sensor-Firmware entfernt
+- [ ] Reale Pinpositionen des Pro-Boards geprüft
+- [ ] Arduino-Kompilierung erfolgreich
+- [ ] Serieller Messwerttest und LVGL-Remote-Test an realer Hardware erfolgreich
