@@ -1344,6 +1344,57 @@ static void readSensors() {
   sensors.lux = readBh1750();
 }
 
+/* ---------- Sichtbare Live-Messwerte im seriellen Monitor ---------- */
+static void printLiveFloat(float value, uint8_t precision) {
+  if (isfinite(value)) Serial.print(value, precision);
+  else Serial.print(F("--"));
+}
+
+static void printLiveSensorValues() {
+  Serial.println(F("========== LIVE-SENSORWERTE =========="));
+  for (uint8_t i = 0; i < 3; ++i) {
+    Serial.printf("DHT22 #%u | Luft: ", i + 1);
+    printLiveFloat(sensors.dht[i].tempC, 1);
+    Serial.print(F(" C | Feuchte: "));
+    printLiveFloat(sensors.dht[i].rh, 1);
+    Serial.println(F(" %"));
+  }
+  Serial.print(F("KLIMA (fusioniert) | Luft: "));
+  printLiveFloat(sensors.air.tempC, 1);
+  Serial.print(F(" C | Feuchte: "));
+  printLiveFloat(sensors.air.rh, 1);
+  Serial.printf(" %% | gueltige DHT: %u/3\n", sensors.airValidSensorCount);
+
+  Serial.printf("DS18B20 | erkannt: %u | Sensor 1: ", sensors.dsCount);
+  printLiveFloat(sensors.ds1C, 2);
+  Serial.print(F(" C | Sensor 2: "));
+  printLiveFloat(sensors.ds2C, 2);
+  Serial.println(F(" C"));
+  Serial.print(F("WASSER | "));
+  printLiveFloat(sensors.waterTempC, 2);
+  Serial.println(F(" C"));
+
+  Serial.print(F("BH1750 | "));
+  if (bh1750Present) Serial.printf("%lu lx\n", static_cast<unsigned long>(sensors.lux));
+  else Serial.println(F("NICHT ERKANNT"));
+
+  Serial.printf("ADS1115 | %s\n", sensors.adsOk ? "OK" : "NICHT ERKANNT");
+  Serial.print(F("pH | "));
+  printLiveFloat(sensors.ph, 2);
+  Serial.print(F(" | A0: "));
+  printLiveFloat(sensors.phInputV, 3);
+  Serial.printf(" V | kalibriert: %s\n", phCalibrated ? "ja" : "nein");
+
+  Serial.print(F("EC | "));
+  printLiveFloat(sensors.ec, 2);
+  Serial.print(F(" mS/cm | TDS: "));
+  printLiveFloat(sensors.tdsPpm, 1);
+  Serial.print(F(" ppm | A1: "));
+  printLiveFloat(sensors.tdsInputV, 3);
+  Serial.println(F(" V"));
+  Serial.println(F("====================================="));
+}
+
 /* ---------- Integrierte pH-/EC-Kalibrierung, ohne Firmwarewechsel ---------- */
 // Die 160x20ms (pH) bzw. 8x30x40ms (EC) Samples werden ueber den
 // regulaeren loop verteilt: Webserver, C3-Heartbeat und Alarme bleiben aktiv.
@@ -2350,6 +2401,7 @@ void setup() {
   }
 
   readSensors();
+  printLiveSensorValues();
   lastSensorRead = millis();
   pollPhaseClock(); // Laufzeit-Grenzen vor dem ersten automatischen Schaltkommando pruefen.
   autoControl();
@@ -2390,6 +2442,7 @@ void loop() {
   if (now - lastSensorRead >= SENSOR_READ_MS) {
     lastSensorRead = now;
     readSensors();
+    printLiveSensorValues();
     if (phTestActive) updatePhTestAlarm();
   }
 
