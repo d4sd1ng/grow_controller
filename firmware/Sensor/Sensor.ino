@@ -1386,7 +1386,7 @@ static void handleSummary() {
   control["phase_clock_status"] = phaseClockStatus();
   control["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
   control["phase_duration_elapsed"] = phaseDurationElapsed;
-  control["cycle_stopped"] = cycleStopped;
+  control["cycle_stopped"] = cycleStopped || !phaseStartEpoch || !validatedUtcNow();
   control["vpd_control_stage"] = vpdBand.stage;
   control["vpd_control_configured"] = vpdBand.configured;
   if (vpdBand.configured) {
@@ -1504,7 +1504,7 @@ static void handleActuatorTargets() {
   doc["phase_clock_status"] = phaseClockStatus();
   doc["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
   doc["phase_duration_elapsed"] = phaseDurationElapsed;
-  doc["cycle_stopped"] = cycleStopped;
+  doc["cycle_stopped"] = cycleStopped || !phaseStartEpoch || !validatedUtcNow();
   doc["vpd_control_stage"] = vpdBand.stage;
   if (vpdBand.configured) {
     doc["vpd_target_min_kpa"] = vpdBand.minKpa;
@@ -1532,7 +1532,7 @@ static void c3ApiError(int code, const char *reason) {
 }
 static void handleControlTargets() {
   if (!localAuthorized()) return sendUnauthorized();
-  if (cycleStopped || !phaseStartEpoch) return c3ApiError(423, "cycle_not_running");
+  if (cycleStopped || !phaseStartEpoch || !validatedUtcNow()) return c3ApiError(423, "cycle_not_running");
   if (strcmp(controlMode, "manual") != 0)
     return c3ApiError(409, "manual_mode_required");
   if (!c3Connected() || !c3OutputsEnabled)
@@ -1566,7 +1566,7 @@ static void handleControlTargets() {
 }
 static void handlePumpPulse() {
   if (!localAuthorized()) return sendUnauthorized();
-  if (cycleStopped || !phaseStartEpoch) return c3ApiError(423, "cycle_not_running");
+  if (cycleStopped || !phaseStartEpoch || !validatedUtcNow()) return c3ApiError(423, "cycle_not_running");
   // The C3 does not yet process Sensor pump_seq/pump_index requests. Do not
   // report a queued request as successful or set a pending command that is
   // never acknowledged. Manual dosing is locked until integration + calibration.
@@ -1606,7 +1606,7 @@ static void handleActuatorStatus() {
 
 static void handleControlMode() {
   if (!localAuthorized()) return sendUnauthorized();
-  if (cycleStopped || !phaseStartEpoch) return c3ApiError(423, "cycle_not_running");
+  if (cycleStopped || !phaseStartEpoch || !validatedUtcNow()) return c3ApiError(423, "cycle_not_running");
 
   StaticJsonDocument<128> in;
   if (deserializeJson(in, localServer.arg("plain"))) {
@@ -1680,7 +1680,7 @@ static void handleGrowPhase() {
   }
   const uint8_t stored = prefs.getUChar("phase", 255);
   prefs.end();
-  if (stored != static_cast<uint8_t>(next)) {
+  if (stored != static_cast<uint8_t>(growPhase)) {
     return localServer.send(500, "application/json",
         "{\"ok\":false,\"error\":\"phase_nvs_not_saved\"}");
   }
@@ -1799,7 +1799,7 @@ static bool sendTelemetry() {
   root["phase_clock_status"] = phaseClockStatus();
   root["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
   root["phase_duration_elapsed"] = phaseDurationElapsed;
-  root["cycle_stopped"] = cycleStopped;
+  root["cycle_stopped"] = cycleStopped || !phaseStartEpoch || !validatedUtcNow();
   root["vpd_control_stage"] = vpdBand.stage;
   if (vpdBand.configured) {
     root["vpd_target_min_kpa"] = vpdBand.minKpa;
