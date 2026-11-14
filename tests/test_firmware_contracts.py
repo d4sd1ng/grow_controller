@@ -134,6 +134,33 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertNotIn('if (!sensors.dht[0].ok || !isfinite(sensors.vpd)', self.sensor)
         self.assertNotIn('const float airC = sensors.dht[0].tempC;', self.sensor)
 
+    def test_integrated_ph_ec_calibration(self):
+        self.assertIn('#include "calibration_capture.h"', self.sensor)
+        for command in ("c == '7'", "c == '4'", "c == 'e'", "c == 's'", "c == 'x'"):
+            with self.subTest(command=command):
+                self.assertIn(command, self.sensor)
+        self.assertIn('handleCalibrationSerial(c)', self.sensor)
+        self.assertIn('pollCalibrationCapture();', self.sensor)
+        self.assertIn('static void finishCalibration()', self.sensor)
+        self.assertIn('grow_cal::PH_SAMPLES', self.sensor)
+        self.assertIn('grow_cal::EC_SAMPLES_PER_WINDOW', self.sensor)
+        self.assertIn('grow_cal::EC_WINDOWS', self.sensor)
+        self.assertIn('grow_cal::median30', self.sensor)
+        self.assertIn('grow_cal::ecCalibrationFactor', self.sensor)
+        self.assertIn('if (!validDsTempC(sensors.waterTempC))', self.sensor)
+        self.assertIn('p.begin("phads_v1", false)', self.sensor)
+        self.assertIn('p.begin("ecads_v1", false)', self.sensor)
+        self.assertIn('p.putFloat("factor", factor)', self.sensor)
+        self.assertIn('p.putFloat("ref_v", voltage)', self.sensor)
+        self.assertIn('p.putFloat("temp_c", temperatureC)', self.sensor)
+        self.assertIn('p.putBool("valid", true)', self.sensor)
+        self.assertIn('p.putBool(hk, true)', self.sensor)
+        self.assertIn('reading["calibration_active"]', self.sensor)
+        self.assertIn('root["calibration_active"]', self.sensor)
+        # Sicherheits- und Kalibrierdaten bleiben unabhaengig vom C3.
+        self.assertIn("HARDWARE_OUTPUTS_ARMED = false", self.c3)
+        self.assertNotIn('preferences.clear()', self.sensor)
+
     def test_remote_lvgl_and_read_interfaces(self):
         self.assertIn("SCREEN_W = 320", self.remote)
         self.assertIn("SCREEN_H = 240", self.remote)
