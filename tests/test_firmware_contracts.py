@@ -90,6 +90,21 @@ class FirmwareContractTests(unittest.TestCase):
         # Nicht automatisch den Leistungscontroller freischalten.
         self.assertIn("HARDWARE_OUTPUTS_ARMED = false", self.c3)
 
+    def test_automatic_phase_week_clock(self):
+        self.assertIn('#include "phase_clock_math.h"', self.sensor)
+        self.assertIn('configTime(0, 0, "pool.ntp.org", "time.google.com")', self.sensor)
+        self.assertIn('loadPhaseClock();', self.sensor)
+        self.assertIn('pollPhaseClock();', self.sensor)
+        self.assertIn('phaseStartEpoch', self.sensor)
+        self.assertIn('PHASE_CLOCK_NVS', self.sensor)
+        self.assertIn('phaseDurationElapsed', self.sensor)
+        self.assertIn('phaseClockStatus()', self.sensor)
+        self.assertIn('"/api/local/control/phase-clock"', self.sensor)
+        self.assertIn('grow_clock::evaluate', self.sensor)
+        self.assertIn('setGrowWeekManually(selected)', self.sensor)
+        self.assertIn('setGrowWeekManually(week)', self.sensor)
+        self.assertNotIn('die Zeit-basierte Wochenfortschaltung ist separat', self.sensor)
+
     def test_remote_lvgl_and_read_interfaces(self):
         self.assertIn("SCREEN_W = 320", self.remote)
         self.assertIn("SCREEN_H = 240", self.remote)
