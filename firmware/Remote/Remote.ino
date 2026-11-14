@@ -218,7 +218,7 @@ bool c3Request(const char *path, const String &payload) {
 void updateControls() {
   for (int i = 0; i < 3; ++i) {
     setButtonActive(climateButtons[i], climateStates[i], serverReady && TOUCH_ACTUATION_VERIFIED);
-    textIfChanged(climateValues[i], serverReady ? (climateStates[i] ? "EIN" : "AUS") : "--");
+    textIfChanged(climateValues[i], c3Online ? (climateStates[i] ? "EIN" : "AUS") : "--");
   }
   char status[90];
   snprintf(status, sizeof(status), "Licht: %s    Wasserpumpe: %s",
@@ -466,9 +466,8 @@ void fetchSummary() {
   } else textIfChanged(homeAlert, "Keine aktiven Meldungen");
 
   const JsonObjectConst target = doc["control"]["targets"].as<JsonObjectConst>();
-  climateStates[0] = target["heater"] | false;
-  climateStates[1] = target["circulation_vent"] | false;
-  climateStates[2] = target["exhaust_vent"] | false;
+  // Server-Sollwerte sind KEINE bestaetigten Schaltzustaende.
+  // Die Klimaanzeige wird ausschliesslich aus den C3-Istwerten gespeist.
   updateControls();
 }
 
@@ -502,6 +501,9 @@ void fetchC3() {
   }
   c3Online = true;
   c3HardwareReady = (doc["hardware_ready"] | false) && doc["fans"].is<JsonObject>();
+  climateStates[0] = doc["relays"]["heater"] | false;
+  climateStates[1] = doc["relays"]["circulation_vent"] | false;
+  climateStates[2] = doc["relays"]["exhaust_vent"] | false;
   lightState = doc["relays"]["light"] | false;
   waterPumpState = doc["relays"]["water_pump"] | false;
   fanStates[0] = doc["fans"]["fan_group_1"] | false;
