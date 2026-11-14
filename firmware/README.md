@@ -60,7 +60,8 @@ abtupfen; Loesungen nicht gegenseitig verunreinigen.
 
 Die Firmware verlangt wie das alte `ph_calibration_tool.ino`
 **ADS1115 an 0x48 UND eine reale, gueltige Wassertemperatur des
-DS18B20 an GPIO23**. Ohne DS18B20 wird keine Kalibrierung unter
+DS18B20 an GPIO23**. Fuer die Temperaturkompensation muss der
+DS18B20 dabei dieselbe Referenzloesung wie die kalibrierte Sonde messen. Ohne DS18B20 wird keine Kalibrierung unter
 einer erfundenen Temperatur vorgenommen. Ein einzelner, stabiler
 pH-Kalibrierpunkt darf im NVS stehen; ein **gueltiger pH-Wert**
 erfordert erst beide Punkte pH7 und pH4 mit Spannungsabstand >=1 mV.
