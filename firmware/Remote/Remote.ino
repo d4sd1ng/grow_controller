@@ -439,10 +439,17 @@ void fetchSummary() {
   updateReadingLabel(homeValues[2], reading["ph"], "%.2f");
   updateReadingLabel(homeValues[3], reading["ec"], "%.2f mS");
 
-  const char *mode = doc["control"]["control_mode"] | "--";
+  const char *phase = reading["extras"]["phase"] | "";
+  const unsigned week = reading["extras"]["grow_week"] | 0U;
   char status[104];
-  snprintf(status, sizeof(status), "Modus: %.7s", mode);
-  textIfChanged(homeMode, status);
+  if (week >= 1U && week <= 13U && strcmp(phase, "wuchs") == 0)
+    snprintf(status, sizeof(status), "W%u Wuchs", week);
+  else if (week >= 1U && week <= 13U && strcmp(phase, "bluete") == 0)
+    snprintf(status, sizeof(status), "W%u Bluete", week);
+  else textIfChanged(homeMode, "Woche: --");
+  if (week >= 1U && week <= 13U &&
+      (!strcmp(phase, "wuchs") || !strcmp(phase, "bluete")))
+    textIfChanged(homeMode, status);
   // Die Telemetrie-API speichert zusaetzliche Sensorfelder in reading.extras.
   JsonVariantConst vpd = reading["vpd"];
   if (vpd.isNull()) vpd = reading["extras"]["vpd"];
