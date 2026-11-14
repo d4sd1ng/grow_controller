@@ -70,6 +70,7 @@ static lv_obj_t *topStatus = nullptr;
 static lv_obj_t *homeValues[4] = {};
 static lv_obj_t *homeMode = nullptr;
 static lv_obj_t *homeTds = nullptr;
+static lv_obj_t *homeVpd = nullptr;
 static lv_obj_t *homeAlert = nullptr;
 static lv_obj_t *climateButtons[3] = {};
 static lv_obj_t *climateValues[3] = {};
@@ -91,6 +92,8 @@ static bool fanStates[2] = {};
 static bool lightState = false;
 static bool waterPumpState = false;
 static int activeDoser = 0;
+static bool pumpServiceOff = true;
+static bool pumpServiceOffConfirmed = false;
 static uint32_t lastSummary = 0;
 static uint32_t lastC3 = 0;
 static uint32_t lastWifiTry = 0;
@@ -237,7 +240,9 @@ void updateControls() {
     textIfChanged(child, label);
     setButtonEnabled(pumpButtons[i], false);  // Locked until a verified calibration.
   }
-  snprintf(status, sizeof(status), "Aktiver Kanal: %s", c3Online ? "siehe oben" : "unbekannt");
+  snprintf(status, sizeof(status), "Wartung: %s",
+           !c3Online ? "C3 offline" :
+           (pumpServiceOff ? (pumpServiceOffConfirmed ? "PUMPEN AUS bestaetigt" : "PUMPEN AUS angefordert") : "nicht aktiv"));
   textIfChanged(pumpActive, status);
   textIfChanged(pumpInfo, "Dosierung gesperrt: Kalibrierung offen");
 }
@@ -322,8 +327,9 @@ void buildUi() {
   makeMetric(pages[0], 165, 4, "LUFTFEUCHTE", 1);
   makeMetric(pages[0], 7, 69, "pH-WERT", 2);
   makeMetric(pages[0], 165, 69, "EC", 3);
-  homeMode = makeLabel(pages[0], 8, 138, 148, "Modus: --", MUTED, &lv_font_montserrat_12);
-  homeTds = makeLabel(pages[0], 167, 138, 145, "TDS: --", MUTED, &lv_font_montserrat_12);
+  homeMode = makeLabel(pages[0], 8, 138, 88, "Modus: --", MUTED, &lv_font_montserrat_12);
+  homeVpd = makeLabel(pages[0], 98, 138, 130, "VPD: --", ACCENT, &lv_font_montserrat_12);
+  homeTds = makeLabel(pages[0], 230, 138, 82, "TDS: --", MUTED, &lv_font_montserrat_12);
   homeAlert = makeLabel(pages[0], 8, 154, 303, "Keine Messdaten", WARN,
                         &lv_font_montserrat_12);
 
@@ -435,8 +441,15 @@ void fetchSummary() {
 
   const char *mode = doc["control"]["control_mode"] | "--";
   char status[104];
-  snprintf(status, sizeof(status), "Modus: %.18s", mode);
+  snprintf(status, sizeof(status), "Modus: %.7s", mode);
   textIfChanged(homeMode, status);
+  // Die Telemetrie-API speichert zusaetzliche Sensorfelder in reading.extras.
+  JsonVariantConst vpd = reading["vpd"];
+  if (vpd.isNull()) vpd = reading["extras"]["vpd"];
+  if (vpd.is<float>() || vpd.is<double>() || vpd.is<int>()) {
+    snprintf(status, sizeof(status), "VPD %.2f kPa", vpd.as<float>());
+    textIfChanged(homeVpd, status);
+  } else textIfChanged(homeVpd, "VPD: --");
   JsonVariantConst tds = reading["tds_ppm"];
   if (tds.isNull()) tds = reading["tds"];
   if (tds.isNull()) textIfChanged(homeTds, "TDS: --");
@@ -494,6 +507,8 @@ void fetchC3() {
   fanStates[0] = doc["fans"]["fan_group_1"] | false;
   fanStates[1] = doc["fans"]["fan_group_2"] | false;
   activeDoser = doc["dosing"]["active_pump"] | 0;
+  pumpServiceOff = doc["pump_service_off"] | true;
+  pumpServiceOffConfirmed = doc["pump_service_off_confirmed"] | false;
   updateControls();
 }
 
