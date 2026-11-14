@@ -43,21 +43,28 @@ Der Sensor-ESP32 berechnet ab jetzt Blatt-VPD aus DHT1 mit Blatt-Temperatur
 Die optionale MLX90640-ROI darf erst nach Verifikation als Blattmessung
 verwendet werden (`GROW_MLX_LEAF_VERIFIED`).
 
-Die VPD-Bandwahl ist derzeit an die gespeicherte **Gesamtwoche** gekoppelt:
-W1-2 Wachstum = 0,4-0,8 kPa, W3-4 Uebergang = 0,8-1,2 kPa,
-W5-13 Bluete = 1,2-1,6 kPa. Beim Phasenwechsel ueber den Taster
-wird W1 bzw. W3 eingestellt. Die automatische wochenweise Fortschaltung liest eine UTC-Uhr
-ueber NTP (7 Tage je Woche) und speichert den Phasenstart im NVS.
-Nach einem Stromausfall wird die letzte Startzeit wiederhergestellt.
-Der Phasenwechsel erfolgt NICHT automatisch; am Ende von W2 bzw. W13
-wird die Wochenzahl gehalten und eine serielle Warnung ausgegeben.
-Bei erstmaliger Installation ohne bekannte Phasenstartzeit wird das
-Datum nicht erfunden: Start ueber physischen Phasenwechsel oder
-`POST /api/local/control/phase-clock` mit
-`{"start_now":true}` oder `{"start_unix":1760000000}`
-(nur Beispiel fuer das Format, keine Annahme ueber Startdatum).
-Wenn NTP ausfaellt, bleibt die letzte gespeicherte Woche bestehen. Die pH-/EC-Wochentabelle enthaelt derzeit nur
-12 Eintraege; fuer Woche 13 wird bewusst kein Wert erfunden.
+Die zeitbasierte Steuerung umfasst **einen vollstaendigen 13-Wochen-Durchlauf**:
+W1-2 Wachstum = 0,4-0,8 kPa, W3-4 Blueteeinleitung = 0,8-1,2 kPa,
+W5-13 Bluete = 1,2-1,6 kPa. Nach **14 Tagen (W3)** erfolgt der
+**automatische Phasenwechsel** von Wuchs auf Bluete, auch ohne Tastendruck.
+Nach **91 Tagen** wird der gesamte Durchlauf mit `cycle_stopped=true`
+dauerhaft auf STOPP gesetzt. Klimasollwerte und Pumpenanforderungen
+werden dabei deaktiviert. Das C3 wertet diesen STOPP aus, sperrt
+direkte Fan-/Dosierkommandos und meldet den Status ans Display.
+Sensor, Telemetrie und LVGL-Remote bleiben erreichbar.
+
+Die Zeitberechnung verwendet UTC ueber NTP und einen **einzigen im NVS
+gespeicherten Durchlaufstart**, der einen ESP32-Neustart uebersteht.
+Die abgeschlossene Runde bleibt ebenfalls im NVS gespeichert; es gibt
+**keinen automatischen Neustart nach W13**. Ein neuer Durchlauf startet
+nur nach expliziter Bedienung (z.B. Phasentaster D16 nach STOPP oder
+`POST /api/local/control/phase-clock` mit `{"start_now":true}`).
+Bei einer Altinstallation ohne verifiziertes Startdatum wird kein
+Durchlaufstart geraten und die Klimaanforderung bleibt gesperrt.
+`{"start_unix":1760000000}` zeigt nur das JSON-Format fuer einen
+explizit gesetzten historischen UTC-Start. Die bisherige
+pH-/EC-Wochentabelle hat 12 Eintraege; fuer Woche 13 wird kein
+unbekannter Sollwert erfunden.
 
 Die Regelentscheidung `autoControl()` setzt getrennte Sollkommandos fuer
 Heizung, Umluft und Abluft. Bei ungueltigem DHT1 oder fehlender
