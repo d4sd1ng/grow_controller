@@ -112,6 +112,28 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertIn('setGrowWeekManually(week)', self.sensor)
         self.assertNotIn('die Zeit-basierte Wochenfortschaltung ist separat', self.sensor)
 
+    def test_three_dht_sensor_fusion_for_climate_and_vpd(self):
+        self.assertIn('#include "air_fusion.h"', self.sensor)
+        self.assertIn('grow_air::fuseThree(samples)', self.sensor)
+        self.assertIn('updateFusedAir();', self.sensor)
+        self.assertIn('sensors.airValidSensorCount = combined.validCount;', self.sensor)
+        self.assertIn('const float airC = sensors.air.tempC;', self.sensor)
+        self.assertIn('const float rh = sensors.air.rh;', self.sensor)
+        self.assertIn('const float t = sensors.air.tempC;', self.sensor)
+        self.assertIn('if (!sensors.air.ok || !isfinite(sensors.vpd)', self.sensor)
+        self.assertIn('if (!sensors.air.ok && targets.heater)', self.sensor)
+        self.assertIn('reading["air_measurement_quality"]', self.sensor)
+        self.assertIn('root["air_measurement_quality"]', self.sensor)
+        self.assertIn('reading["air_sensor_warning"]', self.sensor)
+        self.assertIn('root["air_sensor_warning"]', self.sensor)
+        self.assertIn('reading["air_valid_sensor_count"]', self.sensor)
+        self.assertIn('root["air_valid_sensor_count"]', self.sensor)
+        self.assertIn('validDht == 0U', self.remote)
+        self.assertIn('validDht == 1U', self.remote)
+        self.assertIn('validDht == 2U', self.remote)
+        self.assertNotIn('if (!sensors.dht[0].ok || !isfinite(sensors.vpd)', self.sensor)
+        self.assertNotIn('const float airC = sensors.dht[0].tempC;', self.sensor)
+
     def test_remote_lvgl_and_read_interfaces(self):
         self.assertIn("SCREEN_W = 320", self.remote)
         self.assertIn("SCREEN_H = 240", self.remote)
