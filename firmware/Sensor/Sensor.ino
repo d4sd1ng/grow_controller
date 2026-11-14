@@ -1359,6 +1359,12 @@ struct CalibrationCapture {
   uint32_t startedMs = 0;
 };
 static CalibrationCapture calibration;
+// Explizite Arduino-Prototypen erst NACH Enum/Struct-Deklaration.
+static const char *calibrationName(CalibrationMode mode);
+static void printCalibrationStatus();
+static bool storePhCalibrationPoint(CalibrationMode mode, float voltage, float temperatureC);
+static bool storeEcCalibration(float voltage, float temperatureC, float factor);
+static void finishCalibration();
 
 static const char *calibrationName(CalibrationMode mode) {
   switch (mode) {
@@ -1697,6 +1703,9 @@ static void handleSummary() {
   if (PH_DO_WIRED) reading["ph_do_high"] = sensors.phDoHigh;
   else reading["ph_do_high"] = nullptr;
   reading["ph_calibrated"] = phCalibrated;
+  reading["calibration_active"] = calibration.mode != CalibrationMode::None;
+  reading["calibration_mode"] = calibrationName(calibration.mode);
+  reading["calibration_samples"] = calibration.window.count;
   reading["ph_alarm"] = phCode(phAlarm);
   reading["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
   reading["ph_buzzer_configured"] = (GROW_ENABLE_PH_BUZZER != 0);
@@ -2095,6 +2104,9 @@ static bool sendTelemetry() {
   if (PH_DO_WIRED) root["ph_do_high"] = sensors.phDoHigh;
   else root["ph_do_high"] = nullptr;
   root["ph_calibrated"] = phCalibrated;
+  root["calibration_active"] = calibration.mode != CalibrationMode::None;
+  root["calibration_mode"] = calibrationName(calibration.mode);
+  root["calibration_samples"] = calibration.window.count;
   root["ph_alarm"] = phCode(phAlarm);
   root["ph_alarm_active"] = phAlarm != PhAlarm::Normal;
   root["ph_buzzer_configured"] = (GROW_ENABLE_PH_BUZZER != 0);
