@@ -878,7 +878,7 @@ static void updateFusedAir() {
   static uint8_t lastCount = 255;
   if (combined.validCount != lastCount) {
     lastCount = combined.validCount;
-    Serial.printf("DHT22-KLIMA: %u/3 gueltig | %s\\n",
+    Serial.printf("DHT22-KLIMA: %u/3 gueltig | %s\n",
                   combined.validCount,
                   combined.validCount == 3 ? "Median" :
                   combined.validCount == 2 ? "Mittelwert (redundanzreduziert)" :
