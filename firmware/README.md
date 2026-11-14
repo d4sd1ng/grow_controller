@@ -36,6 +36,53 @@ Fünf 12-V-Dosierpumpen an PCA9685-Ausgängen 0–4 vorgesehen; PCA-Kanal 5 ist 
 **Teststatus:** Git-Dateikonsistenz und Schnittstellen sind textuell überprüft. Ein vollständiger Arduino-Compile, reale Touch-Kalibrierung, Sensor-Kalibrierung und integrierter Hardwaretest sind **nicht** nachgewiesen. Keine automatische Dosierung freigeben.
 
 
+## pH- und EC-Kalibrierung direkt in der Sensor-Firmware
+
+**Kein Wechsel auf einen Diagnose-Sketch mehr noetig.** In der laufenden
+`firmware/Sensor/Sensor.ino` sind die Kalibrierungen per seriellem Monitor
+mit **115200 Baud** verfuegbar. Den gewuenschten Buchstaben bzw. die
+Ziffer senden (Zeilenende optional):
+
+| Eingabe | Wirkung |
+| --- | --- |
+| `7` | pH-7,00-Puffer messen; 160 ADS1115-A0-Werte im 20-ms-Abstand |
+| `4` | pH-4,00-Puffer messen; identische stabile Zwei-Punkt-Erfassung |
+| `e` | 1413-uS/cm-EC-Referenz auf ADS1115 A1; 8 Fenster mit je 30 Werten/40 ms |
+| `s` | pH-Punkte, EC-Faktor, DS18B20-Temperatur und Messfortschritt anzeigen |
+| `x` | Laufende Erfassung abbrechen, keine neuen Werte speichern |
+| `h` / `?` | Komplette serielle Befehlshilfe anzeigen |
+
+Ein Startbefehl sollte erst gesendet werden, wenn die jeweilige Sonde
+sauber und stabil in der zugehoerigen Referenzloesung steht. Anschliessend
+die Ausgabe `KALIBRIERUNG OK: NVS geschrieben und zurueckgelesen` abwarten.
+Vor pH4 die pH-Sonde mit geeignetem Wasser abspuelen und vorsichtig
+abtupfen; Loesungen nicht gegenseitig verunreinigen.
+
+Die Firmware verlangt wie das alte `ph_calibration_tool.ino`
+**ADS1115 an 0x48 UND eine reale, gueltige Wassertemperatur des
+DS18B20 an GPIO23**. Fuer die Temperaturkompensation muss der
+DS18B20 dabei dieselbe Referenzloesung wie die kalibrierte Sonde messen. Ohne DS18B20 wird keine Kalibrierung unter
+einer erfundenen Temperatur vorgenommen. Ein einzelner, stabiler
+pH-Kalibrierpunkt darf im NVS stehen; ein **gueltiger pH-Wert**
+erfordert erst beide Punkte pH7 und pH4 mit Spannungsabstand >=1 mV.
+Bei instabilen Messungen oder ADC-/Temperatursensorfehlern wird
+**nichts Neues** gespeichert. pH: Messwert-Standardabweichung
+max. 10 mV; EC: Standardabweichung der acht Fenster-Mediane max.
+10 mV und deren Spanne max. 30 mV.
+
+Die NVS-Namensraeume und Schluessel bleiben **kompatibel**:
+`phads_v1` (have7/have4, volt7/volt4, temp7/temp4);
+`ecads_v1` (valid, factor, ref_v, temp_c).
+Die Sensor-API, Alarmfunktionen und C3-Kommunikation laufen waehrend
+der Abtastung weiter. Ein Neustart oder das Flashen mit
+`Erase All Flash` wuerde die aktuelle Kalibriererfassung abbrechen;
+die bereits gespeicherten NVS-Punkte bleiben bei einem normalen
+Sketch-Update ohne Flash-Erase bestehen.
+
+**Test:** `g++ -std=c++17 tests/test_calibration_capture.cpp -o /tmp/test_calibration_capture && /tmp/test_calibration_capture`
+(vom Repositoryroot). Der Hosttest prueft den Berechnungskern,
+nicht den ESP32/ADS1115-Hardwarepfad.
+
 ## Drei DHT22: gemeinsame Klima- und VPD-Messung
 
 Die Sensor-Firmware liest unveraendert DHT22 #1 (GPIO25), #2 (GPIO26)
@@ -94,7 +141,7 @@ pH-/EC-Wochentabelle hat 12 Eintraege; fuer Woche 13 wird kein
 unbekannter Sollwert erfunden.
 
 Die Regelentscheidung `autoControl()` setzt getrennte Sollkommandos fuer
-Heizung, Umluft und Abluft. Bei ungueltigem DHT1 oder fehlender
+Heizung, Umluft und Abluft. Bei ungueltiger fusionierter DHT-Messung oder fehlender
 Phasen-/Wochenkonfiguration werden die drei Klima-Sollkommandos
 abgeschaltet. Abluft kann hohe Luftfeuchtigkeit nur dann reduzieren,
 wenn die zugefuehrte Luft trockener ist; der benoetigte
