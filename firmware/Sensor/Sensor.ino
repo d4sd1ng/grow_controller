@@ -19,6 +19,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <time.h>
+#include "phase_clock_math.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -451,7 +452,7 @@ static constexpr NutrientTargets NUTRIENT_WEEK_TARGETS[12] = {
 static constexpr char GROW_WEEK_NVS[] = "growweek_v1";
 static uint8_t growWeek = 0;
 static constexpr char PHASE_CLOCK_NVS[] = "phaseclock_v1";
-static constexpr uint32_t PHASE_WEEK_SECONDS = 7UL * 24UL * 3600UL;
+static constexpr uint32_t PHASE_WEEK_SECONDS = grow_clock::SECONDS_PER_WEEK;
 static constexpr time_t PHASE_MIN_VALID_UNIX = 1700000000;
 static uint32_t phaseStartEpoch = 0;
 static bool phaseClockPending = false;
@@ -536,15 +537,12 @@ static void pollPhaseClock() {
     else Serial.println(F("PHASEN-UHR: NVS-Start konnte nicht gespeichert werden."));
   }
   if (!phaseStartEpoch || now < static_cast<time_t>(phaseStartEpoch)) return;
-  const uint32_t elapsedWeeks =
-      static_cast<uint32_t>((static_cast<uint64_t>(now) - phaseStartEpoch)
-                            / PHASE_WEEK_SECONDS);
-  const uint32_t durationWeeks = growPhase == GrowPhase::Wuchs ? 2UL : 11UL;
-  const uint8_t first = growPhase == GrowPhase::Wuchs ? 1U : 3U;
-  const uint8_t capped = static_cast<uint8_t>(
-      elapsedWeeks < durationWeeks ? elapsedWeeks : durationWeeks - 1UL);
-  const bool finished = elapsedWeeks >= durationWeeks;
-  const uint8_t current = first + capped;
+  const grow_clock::PhaseWeek period =
+      grow_clock::evaluate(growPhase == GrowPhase::Bluete,
+                           phaseStartEpoch, static_cast<uint32_t>(now));
+  if (!period.valid) return;
+  const bool finished = period.finished;
+  const uint8_t current = period.totalWeek;
   if (current != growWeek && !setGrowWeek(current))
     Serial.println(F("PHASEN-UHR: Wochenstand konnte nicht gespeichert werden."));
   if (finished && !phaseDurationElapsed)
