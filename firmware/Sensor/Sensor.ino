@@ -45,9 +45,8 @@
 /* RGB: gemeinsame Kathode vom Nutzer bestaetigt, GND gemeinsam.
  * R D33 und G D4 = Phasenanzeige; B D17 (TX2) = Filterwechsel.
  * Je Kanal zwei 220-Ohm-Widerstaende in Reihe (440 Ohm).
- * BLAU darf nur bei vom Leistungscontroller bestaetigter Pumpenabschaltung
- * waehrend Filterwartung leuchten. C3-Kommunikation fehlt noch:
- * B bleibt aktuell bewusst AUS; Wartungstaster ist GPIO19, nicht GPIO18.
+ * BLAU zeigt die vom C3 gemeldete Pumpen-Wartungssperre an.
+ * Die Rueckmeldung bestaetigt den Firmwarezustand, KEINE elektrische Isolation.
  */
 #ifndef GROW_ENABLE_PHASE_RGB
 #define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode: LED gruen D4, rot D33; DS18B20 D23
@@ -257,13 +256,23 @@ static const char *phaseName(GrowPhase p);
 static const PhaseProfile &phaseProfile();
 static void setGrowPhase(GrowPhase next);
 static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true};
-static constexpr PhaseProfile BLUETE_PROFILE = {NAN, NAN, false};
+static PhaseProfile blueteProfile = {NAN, NAN, false};
+static constexpr char PHASE_PROFILE_NVS[] = "phaseprof_v1";
 static constexpr char PHASE_NVS[] = "growphase_v1";
 GrowPhase growPhase = GrowPhase::Wuchs;
 // FALLING-Interrupt erfasst auch kurze Tastendruecke waehrend blockierender ADC-Messungen.
 // Kein Kontaktprellen als mehrere Eingaben werten (50 ms Mindestabstand).
 static volatile uint32_t phasePendingPresses = 0;
 static volatile uint32_t phaseLastInterruptUs = 0;
+static volatile uint32_t pumpPendingPresses = 0;
+static volatile uint32_t pumpLastInterruptUs = 0;
+static void IRAM_ATTR onPumpButtonFalling() {
+  const uint32_t us = micros();
+  if (static_cast<uint32_t>(us - pumpLastInterruptUs) >= PHASE_DEBOUNCE_MS * 1000UL) {
+    pumpLastInterruptUs = us;
+    if (pumpPendingPresses < 1000000UL) ++pumpPendingPresses;
+  }
+}
 static void IRAM_ATTR onPhaseButtonFalling() {
   const uint32_t us = micros();
   if (static_cast<uint32_t>(us - phaseLastInterruptUs) >= PHASE_DEBOUNCE_MS * 1000UL) {
@@ -275,22 +284,32 @@ static const char *phaseName(GrowPhase p) {
   return p == GrowPhase::Bluete ? "bluete" : "wuchs";
 }
 static const PhaseProfile &phaseProfile() {
-  return growPhase == GrowPhase::Bluete ? BLUETE_PROFILE : WUCHS_PROFILE;
+  return growPhase == GrowPhase::Bluete ? blueteProfile : WUCHS_PROFILE;
 }
-// Wird erst durch spaetere *verifizierte* C3-Pumpen-Rueckmeldung gesetzt.
-// Die bestehende Sensor-Firmware hat dafuer noch kein Transportprotokoll.
+// Bestaetigung ist eine Software-Rueckmeldung des C3, KEINE Spannungsfreiheit.
 static bool pumpServiceOffConfirmed = false;
 static void refreshPhaseRgb() {
 #if GROW_ENABLE_PHASE_RGB
   // Blau hat Vorrang: bei bestaetigter Filterwartung R/G AUS statt
   // Mischfarben wie Cyan/Weiss. Ohne Rueckmeldung nur Wuchs/Bluete.
-  const bool blueOn = pumpServiceOffConfirmed;
+  const bool blueOn = pumpServiceOff && pumpServiceOffConfirmed && c3Connected();
   const bool redOn = !blueOn && growPhase == GrowPhase::Bluete;
   const bool greenOn = !blueOn;
   digitalWrite(PIN_RGB_RED, redOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
   digitalWrite(PIN_RGB_GREEN, greenOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
   digitalWrite(PIN_RGB_BLUE, blueOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
 #endif
+}
+static void loadPhaseProfile() {
+  Preferences prefs;
+  if (!prefs.begin(PHASE_PROFILE_NVS, true)) return;
+  const bool valid = prefs.getBool("valid", false);
+  const float t = prefs.getFloat("air_c", NAN);
+  const float h = prefs.getFloat("humidity", NAN);
+  prefs.end();
+  if (valid && isfinite(t) && t >= 10.0f && t <= 40.0f &&
+      isfinite(h) && h >= 20.0f && h <= 90.0f)
+    blueteProfile = {t, h, true};
 }
 static void loadGrowPhase() {
   Preferences prefs;
@@ -354,26 +373,34 @@ static void setupGrowPhaseButtons() {
   Serial.printf("PHASENTASTER D16 beim Start: %s (INPUT_PULLUP, nach GND druecken)\n",
                 digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW (Kontakt bereits geschlossen)" : "HIGH (offen)");
   pinMode(PIN_PUMP_SERVICE_BUTTON, INPUT_PULLUP);
+  pumpPendingPresses = 0;
+  pumpLastInterruptUs = micros() - PHASE_DEBOUNCE_MS * 1000UL;
+  attachInterrupt(digitalPinToInterrupt(PIN_PUMP_SERVICE_BUTTON), onPumpButtonFalling, FALLING);
+  Serial.printf("PUMPENTASTER D19 beim Start: %s\n",
+                digitalRead(PIN_PUMP_SERVICE_BUTTON) == LOW ? "LOW (Kontakt geschlossen)" : "HIGH (offen)");
+  loadPhaseProfile();
   loadGrowPhase();
 }
 static void pollPumpServiceButton(unsigned long nowMs) {
-  static bool previousHigh = true;
-  static unsigned long changedAt = 0;
-  const bool high = digitalRead(PIN_PUMP_SERVICE_BUTTON) == HIGH;
-  if (high != previousHigh && nowMs - changedAt >= 200UL) {
-    previousHigh = high;
-    changedAt = nowMs;
-    if (!high) {
-      pumpServiceOff = !pumpServiceOff;
-      pendingPumpIndex = 0;
-      pendingPumpDurationMs = 0;
-      ++pumpCommandSeq;
-      pumpServiceOffConfirmed = false;
-      refreshPhaseRgb();
-      Serial.printf("Pumpen-Softwaresperre %s (KEINE elektrische Trennung)\n",
-                    pumpServiceOff ? "EIN" : "AUS");
-    }
-  }
+  (void)nowMs;
+  uint32_t count;
+  noInterrupts();
+  count = pumpPendingPresses;
+  pumpPendingPresses = 0;
+  interrupts();
+  if (!count) return;
+  Serial.printf("PUMPENTASTER D19: %lu Druck-Flanke(n)\n",
+                static_cast<unsigned long>(count));
+  if (!(count & 1UL)) return;
+  pumpServiceOff = !pumpServiceOff;
+  pendingPumpIndex = 0;
+  pendingPumpDurationMs = 0;
+  ++pumpCommandSeq;
+  // Blau erst nach erneuter, frischer C3-Rueckmeldung.
+  pumpServiceOffConfirmed = false;
+  refreshPhaseRgb();
+  Serial.printf("Pumpen-Wartungssperre %s (C3-Bestaetigung ausstehend)\n",
+                pumpServiceOff ? "EIN" : "AUS");
 }
 
 /* Nutzersollwerte, getrennt von pH-Alarmgrenzen und Sensor-Kalibrierung.
@@ -1186,7 +1213,7 @@ static void handleSummary() {
   outputs["pump_count"] = DOSING_PUMP_COUNT;
   outputs["pump_active"] = c3Connected() ? c3PumpActive : 0;
   outputs["pump_service_off"] = pumpServiceOff;
-  outputs["pump_service_off_confirmed"] = false; // keine physische Isolation belegt
+  outputs["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed && c3Connected();
   JsonObject actualObj = outputs.createNestedObject("actual");
   writeActuators(actualObj, actual);
 
@@ -1253,6 +1280,8 @@ static void handleControlTargets() {
     any = true;
   }
   if (!any) return c3ApiError(400, "no_target");
+  if (pumpServiceOff && next.waterPump)
+    return c3ApiError(423, "pump_service_locked");
   if (next.heater && !sensors.dht[0].ok)
     return c3ApiError(409, "heater_sensor_unavailable");
   if (!sameState(next, targets)) {
@@ -1288,12 +1317,15 @@ static void handleActuatorStatus() {
   c3PumpActive = doc["pump_active"] | 0;
   c3PumpAckSeq = doc["pump_ack_seq"] | 0U;
   lastC3StatusMs = millis();
+  pumpServiceOffConfirmed = pumpServiceOff &&
+      (doc["pump_service_off"] | false) &&
+      (doc["pump_service_off_confirmed"] | false) &&
+      c3PumpActive == 0 && !actual.waterPump;
   if (pendingPumpIndex != 0 && c3PumpAckSeq == pumpCommandSeq) {
     pendingPumpIndex = 0;
     pendingPumpDurationMs = 0;
   }
-  // Keine elektrische Trennung nachweisbar: blaue Wartungs-LED bleibt AUS.
-  pumpServiceOffConfirmed = false;
+  // C3 bestaetigt nur die logische Pumpensperre, keine elektrische Trennung.
   refreshPhaseRgb();
   localServer.send(200, "application/json", "{\"ok\":true}");
 }
@@ -1385,6 +1417,40 @@ static void handleGrowPhase() {
   localServer.send(200, "application/json", response);
 }
 
+static void handlePhaseProfile() {
+  if (!localAuthorized()) return sendUnauthorized();
+  StaticJsonDocument<256> doc;
+  if (deserializeJson(doc, localServer.arg("plain")) || !doc.is<JsonObject>())
+    return localServer.send(400, "application/json", "{\"ok\":false,\"error\":\"bad_json\"}");
+  const char *phase = doc["phase"] | "";
+  if (strcmp(phase, "bluete") != 0)
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"phase_must_be_bluete\"}");
+  if (!doc["air_target_c"].is<float>() && !doc["air_target_c"].is<int>())
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"bad_air_target\"}");
+  if (!doc["humidity_target_pct"].is<float>() && !doc["humidity_target_pct"].is<int>())
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"bad_humidity_target\"}");
+  const float t = doc["air_target_c"].as<float>();
+  const float h = doc["humidity_target_pct"].as<float>();
+  if (!isfinite(t) || t < 10.0f || t > 40.0f ||
+      !isfinite(h) || h < 20.0f || h > 90.0f)
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"targets_out_of_range\"}");
+  Preferences prefs;
+  if (!prefs.begin(PHASE_PROFILE_NVS, false))
+    return localServer.send(500, "application/json", "{\"ok\":false,\"error\":\"nvs_unavailable\"}");
+  const bool saved = prefs.putFloat("air_c", t) == sizeof(float) &&
+                     prefs.putFloat("humidity", h) == sizeof(float) &&
+                     prefs.putBool("valid", true) == 1;
+  prefs.end();
+  if (!saved)
+    return localServer.send(500, "application/json", "{\"ok\":false,\"error\":\"nvs_write_failed\"}");
+  blueteProfile = {t, h, true};
+  targets = ActuatorState{};
+  ++commandSeq;
+  refreshPhaseRgb();
+  Serial.printf("BLUETE-Profil gespeichert: Luft %.1f C, Feuchte %.1f %%\n", t, h);
+  localServer.send(200, "application/json", "{\"ok\":true,\"phase\":\"bluete\",\"configured\":true}");
+}
+
 static void setupLocalApi() {
   localServer.collectHeaders(LOCAL_HEADER_KEYS, 1);
   localServer.on("/api/local/summary", HTTP_GET, handleSummary);
@@ -1395,6 +1461,7 @@ static void setupLocalApi() {
   localServer.on("/api/local/control/mode", HTTP_POST, handleControlMode);
   localServer.on("/api/local/control/week", HTTP_POST, handleGrowWeek);
   localServer.on("/api/local/control/phase", HTTP_POST, handleGrowPhase);
+  localServer.on("/api/local/control/phase-profile", HTTP_POST, handlePhaseProfile);
   localServer.begin();
 }
 
@@ -1678,6 +1745,7 @@ void loop() {
   }
 
   localServer.handleClient();
+  refreshPhaseRgb();  // Verbindungstimeout: blau sofort wieder aus.
   pollGrowPhaseButtons(now);
   pollPumpServiceButton(now);
   handlePhTestSerial();
