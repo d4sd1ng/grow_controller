@@ -470,10 +470,17 @@ void fetchSummary() {
   } else textIfChanged(homeTds, "TDS: --");
 
   JsonArrayConst alerts = doc["alerts"].as<JsonArrayConst>();
+  const unsigned validDht = reading["extras"]["air_valid_sensor_count"] | 255U;
   if (!alerts.isNull() && alerts.size() > 0) {
     const char *msg = alerts[0]["message"] | "Alarm vorhanden";
     snprintf(status, sizeof(status), "ALARM: %.74s", msg);
     textIfChanged(homeAlert, status);
+  } else if (validDht == 0U) {
+    textIfChanged(homeAlert, "DHT22 AUSFALL: KLIMA GESPERRT");
+  } else if (validDht == 1U) {
+    textIfChanged(homeAlert, "WARNUNG: nur 1 DHT22");
+  } else if (validDht == 2U) {
+    textIfChanged(homeAlert, "DHT22: 2/3 gueltig (Mittelwert)");
   } else textIfChanged(homeAlert, "Keine aktiven Meldungen");
 
   const JsonObjectConst target = doc["control"]["targets"].as<JsonObjectConst>();
