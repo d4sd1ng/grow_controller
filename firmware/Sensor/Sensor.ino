@@ -21,6 +21,7 @@
 #include <time.h>
 #include "phase_clock_math.h"
 #include "air_fusion.h"
+#include "calibration_capture.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -770,11 +771,16 @@ static void setPhTestMode(char c) {
 }
 static void scanI2CAndBind(bool forceFullScan = false); // ADS fest D21/D22; BH fest D13/D14; 'i' Diagnose
 
+static void handleCalibrationSerial(char command);
+static void pollCalibrationCapture();
 static void handlePhTestSerial() {
   while (Serial.available()) {
     const char c = static_cast<char>(Serial.read());
     if (c >= '0' && c <= '3') setPhTestMode(c);
     else if (c == 'i' || c == 'I') scanI2CAndBind(true);
+    else if (c == '7' || c == '4' || c == 'e' || c == 'E' ||
+             c == 's' || c == 'S' || c == 'x' || c == 'X')
+      handleCalibrationSerial(c);
     else if (c == 'k' || c == 'K') {
       String arg = Serial.readStringUntil('\n');
       arg.trim();
@@ -785,6 +791,8 @@ static void handlePhTestSerial() {
       Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
       Serial.println(F("Woche per Serial: k1 bis k13 + Zeilenumbruch (NTP erforderlich)."));
       Serial.println(F("i = alle I2C-Adressen auf D13/D14 und D21/D22 anzeigen (keine Neuzuordnung)"));
+      Serial.println(F("KALIBRIERUNG: 7=pH7 | 4=pH4 | e=EC 1413uS/cm | s=Status | x=Abbrechen"));
+      Serial.println(F("ADS1115 A0=pH, A1=EC; DS18B20 D23 MUSS gueltige Wassertemperatur liefern."));
     }
   }
 }
@@ -2051,7 +2059,8 @@ void setup() {
   loadEcCalibration();
   loadWaterSensorRom();
   loadToCalibration();
-  if (!ecCalibrated) Serial.println("EC unkalibriert: 'e' im Diagnose-Sketch verwenden.");
+  if (!ecCalibrated) Serial.println("EC unkalibriert: 'e' im seriellen Monitor zum Kalibrieren.");
+  Serial.println(F("KALIBRIERUNG INTEGRIERT: 7=pH7 4=pH4 e=EC1413 s=Status x=Abbruch h=Hilfe"));
   if (!phCalibrated) Serial.println("WARNUNG: pH-Kalibrierung fehlt.");
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
@@ -2120,6 +2129,7 @@ void loop() {
   pollPumpServiceButton(now);
   pollPhaseClock();
   handlePhTestSerial();
+  pollCalibrationCapture(); // ein ADC-Wert je Durchlauf, API/C3 bleibt erreichbar
   updatePhBuzzer(now);
   sampleTdsBackground(now);
   pollMlx90640(now);
