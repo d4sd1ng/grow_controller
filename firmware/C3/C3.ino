@@ -327,7 +327,7 @@ void pollSensor() {
   }
   String body = http.getString();
   http.end();
-  StaticJsonDocument<768> d;
+  StaticJsonDocument<1536> d;
   if (deserializeJson(d, body) || !d["ok"].as<bool>() || !d["commands"].is<JsonObject>()) return;
   if (d["pump_count"].as<int>() != 5 || !d["pump_service_off"].is<bool>()) return;
   pumpServiceOff = d["pump_service_off"].as<bool>();
