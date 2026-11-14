@@ -1,8 +1,8 @@
 /**
- * Grow Controller: Sensor-ESP32 mit OLED und ADS1115 (restore from PR #1).
+ * Grow Controller: ESP32-Pro-Sensorcontroller ohne lokales Display.
  *
- * - 3x DHT22, DS18B20 (D23), ADS1115 + OLED (D21/D22), BH1750 (D13/D14)
- * - Kamera MLX90640 (optional) am OLED-I2C D21/D22 (0x33)
+ * - 3x DHT22, DS18B20 (D23), ADS1115 (D21/D22), BH1750 (D13/D14)
+ * - Kamera MLX90640 (optional) am Sensor-I2C D21/D22 (0x33)
  * - HTTP-API fuer CYD/Raspberry Pi, Telemetrie und pH-Alarm
  * - Zweites Geraet: ESP32-C3 SuperMini als eigenstaendiger Leistungscontroller.
  *
@@ -23,8 +23,6 @@
 #include "air_fusion.h"
 #include "calibration_capture.h"
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <Adafruit_ADS1X15.h>
 #include <DHT.h>
 #include <OneWire.h>
@@ -98,7 +96,6 @@ static constexpr int PIN_BH_SCL = 14;
 
 /* ---------- Intervale ---------- */
 static constexpr unsigned long SENSOR_READ_MS = 2000;
-static constexpr unsigned long OLED_REFRESH_MS = 1000;
 static constexpr unsigned long TELEMETRY_INTERVAL_MS = 10000;
 static constexpr unsigned long WIFI_RECONNECT_MS = 5000;
 
@@ -155,14 +152,10 @@ static void loadPhCalibration() {
       fabsf(phVolt4 - phVolt7) >= 0.001f;
 }
 
-/* ---------- OLED / I2C ---------- */
-static constexpr uint8_t OLED_ADDR = 0x3C;
-static constexpr int OLED_RESET = -1;
-Adafruit_SSD1306 display(128, 64, &Wire, OLED_RESET);
-bool oledOk = false;
+/* ---------- I2C: ADS1115 und optionale MLX90640 auf GPIO21/22 ---------- */
 Adafruit_ADS1115 ads;
 
-/* ADS1115 + OLED auf Wire D21/D22, BH1750 separat auf zweitem I2C-Controller D13/D14 */
+/* ADS1115 auf Wire D21/D22, BH1750 separat auf zweitem I2C-Controller D13/D14 */
 TwoWire bhWire = TwoWire(1);
 static uint8_t bh1750Addr = 0;
 static bool bh1750Present = false;
@@ -845,7 +838,6 @@ const char *LOCAL_HEADER_KEYS[] = {"X-Telemetry-Key"};
 
 /* ---------- Timing ---------- */
 unsigned long lastSensorRead = 0;
-unsigned long lastOledRefresh = 0;
 unsigned long lastTelemetry = 0;
 unsigned long lastWifiReconnect = 0;
 bool sensorMdnsStarted = false;
@@ -1089,7 +1081,7 @@ static bool i2cResponds(TwoWire& bus, uint8_t addr) {
 
 static void scanI2CAndBind(bool forceFullScan) {
   // Urspruengliche feste Zuordnung:
-  // ADS1115 mit OLED auf Wire / GPIO21 SDA + GPIO22 SCL, ADDR=GND (0x48).
+  // ADS1115 auf Wire / GPIO21 SDA + GPIO22 SCL, ADDR=GND (0x48).
   // BH1750 getrennt auf bhWire / GPIO13 SDA + GPIO14 SCL.
   // I2C-Scan ist reine Diagnose und darf ADS/BH nicht auf andere Busse umbinden.
   ads.setGain(GAIN_ONE);
@@ -1097,7 +1089,7 @@ static void scanI2CAndBind(bool forceFullScan) {
   adsFoundAddr = sensors.adsOk ? 0x48 : 0;
   adsFoundBus = sensors.adsOk ? "D21(SDA)/D22(SCL)" : "nicht gefunden";
   if (sensors.adsOk)
-    Serial.println(F("ADS1115 GEFUNDEN: 0x48 auf D21/D22 (OLED-Bus)"));
+    Serial.println(F("ADS1115 GEFUNDEN: 0x48 auf D21/D22 (Sensor-I2C)"));
   else
     Serial.println(F("ADS1115 NICHT GEFUNDEN: 0x48 auf D21/D22"));
 
@@ -1230,7 +1222,7 @@ static float mlxFrame[32 * 24];
 static bool mlxInitialized = false;
 static unsigned long lastMlxReadMs = 0;
 static void setupMlx90640() {
-  Wire.setClock(400000); // schnelle Bilduebertragung, ADS/OLED danach wieder 100 kHz
+  Wire.setClock(400000); // Kamera-Uebertragung; ADS danach wieder 100 kHz
   mlxInitialized = mlx90640.begin(0x33, &Wire);
   if (mlxInitialized) {
     mlx90640.setMode(MLX90640_CHESS);
@@ -2270,72 +2262,6 @@ static void sendPhTestAlertEvent() {
   }
 }
 
-/* ---------- OLED ---------- */
-
-static void drawOled() {
-  if (!oledOk) return;
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-
-  display.setCursor(0, 0);
-  if (cycleStopped) display.print(F("STOPP"));
-  else display.print(growPhase == GrowPhase::Wuchs ? F("WUCHS") : F("BLUETE"));
-  if (growWeek) display.printf(" W%u", growWeek);
-  else display.print(F(" W?"));
-  if (!phaseProfile().configured) display.print(F(" !"));
-
-  display.setCursor(0, 12);
-  if (sensors.air.ok) {
-    display.printf("T %.1fC RH %.0f%%", sensors.air.tempC, sensors.air.rh);
-  } else {
-    display.print("DHT FEHLER");
-  }
-
-  display.setCursor(0, 24);
-  // Zur Platzersparnis alle 5 s zwischen Box/H2O, Lux und Blatt-VPD wechseln.
-  // pH/EC und die Alarmzeile bleiben zu jeder Zeit sichtbar.
-  const uint8_t infoPage = (millis() / 5000UL) % 3UL;
-  if (infoPage == 2UL) {
-    if (isfinite(sensors.vpd)) display.printf("VPD %.2f kPa", sensors.vpd);
-    else display.print(F("VPD --"));
-    if (!sensors.vpdFromCamera) display.print(F(" -2C"));
-    if (sensors.airValidSensorCount == 1) display.print(F(" !1DHT"));
-    else if (sensors.airValidSensorCount == 2) display.print(F(" 2DHT"));
-  } else if (infoPage == 1UL) {
-    if (bh1750Present) {
-      display.printf("%lu lx ~%.0f lm",
-                     static_cast<unsigned long>(sensors.lux),
-                     estimatedAreaLumens(static_cast<float>(sensors.lux)));
-    } else display.print(F("BH1750 --"));
-  } else {
-    display.print("Box ");
-    if (isfinite(sensors.caseTempC)) display.printf("%.1fC", sensors.caseTempC);
-    else display.print("--");
-    display.print(" H2O ");
-    if (isfinite(sensors.waterTempC)) display.printf("%.1fC", sensors.waterTempC);
-    else display.print("--");
-  }
-
-  display.setCursor(0, 36);
-  display.print("pH ");
-  if (isnan(sensors.ph)) display.print("--");
-  else display.printf("%.2f", sensors.ph);
-  display.print(" EC ");
-  if (!isfinite(sensors.ec)) display.print("--");
-  else display.printf("%.2f", sensors.ec);
-
-  display.setCursor(0, 50);
-  const PhAlarm shown = phTestActive ? phTestAlarm : phAlarm;
-  if (phTestActive) display.print("TEST ");
-  if (shown == PhAlarm::Low) display.print("ALARM pH <5.5");
-  else if (shown == PhAlarm::High) display.print("ALARM pH >6.2");
-  else if (shown == PhAlarm::Fault) display.print("pH SENSORFEHLER");
-  else display.print("pH OK 5.5-6.2");
-
-  display.display();
-}
-
 /* ---------- Setup / Loop ---------- */
 
 void setup() {
@@ -2360,16 +2286,6 @@ void setup() {
   Wire.setTimeOut(30);
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
   bhWire.setTimeOut(30);
-
-  oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-  if (oledOk) {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 24);
-    display.print("Grow Sensor V4");
-    display.display();
-  }
 
   scanI2CAndBind();
   setupMlx90640();
@@ -2448,11 +2364,6 @@ void loop() {
 
   autoControl();
   applyActuators();
-
-  if (now - lastOledRefresh >= OLED_REFRESH_MS) {
-    lastOledRefresh = now;
-    drawOled();
-  }
 
   if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
     lastTelemetry = now;
