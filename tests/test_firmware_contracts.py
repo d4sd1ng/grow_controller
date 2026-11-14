@@ -62,6 +62,34 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertIn('"/api/local/actuators"', self.sensor)
         self.assertIn('sensorUrl("/api/local/actuators")', self.c3)
 
+    def test_phase_vpd_climate_control(self):
+        # W1-2, transition W3-4, flowering W5-13. Actuators only requested.
+        for pattern in (
+            r'growWeek >= 1 && growWeek <= 2',
+            r'growWeek >= 3 && growWeek <= 4',
+            r'growWeek >= 5 && growWeek <= 13',
+            r'\{0\.4f, 0\.8f, "early_growth", true\}',
+            r'\{0\.8f, 1\.2f, "transition", true\}',
+            r'\{1\.2f, 1\.6f, "flowering", true\}',
+            r'VPD_LEAF_AIR_OFFSET_C = 2\.0f',
+            r'const bool tooHumid',
+            r'const bool tooDry',
+            r'targets\.heater = false',
+            r'targets\.circulation = false',
+            r'targets\.exhaust = false',
+            r'if \(!sensors\.dht\[0\]\.ok',
+            r'VPD_HYST = 0\.05f',
+        ):
+            with self.subTest(pattern=pattern):
+                self.assertRegex(self.sensor, pattern)
+        self.assertIn('control["vpd_target_min_kpa"]', self.sensor)
+        self.assertIn('control["vpd_target_max_kpa"]', self.sensor)
+        self.assertIn('d["pump_service_off_confirmed"]', self.c3)
+        self.assertIn('doc["pump_service_off_confirmed"]', self.sensor)
+        self.assertIn('reading["extras"]["vpd"]', self.remote)
+        # Nicht automatisch den Leistungscontroller freischalten.
+        self.assertIn("HARDWARE_OUTPUTS_ARMED = false", self.c3)
+
     def test_remote_lvgl_and_read_interfaces(self):
         self.assertIn("SCREEN_W = 320", self.remote)
         self.assertIn("SCREEN_H = 240", self.remote)
