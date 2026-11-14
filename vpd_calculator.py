@@ -62,7 +62,8 @@ def calculate_target_humidity(temperature, growth_stage):
     svp_leaf = _saturation_vapor_pressure_kpa(temperature - LEAF_AIR_OFFSET_C)
     target_humidity = ((svp_leaf - vpd_target) / svp_air) * 100
 
-    # Ensure target humidity is within the stage-specific range
-    target_humidity = max(humidity_min, min(humidity_max, target_humidity))
+    # Der VPD-Zielwert hat Vorrang vor pauschalen Feuchte-Korridoren.
+    # Lediglich physikalisch moegliche 0..100 % begrenzen.
+    target_humidity = max(0.0, min(100.0, target_humidity))
 
     return round(target_humidity)
