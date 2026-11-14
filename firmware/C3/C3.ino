@@ -59,6 +59,7 @@ bool pcaAvailable = false;
 bool hardwareReady = false;
 bool outputsEnabled = false;  // OE bleibt gesperrt, bis ein gueltiger Sensorbefehl kommt
 bool stoppedLatch = false;
+bool cycleStopped = true; // Erst gueltiger Sensor-Start erlaubt Steuerbefehle.
 bool ssr[5] = {};
 bool fans[2] = {};
 int8_t activeDose = -1;
@@ -69,6 +70,8 @@ uint32_t lastSensorPoll = 0;
 uint32_t lastStatusPost = 0;
 uint32_t lastWifiAttempt = 0;
 bool sensorWaterPumpField = false;
+bool pumpServiceOff = true;  // Nach Neustart pumpenseitig gesperrt
+bool pumpServiceOffConfirmed = false; // nur Software-Rueckmeldung, KEINE elektrische Trennung
 // Der Timer laeuft unabhaengig von HTTP-Aufrufen: ein haengender Netzwerk-Request
 // darf den DOSIERIMPULS NICHT verlaengern. Nach Ablauf sperrt der Timer OE.
 esp_timer_handle_t doseGuardTimer = nullptr;
@@ -106,6 +109,7 @@ bool initPca() {
 void shutAllOutputs() {
   digitalWrite(PIN_PCA_OE, HIGH);
   outputsEnabled = false;
+  pumpServiceOffConfirmed = false;
   if (doseGuardTimer) esp_timer_stop(doseGuardTimer);
   doseGuardExpired = false;
   for (int i = 0; i < 5; ++i) {
@@ -154,6 +158,26 @@ void stopDose() {
     }
   }
 }
+// Pumpenausgaenge abschalten und Schreibbestaetigung vom PCA9685 erhalten.
+// Keine Aussage zur Spannungsfreiheit an Motoren oder Netzstromleitungen.
+bool lockPumpChannels() {
+  if (activeDose >= 0) stopDose();
+  if (!pcaAvailable || stoppedLatch) {
+    pumpServiceOffConfirmed = false;
+    return false;
+  }
+  for (uint8_t i = 0; i < 5; ++i) {
+    if (!setPcaChannel(PCA_DOSE_FIRST + i, false)) {
+      faultStop("Pump service PCA I2C");
+      pumpServiceOffConfirmed = false;
+      return false;
+    }
+  }
+  digitalWrite(PIN_SSR[4], LOW);
+  ssr[4] = false;
+  pumpServiceOffConfirmed = activeDose < 0 && !ssr[4];
+  return pumpServiceOffConfirmed;
+}
 bool applySsr(int channel, bool value) {
   if (channel < 0 || channel >= 5 || !hardwareReady || stoppedLatch) return false;
   digitalWrite(PIN_SSR[channel], value ? HIGH : LOW);
@@ -195,8 +219,12 @@ void stateApi() {
   d["hardware_config_valid"] = hardwareReady;
   d["pca9685_detected"] = pcaAvailable;
   d["stopped_latch"] = stoppedLatch;
+  d["cycle_stopped"] = cycleStopped;
   d["sensor_online"] = lastCommandMs != 0 && millis() - lastCommandMs <= COMMAND_TIMEOUT_MS;
   d["water_pump_control_available"] = sensorWaterPumpField;
+  d["pump_service_off"] = pumpServiceOff;
+  d["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed &&
+      lastCommandMs != 0 && millis() - lastCommandMs <= COMMAND_TIMEOUT_MS;
   JsonObject r = d.createNestedObject("relays");
   for (int i = 0; i < 5; ++i) r[SSR_KEY[i]] = ssr[i];
   JsonObject f = d.createNestedObject("fans");
@@ -213,6 +241,7 @@ void stateApi() {
 }
 void fanApi() {
   if (!keyOkay()) return;
+  if (cycleStopped) return replyError(423, "cycle_stopped");
   if (!hardwareReady || !outputsEnabled || stoppedLatch) return replyError(503, "hardware_locked");
   if (!lastCommandMs || millis() - lastCommandMs > COMMAND_TIMEOUT_MS)
     return replyError(503, "sensor_offline");
@@ -234,6 +263,8 @@ void fanApi() {
 }
 void doseApi() {
   if (!keyOkay()) return;
+  if (cycleStopped) return replyError(423, "cycle_stopped");
+  if (pumpServiceOff) return replyError(423, "pump_service_locked");
   if (!hardwareReady || !outputsEnabled || stoppedLatch) return replyError(503, "hardware_locked");
   if (!lastCommandMs || millis() - lastCommandMs > COMMAND_TIMEOUT_MS)
     return replyError(503, "sensor_offline");
@@ -300,8 +331,27 @@ void pollSensor() {
   }
   String body = http.getString();
   http.end();
-  StaticJsonDocument<768> d;
+  StaticJsonDocument<1536> d;
   if (deserializeJson(d, body) || !d["ok"].as<bool>() || !d["commands"].is<JsonObject>()) return;
+  if (d["pump_count"].as<int>() != 5 || !d["pump_service_off"].is<bool>() ||
+      !d["cycle_stopped"].is<bool>()) return;
+  const bool nextCycleStopped = d["cycle_stopped"].as<bool>();
+  if (nextCycleStopped) {
+    cycleStopped = true;
+    if (outputsEnabled || activeDose >= 0) shutAllOutputs();
+    lastCommandMs = millis();
+    pumpServiceOff = true;
+    pumpServiceOffConfirmed = false;
+    return;
+  }
+  // Neue Runde erlaubt Solltelegramme, aber KEINE automatische Hardware-Freigabe.
+  cycleStopped = false;
+  pumpServiceOff = d["pump_service_off"].as<bool>();
+  if (pumpServiceOff) {
+    if (!lockPumpChannels()) return;
+  } else {
+    pumpServiceOffConfirmed = false;
+  }
   JsonObject c = d["commands"].as<JsonObject>();
   const char *required[] = {"light", "exhaust_vent", "circulation_vent", "heater"};
   for (auto k : required) if (!c[k].is<bool>()) return;
@@ -309,7 +359,7 @@ void pollSensor() {
                   c["circulation_vent"].as<bool>(), c["heater"].as<bool>(), false};
   // Ohne bestaetigtes Steuersignal bleibt die Filterwasserpumpe AUS.
   sensorWaterPumpField = c["water_pump"].is<bool>();
-  if (sensorWaterPumpField) next[4] = c["water_pump"].as<bool>();
+  if (sensorWaterPumpField && !pumpServiceOff) next[4] = c["water_pump"].as<bool>();
   if (hardwareReady && !stoppedLatch) {
     // Nach Boot oder Verbindungsabbruch erst ALLE PCA-Kanaele sperren.
     // Erst nach gueltigem Steuertelegramm OE wieder freigeben.
@@ -335,7 +385,11 @@ void sendStatus() {
   d["outputs_enabled"] = hardwareReady && outputsEnabled && !stoppedLatch;
   d["pump_active"] = activeDose < 0 ? 0 : activeDose + 1;
   d["pump_ack_seq"] = 0U;  // No dosing command acknowledged via sensor API.
-  d["failsafe"] = !hardwareReady || !outputsEnabled || stoppedLatch ||
+  d["pump_service_off"] = pumpServiceOff;
+  d["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed &&
+      lastCommandMs != 0 && millis() - lastCommandMs <= COMMAND_TIMEOUT_MS;
+  d["cycle_stopped"] = cycleStopped;
+  d["failsafe"] = cycleStopped || !hardwareReady || !outputsEnabled || stoppedLatch ||
                     lastCommandMs == 0 || millis() - lastCommandMs > COMMAND_TIMEOUT_MS;
   JsonObject actual = d.createNestedObject("actual");
   for (int i = 0; i < 5; ++i) actual[SSR_KEY[i]] = ssr[i];
@@ -411,6 +465,8 @@ void loop() {
     sensorIp = IPAddress();
   }
   if (activeDose >= 0 && (doseGuardExpired || now - doseStartMs >= doseTimeMs)) stopDose();
+  if (lastCommandMs != 0 && now - lastCommandMs > COMMAND_TIMEOUT_MS)
+    pumpServiceOffConfirmed = false;
   if (hardwareReady && outputsEnabled && (lastCommandMs == 0 ? now > COMMAND_TIMEOUT_MS :
                         now - lastCommandMs > COMMAND_TIMEOUT_MS)) {
     // Kommunikation verloren: keine Verbraucher eingeschaltet lassen.

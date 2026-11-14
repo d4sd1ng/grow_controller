@@ -62,6 +62,78 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertIn('"/api/local/actuators"', self.sensor)
         self.assertIn('sensorUrl("/api/local/actuators")', self.c3)
 
+    def test_phase_vpd_climate_control(self):
+        # W1-2, transition W3-4, flowering W5-13. Actuators only requested.
+        for pattern in (
+            r'growWeek >= 1 && growWeek <= 2',
+            r'growWeek >= 3 && growWeek <= 4',
+            r'growWeek >= 5 && growWeek <= 13',
+            r'\{0\.4f, 0\.8f, "early_growth", true\}',
+            r'\{0\.8f, 1\.2f, "transition", true\}',
+            r'\{1\.2f, 1\.6f, "flowering", true\}',
+            r'VPD_LEAF_AIR_OFFSET_C = 2\.0f',
+            r'const bool tooHumid',
+            r'const bool tooDry',
+            r'targets\.heater = false',
+            r'targets\.circulation = false',
+            r'targets\.exhaust = false',
+            r'if \(!sensors\.dht\[0\]\.ok',
+            r'VPD_HYST = 0\.05f',
+        ):
+            with self.subTest(pattern=pattern):
+                self.assertRegex(self.sensor, pattern)
+        self.assertIn('control["vpd_target_min_kpa"]', self.sensor)
+        self.assertIn('control["vpd_target_max_kpa"]', self.sensor)
+        self.assertIn('d["pump_service_off_confirmed"]', self.c3)
+        self.assertIn('doc["pump_service_off_confirmed"]', self.sensor)
+        self.assertIn('reading["extras"]["vpd"]', self.remote)
+        # Nicht automatisch den Leistungscontroller freischalten.
+        self.assertIn("HARDWARE_OUTPUTS_ARMED = false", self.c3)
+
+    def test_automatic_phase_week_clock(self):
+        self.assertIn('#include "phase_clock_math.h"', self.sensor)
+        self.assertIn('configTime(0, 0, "pool.ntp.org", "time.google.com")', self.sensor)
+        self.assertIn('loadPhaseClock();', self.sensor)
+        self.assertIn('pollPhaseClock();', self.sensor)
+        self.assertIn('phaseStartEpoch', self.sensor)
+        self.assertIn('PHASE_CLOCK_NVS', self.sensor)
+        self.assertIn('phaseDurationElapsed', self.sensor)
+        self.assertIn('phaseClockStatus()', self.sensor)
+        self.assertIn('"/api/local/control/phase-clock"', self.sensor)
+        self.assertIn('grow_clock::evaluateCycle', self.sensor)
+        self.assertIn('stopCompletedCycle()', self.sensor)
+        self.assertIn('if (state.finished && !cycleStopped)', self.sensor)
+        self.assertIn('if (growPhase != desiredPhase)', self.sensor)
+        self.assertIn('prefs.putBool("stopped", stopped)', self.sensor)
+        self.assertIn('d["cycle_stopped"]', self.c3)
+        self.assertIn('doc["cycle_stopped"]', self.sensor)
+        self.assertIn('reading["extras"]["cycle_stopped"]', self.remote)
+        self.assertIn('setGrowWeekManually(selected)', self.sensor)
+        self.assertIn('setGrowWeekManually(week)', self.sensor)
+        self.assertNotIn('die Zeit-basierte Wochenfortschaltung ist separat', self.sensor)
+
+    def test_three_dht_sensor_fusion_for_climate_and_vpd(self):
+        self.assertIn('#include "air_fusion.h"', self.sensor)
+        self.assertIn('grow_air::fuseThree(samples)', self.sensor)
+        self.assertIn('updateFusedAir();', self.sensor)
+        self.assertIn('sensors.airValidSensorCount = combined.validCount;', self.sensor)
+        self.assertIn('const float airC = sensors.air.tempC;', self.sensor)
+        self.assertIn('const float rh = sensors.air.rh;', self.sensor)
+        self.assertIn('const float t = sensors.air.tempC;', self.sensor)
+        self.assertIn('if (!sensors.air.ok || !isfinite(sensors.vpd)', self.sensor)
+        self.assertIn('if (!sensors.air.ok && targets.heater)', self.sensor)
+        self.assertIn('reading["air_measurement_quality"]', self.sensor)
+        self.assertIn('root["air_measurement_quality"]', self.sensor)
+        self.assertIn('reading["air_sensor_warning"]', self.sensor)
+        self.assertIn('root["air_sensor_warning"]', self.sensor)
+        self.assertIn('reading["air_valid_sensor_count"]', self.sensor)
+        self.assertIn('root["air_valid_sensor_count"]', self.sensor)
+        self.assertIn('validDht == 0U', self.remote)
+        self.assertIn('validDht == 1U', self.remote)
+        self.assertIn('validDht == 2U', self.remote)
+        self.assertNotIn('if (!sensors.dht[0].ok || !isfinite(sensors.vpd)', self.sensor)
+        self.assertNotIn('const float airC = sensors.dht[0].tempC;', self.sensor)
+
     def test_remote_lvgl_and_read_interfaces(self):
         self.assertIn("SCREEN_W = 320", self.remote)
         self.assertIn("SCREEN_H = 240", self.remote)

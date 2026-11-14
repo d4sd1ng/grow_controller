@@ -18,6 +18,9 @@
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <time.h>
+#include "phase_clock_math.h"
+#include "air_fusion.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -33,6 +36,11 @@
 #if GROW_ENABLE_MLX90640
 #include <Adafruit_MLX90640.h>
 #endif
+// Kameratemperatur nur nach Blatt-ROI-Kalibrierung als VPD-Quelle freigeben.
+#ifndef GROW_MLX_LEAF_VERIFIED
+#define GROW_MLX_LEAF_VERIFIED 0
+#endif
+static constexpr float VPD_LEAF_AIR_OFFSET_C = 2.0f; // Nutzer-VPD-Tabelle
 
 /* Die Buzzer-Bauart ist noch unbekannt. Daher standardmaessig AUS.
  * Bei einem bestaetigten 3.3-V-kompatiblen aktiven Modul mit Logikeingang
@@ -45,9 +53,8 @@
 /* RGB: gemeinsame Kathode vom Nutzer bestaetigt, GND gemeinsam.
  * R D33 und G D4 = Phasenanzeige; B D17 (TX2) = Filterwechsel.
  * Je Kanal zwei 220-Ohm-Widerstaende in Reihe (440 Ohm).
- * BLAU darf nur bei vom Leistungscontroller bestaetigter Pumpenabschaltung
- * waehrend Filterwartung leuchten. C3-Kommunikation fehlt noch:
- * B bleibt aktuell bewusst AUS; Wartungstaster ist GPIO19, nicht GPIO18.
+ * BLAU zeigt die vom C3 gemeldete Pumpen-Wartungssperre an.
+ * Die Rueckmeldung bestaetigt den Firmwarezustand, KEINE elektrische Isolation.
  */
 #ifndef GROW_ENABLE_PHASE_RGB
 #define GROW_ENABLE_PHASE_RGB 1 // Gemeinsame Kathode: LED gruen D4, rot D33; DS18B20 D23
@@ -180,6 +187,8 @@ static AirReading readDht(DHT &dht);
 
 struct SensorData {
   AirReading dht[3];
+  AirReading air; // fusionierte Lufttemperatur / Feuchte fuer Regelung und VPD
+  uint8_t airValidSensorCount = 0;
   float ds1C = NAN;
   float ds2C = NAN;
   float waterTempC = NAN;
@@ -195,9 +204,12 @@ struct SensorData {
   float tdsPpm = NAN;
   float ec = NAN; // mS/cm bei der aktuell gemessenen DS18B20-Wassertemperatur
 
-  float vpd = NAN; // bestehender Luft-VPD (DHT1), unveraendert
+  float vpd = NAN; // aktiver Blatt-VPD in kPa (standardmaessig T Blatt = T Luft - 2 C)
+  float vpdAir = NAN; // separater Luft-VPD, Blatt-Offset 0
+  float leafTemperatureC = NAN; // geschaetzte oder verifizierte Blatt-Temperatur
+  bool vpdFromCamera = false;
   float thermalRoiTempC = NAN; // mittlere Bildregion, NOCH NICHT als Blatt validiert
-  float vpdLeafCandidate = NAN; // vorlaeufiger Blatt-VPD: ROI + mind. zwei DHT22
+  float vpdLeafCandidate = NAN; // vorlaeufiger Blatt-VPD: ROI + fusionierte DHT22-Werte
   bool mlx90640Ok = false;
   uint32_t lux = 0;
 
@@ -241,7 +253,8 @@ static bool c3Connected() {
 char controlMode[8] = "auto";
 
 
-/* Ein rastfreier Schliesser D19-GND, eine 4-Pin-RGB-LED.
+/* Zwei rastfreie Schliesser: Phase D16-GND, Pumpenwartung D19-GND;
+ * eine 4-Pin-RGB-LED.
  * Gruen (D4) = Wuchs, Rot+Gruen (D33+D4) = Bluete (Gelb).
  * Jeder Farbkanal hat zwei 220-Ohm-Widerstaende in Reihe (440 Ohm).
  * Gemeinsame Kathode an GND (bestaetigt).
@@ -257,13 +270,32 @@ static const char *phaseName(GrowPhase p);
 static const PhaseProfile &phaseProfile();
 static void setGrowPhase(GrowPhase next);
 static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true};
-static constexpr PhaseProfile BLUETE_PROFILE = {NAN, NAN, false};
+static bool setGrowWeek(int week); // NVS-Funktion steht weiter unten
+static bool beginPhaseClock(GrowPhase next);
+static bool setGrowWeekManually(int week);
+static void loadPhaseClock();
+static void pollPhaseClock();
+static bool setPhaseClockEpoch(uint32_t startEpoch);
+static PhaseProfile blueteProfile = {NAN, NAN, false};
+static constexpr char PHASE_PROFILE_NVS[] = "phaseprof_v1";
 static constexpr char PHASE_NVS[] = "growphase_v1";
 GrowPhase growPhase = GrowPhase::Wuchs;
+static bool cycleStopped = false; // Nach W13 dauerhaft STOP, bis neuer Durchlauf gestartet wird.
+static uint32_t phaseStartEpoch = 0;
+static bool phaseClockPending = false;
 // FALLING-Interrupt erfasst auch kurze Tastendruecke waehrend blockierender ADC-Messungen.
 // Kein Kontaktprellen als mehrere Eingaben werten (50 ms Mindestabstand).
 static volatile uint32_t phasePendingPresses = 0;
 static volatile uint32_t phaseLastInterruptUs = 0;
+static volatile uint32_t pumpPendingPresses = 0;
+static volatile uint32_t pumpLastInterruptUs = 0;
+static void IRAM_ATTR onPumpButtonFalling() {
+  const uint32_t us = micros();
+  if (static_cast<uint32_t>(us - pumpLastInterruptUs) >= PHASE_DEBOUNCE_MS * 1000UL) {
+    pumpLastInterruptUs = us;
+    if (pumpPendingPresses < 1000000UL) ++pumpPendingPresses;
+  }
+}
 static void IRAM_ATTR onPhaseButtonFalling() {
   const uint32_t us = micros();
   if (static_cast<uint32_t>(us - phaseLastInterruptUs) >= PHASE_DEBOUNCE_MS * 1000UL) {
@@ -275,22 +307,32 @@ static const char *phaseName(GrowPhase p) {
   return p == GrowPhase::Bluete ? "bluete" : "wuchs";
 }
 static const PhaseProfile &phaseProfile() {
-  return growPhase == GrowPhase::Bluete ? BLUETE_PROFILE : WUCHS_PROFILE;
+  return growPhase == GrowPhase::Bluete ? blueteProfile : WUCHS_PROFILE;
 }
-// Wird erst durch spaetere *verifizierte* C3-Pumpen-Rueckmeldung gesetzt.
-// Die bestehende Sensor-Firmware hat dafuer noch kein Transportprotokoll.
+// Bestaetigung ist eine Software-Rueckmeldung des C3, KEINE Spannungsfreiheit.
 static bool pumpServiceOffConfirmed = false;
 static void refreshPhaseRgb() {
 #if GROW_ENABLE_PHASE_RGB
   // Blau hat Vorrang: bei bestaetigter Filterwartung R/G AUS statt
   // Mischfarben wie Cyan/Weiss. Ohne Rueckmeldung nur Wuchs/Bluete.
-  const bool blueOn = pumpServiceOffConfirmed;
-  const bool redOn = !blueOn && growPhase == GrowPhase::Bluete;
-  const bool greenOn = !blueOn;
+  const bool blueOn = !cycleStopped && pumpServiceOff && pumpServiceOffConfirmed && c3Connected();
+  const bool redOn = !cycleStopped && !blueOn && growPhase == GrowPhase::Bluete;
+  const bool greenOn = !cycleStopped && !blueOn;
   digitalWrite(PIN_RGB_RED, redOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
   digitalWrite(PIN_RGB_GREEN, greenOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
   digitalWrite(PIN_RGB_BLUE, blueOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
 #endif
+}
+static void loadPhaseProfile() {
+  Preferences prefs;
+  if (!prefs.begin(PHASE_PROFILE_NVS, true)) return;
+  const bool valid = prefs.getBool("valid", false);
+  const float t = prefs.getFloat("air_c", NAN);
+  const float h = prefs.getFloat("humidity", NAN);
+  prefs.end();
+  if (valid && isfinite(t) && t >= 10.0f && t <= 40.0f &&
+      isfinite(h) && h >= 20.0f && h <= 90.0f)
+    blueteProfile = {t, h, true};
 }
 static void loadGrowPhase() {
   Preferences prefs;
@@ -305,7 +347,10 @@ static void loadGrowPhase() {
       phaseName(growPhase), phaseProfile().configured ? "bereit" : "FEHLT");
 }
 static void setGrowPhase(GrowPhase next) {
-  if (next == growPhase) return;
+  // Ohne gestarteten Durchlauf oder nach STOP beginnt der physische Taster
+  // einen kompletten NEUEN Durchlauf in Wachstum.
+  if (cycleStopped || (!phaseStartEpoch && !phaseClockPending)) next = GrowPhase::Wuchs;
+  if (next == growPhase && phaseStartEpoch && !cycleStopped) return;
   growPhase = next;
   refreshPhaseRgb();
   Preferences prefs;
@@ -314,6 +359,12 @@ static void setGrowPhase(GrowPhase next) {
     saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) == sizeof(uint8_t);
     prefs.end();
   }
+  // Phasenwechsel startet W1 (Wuchs) oder W3 (Blueteeinleitung).
+  // Die 7-Tage-Fortschaltung benoetigt eine gueltige UTC-Zeit.
+  if (!setGrowWeek(next == GrowPhase::Bluete ? 3 : 1))
+    Serial.println(F("WARNUNG: Phasenwoche konnte nicht gespeichert werden."));
+  if (!beginPhaseClock(next))
+    Serial.println(F("PHASEN-UHR: Startzeit ausstehend; NTP wird benoetigt."));
   targets = ActuatorState{};
   ++commandSeq;
   Serial.printf("PHASE -> %s | Profil %s | Speicher %s\n",
@@ -354,26 +405,38 @@ static void setupGrowPhaseButtons() {
   Serial.printf("PHASENTASTER D16 beim Start: %s (INPUT_PULLUP, nach GND druecken)\n",
                 digitalRead(PIN_PHASE_BUTTON) == LOW ? "LOW (Kontakt bereits geschlossen)" : "HIGH (offen)");
   pinMode(PIN_PUMP_SERVICE_BUTTON, INPUT_PULLUP);
+  pumpPendingPresses = 0;
+  pumpLastInterruptUs = micros() - PHASE_DEBOUNCE_MS * 1000UL;
+  attachInterrupt(digitalPinToInterrupt(PIN_PUMP_SERVICE_BUTTON), onPumpButtonFalling, FALLING);
+  Serial.printf("PUMPENTASTER D19 beim Start: %s\n",
+                digitalRead(PIN_PUMP_SERVICE_BUTTON) == LOW ? "LOW (Kontakt geschlossen)" : "HIGH (offen)");
+  loadPhaseProfile();
   loadGrowPhase();
 }
 static void pollPumpServiceButton(unsigned long nowMs) {
-  static bool previousHigh = true;
-  static unsigned long changedAt = 0;
-  const bool high = digitalRead(PIN_PUMP_SERVICE_BUTTON) == HIGH;
-  if (high != previousHigh && nowMs - changedAt >= 200UL) {
-    previousHigh = high;
-    changedAt = nowMs;
-    if (!high) {
-      pumpServiceOff = !pumpServiceOff;
-      pendingPumpIndex = 0;
-      pendingPumpDurationMs = 0;
-      ++pumpCommandSeq;
-      pumpServiceOffConfirmed = false;
-      refreshPhaseRgb();
-      Serial.printf("Pumpen-Softwaresperre %s (KEINE elektrische Trennung)\n",
-                    pumpServiceOff ? "EIN" : "AUS");
-    }
+  (void)nowMs;
+  uint32_t count;
+  noInterrupts();
+  count = pumpPendingPresses;
+  pumpPendingPresses = 0;
+  interrupts();
+  if (!count) return;
+  Serial.printf("PUMPENTASTER D19: %lu Druck-Flanke(n)\n",
+                static_cast<unsigned long>(count));
+  if (!(count & 1UL)) return;
+  if (cycleStopped) {
+    Serial.println(F("Pumpen bleiben gesperrt: Durchlauf abgeschlossen."));
+    return;
   }
+  pumpServiceOff = !pumpServiceOff;
+  pendingPumpIndex = 0;
+  pendingPumpDurationMs = 0;
+  ++pumpCommandSeq;
+  // Blau erst nach erneuter, frischer C3-Rueckmeldung.
+  pumpServiceOffConfirmed = false;
+  refreshPhaseRgb();
+  Serial.printf("Pumpen-Wartungssperre %s (C3-Bestaetigung ausstehend)\n",
+                pumpServiceOff ? "EIN" : "AUS");
 }
 
 /* Nutzersollwerte, getrennt von pH-Alarmgrenzen und Sensor-Kalibrierung.
@@ -402,9 +465,151 @@ static constexpr NutrientTargets NUTRIENT_WEEK_TARGETS[12] = {
 };
 static constexpr char GROW_WEEK_NVS[] = "growweek_v1";
 static uint8_t growWeek = 0;
+static constexpr char PHASE_CLOCK_NVS[] = "cycleclock_v1";
+static constexpr uint32_t PHASE_WEEK_SECONDS = grow_clock::SECONDS_PER_WEEK;
+static constexpr time_t PHASE_MIN_VALID_UNIX = 1700000000;
+static bool phaseDurationElapsed = false;
+static bool phaseClockPendingBloom = false;
+static unsigned long lastPhaseClockPollMs = 0;
+
+static time_t validatedUtcNow() {
+  const time_t now = time(nullptr);
+  return now >= PHASE_MIN_VALID_UNIX ? now : 0;
+}
+static bool persistPhaseClock(uint32_t startEpoch, bool stopped = false) {
+  Preferences prefs;
+  if (!prefs.begin(PHASE_CLOCK_NVS, false)) return false;
+  const bool saved =
+      prefs.putUInt("start", startEpoch) == sizeof(uint32_t) &&
+      prefs.putBool("stopped", stopped) == 1;
+  prefs.end();
+  return saved;
+}
+static bool setPhaseClockEpoch(uint32_t startEpoch) {
+  const time_t now = validatedUtcNow();
+  if (!now || startEpoch < static_cast<uint32_t>(PHASE_MIN_VALID_UNIX) ||
+      startEpoch > static_cast<uint32_t>(now)) return false;
+  if (!persistPhaseClock(startEpoch, false)) return false;
+  phaseStartEpoch = startEpoch;
+  phaseClockPending = false;
+  cycleStopped = false;
+  phaseDurationElapsed = false;
+  lastPhaseClockPollMs = 0;
+  return true;
+}
+static bool beginPhaseClock(GrowPhase next) {
+  // Manueller Phasenwechsel setzt den Start einer neuen 13-Wochen-Runde.
+  // Bei ausdruecklich vorgezogener Bluete wird W3 als Startpunkt verwendet.
+  phaseStartEpoch = 0;
+  phaseDurationElapsed = false;
+  cycleStopped = false;
+  phaseClockPending = true;
+  phaseClockPendingBloom = next == GrowPhase::Bluete;
+  const time_t now = validatedUtcNow();
+  if (!now) return false;
+  const uint32_t offset = phaseClockPendingBloom ? 2U * PHASE_WEEK_SECONDS : 0U;
+  return setPhaseClockEpoch(static_cast<uint32_t>(now) - offset);
+}
+static void loadPhaseClock() {
+  Preferences prefs;
+  if (!prefs.begin(PHASE_CLOCK_NVS, true)) {
+    Serial.println(F("DURCHLAUF: kein Startdatum hinterlegt."));
+    return;
+  }
+  const uint32_t saved = prefs.getUInt("start", 0);
+  const bool stopped = prefs.getBool("stopped", false);
+  prefs.end();
+  if (saved >= static_cast<uint32_t>(PHASE_MIN_VALID_UNIX)) {
+    phaseStartEpoch = saved;
+    cycleStopped = stopped;
+    phaseDurationElapsed = stopped;
+    if (cycleStopped) {
+      targets = ActuatorState{};
+      pumpServiceOff = true;
+    }
+    Serial.printf("DURCHLAUF: UTC-Start %lu; Status %s\n",
+                  static_cast<unsigned long>(saved), stopped ? "STOP" : "aktiv");
+  } else Serial.println(F("DURCHLAUF: Startdatum nicht konfiguriert."));
+  refreshPhaseRgb();
+}
+static bool setGrowWeekManually(int week) {
+  if (week < 1 || week > 13) return false;
+  const time_t now = validatedUtcNow();
+  if (!now) return false;
+  const uint32_t elapsed = static_cast<uint32_t>(week - 1) * PHASE_WEEK_SECONDS;
+  const uint32_t start = static_cast<uint32_t>(now) - elapsed;
+  if (!setPhaseClockEpoch(start)) return false;
+  const bool saved = setGrowWeek(week);
+  if (saved) Serial.printf("DURCHLAUF: Woche %d manuell gestartet\n", week);
+  return saved;
+}
+static void stopCompletedCycle() {
+  // Einmalig ausfuehren. Laufende Aktoren und Pumpen sperren;
+  // Anzeige/Telemetrie weiter betreiben.
+  cycleStopped = true;
+  phaseDurationElapsed = true;
+  phaseClockPending = false;
+  pumpServiceOff = true;
+  pumpServiceOffConfirmed = false;
+  pendingPumpIndex = 0;
+  pendingPumpDurationMs = 0;
+  targets = ActuatorState{};
+  ++commandSeq;
+  ++pumpCommandSeq;
+  if (!persistPhaseClock(phaseStartEpoch, true))
+    Serial.println(F("FEHLER: STOP-Status konnte nicht im NVS gespeichert werden."));
+  Serial.println(F("DURCHLAUF BEENDET: W1-W13 abgeschlossen, Steuerung STOP."));
+  refreshPhaseRgb();
+}
+static void pollPhaseClock() {
+  const unsigned long nowMs = millis();
+  if (lastPhaseClockPollMs && nowMs - lastPhaseClockPollMs < 10000UL) return;
+  lastPhaseClockPollMs = nowMs;
+  const time_t now = validatedUtcNow();
+  if (!now) return; // Ohne gueltige Uhr bleibt der Controller gesperrt.
+  if (phaseClockPending) {
+    const uint32_t offset = phaseClockPendingBloom ? 2U * PHASE_WEEK_SECONDS : 0U;
+    if (setPhaseClockEpoch(static_cast<uint32_t>(now) - offset))
+      Serial.println(F("DURCHLAUF: Start nach NTP-Synchronisation gespeichert."));
+    else Serial.println(F("DURCHLAUF: Start konnte nicht gespeichert werden."));
+  }
+  if (!phaseStartEpoch || now < static_cast<time_t>(phaseStartEpoch)) return;
+  const grow_clock::CycleState state =
+      grow_clock::evaluateCycle(phaseStartEpoch, static_cast<uint32_t>(now));
+  if (!state.valid) return;
+  // Nach zwei Wochen AUTOMATISCH in die Blueteeinleitung wechseln.
+  const GrowPhase desiredPhase = state.bloom ? GrowPhase::Bluete : GrowPhase::Wuchs;
+  if (growPhase != desiredPhase) {
+    growPhase = desiredPhase;
+    Preferences prefs;
+    bool saved = false;
+    if (prefs.begin(PHASE_NVS, false)) {
+      saved = prefs.putUChar("phase", static_cast<uint8_t>(growPhase)) == sizeof(uint8_t);
+      prefs.end();
+    }
+    targets = ActuatorState{};
+    ++commandSeq;
+    Serial.printf("AUTOMATISCHER PHASENWECHSEL: %s | NVS: %s\n",
+                  phaseName(growPhase), saved ? "OK" : "FEHLER");
+    refreshPhaseRgb();
+  }
+  if (state.totalWeek != growWeek && !setGrowWeek(state.totalWeek))
+    Serial.println(F("DURCHLAUF: Wochenstand konnte nicht gespeichert werden."));
+  if (state.finished && !cycleStopped) stopCompletedCycle();
+}
+static const char *phaseClockStatus() {
+  if (cycleStopped) return "completed_stopped";
+  if (phaseClockPending) return "waiting_for_ntp";
+  if (!phaseStartEpoch) return "start_not_set";
+  const time_t now = validatedUtcNow();
+  if (!now) return "clock_unavailable";
+  if (now < static_cast<time_t>(phaseStartEpoch)) return "clock_before_cycle_start";
+  return "running";
+}
+
 static const NutrientTargets *activeNutrientTargets() {
   return growWeek >= 1 && growWeek <= 12
-      ? &NUTRIENT_WEEK_TARGETS[growWeek - 1] : nullptr;
+      ? &NUTRIENT_WEEK_TARGETS[growWeek - 1] : nullptr; // Woche 13: kein erfundener EC/pH-Wert
 }
 static void loadGrowWeek() {
   Preferences prefs;
@@ -414,7 +619,7 @@ static void loadGrowWeek() {
   }
   const uint8_t saved = prefs.getUChar("week", 0);
   prefs.end();
-  growWeek = saved <= 12 ? saved : 0;
+  growWeek = saved <= 13 ? saved : 0;
   if (const NutrientTargets *t = activeNutrientTargets()) {
     Serial.printf("WOCHE %u | Soll pH %.2f | Soll EC %.2f mS/cm\n",
         growWeek, t->ph, t->ecMsCm);
@@ -423,7 +628,7 @@ static void loadGrowWeek() {
   }
 }
 static bool setGrowWeek(int week) {
-  if (week < 1 || week > 12) return false;
+  if (week < 1 || week > 13) return false;
   if (growWeek == static_cast<uint8_t>(week)) return true;
   Preferences prefs;
   if (!prefs.begin(GROW_WEEK_NVS, false)) return false;
@@ -432,8 +637,9 @@ static bool setGrowWeek(int week) {
   if (!saved) return false;
   growWeek = static_cast<uint8_t>(week);
   const NutrientTargets *t = activeNutrientTargets();
-  Serial.printf("WOCHE -> %u | pH-Soll %.2f | EC-Soll %.2f mS/cm (NVS gespeichert)\n",
+  if (t) Serial.printf("WOCHE -> %u | pH-Soll %.2f | EC-Soll %.2f mS/cm (NVS gespeichert)\n",
       growWeek, t->ph, t->ecMsCm);
+  else Serial.printf("WOCHE -> %u | kein pH/EC-Wochenprofil hinterlegt\n", growWeek);
   return true;
 }
 static void writeNutrientTargets(JsonObject obj) {
@@ -573,11 +779,11 @@ static void handlePhTestSerial() {
       String arg = Serial.readStringUntil('\n');
       arg.trim();
       const int week = arg.toInt();
-      if (!setGrowWeek(week)) Serial.println(F("WOCHE ungueltig/nicht gespeichert: k1 bis k12"));
+      if (!setGrowWeekManually(week)) Serial.println(F("WOCHE nicht erlaubt oder NTP fehlt: k1 bis k13"));
     }
     else if (c == 'h' || c == 'H' || c == '?') {
       Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
-      Serial.println(F("Woche per Serial: k1 bis k12 + Zeilenumbruch, im NVS gespeichert."));
+      Serial.println(F("Woche per Serial: k1 bis k13 + Zeilenumbruch (NTP erforderlich)."));
       Serial.println(F("i = alle I2C-Adressen auf D13/D14 und D21/D22 anzeigen (keine Neuzuordnung)"));
     }
   }
@@ -658,6 +864,36 @@ static AirReading readDht(DHT &dht) {
   return r;
 }
 
+static void updateFusedAir() {
+  const grow_air::Reading samples[3] = {
+      {sensors.dht[0].tempC, sensors.dht[0].rh, sensors.dht[0].ok},
+      {sensors.dht[1].tempC, sensors.dht[1].rh, sensors.dht[1].ok},
+      {sensors.dht[2].tempC, sensors.dht[2].rh, sensors.dht[2].ok}
+  };
+  const grow_air::Fusion combined = grow_air::fuseThree(samples);
+  sensors.airValidSensorCount = combined.validCount;
+  sensors.air.tempC = combined.tempC;
+  sensors.air.rh = combined.humidityPct;
+  sensors.air.ok = combined.valid;
+  static uint8_t lastCount = 255;
+  if (combined.validCount != lastCount) {
+    lastCount = combined.validCount;
+    Serial.printf("DHT22-KLIMA: %u/3 gueltig | %s\n",
+                  combined.validCount,
+                  combined.validCount == 3 ? "Median" :
+                  combined.validCount == 2 ? "Mittelwert (redundanzreduziert)" :
+                  combined.validCount == 1 ? "WARNUNG: nur ein Sensor" :
+                                              "FEHLER: Klimaregelung gesperrt");
+  }
+}
+static const char *airSensorQuality() {
+  switch (sensors.airValidSensorCount) {
+    case 3: return "median_3";
+    case 2: return "mean_2";
+    case 1: return "warning_single_sensor";
+    default: return "invalid_no_sensors";
+  }
+}
 static float adsCountsToVolts(int16_t raw) {
   /* GAIN_ONE = +/-4.096 V -> 125 uV/bit */
   return static_cast<float>(raw) * 0.000125f;
@@ -819,7 +1055,7 @@ static bool sameState(const ActuatorState &a, const ActuatorState &b) {
 
 static void applyActuators() {
   // Der C3 holt Sollwerte ueber HTTP ab. Keine Sensor-GPIOs fuer Aktoren.
-  if (!sensors.dht[0].ok && targets.heater) {
+  if (!sensors.air.ok && targets.heater) {
     targets.heater = false;
     ++commandSeq;
   }
@@ -916,27 +1152,69 @@ static uint32_t readBh1750() {
 static float saturatedVaporPressureKpa(float tempC) {
   return 0.61078f * expf(17.27f * tempC / (tempC + 237.3f));
 }
+// Exakte Physik hinter der Tabelle: VPD = e_sat(Blatt) - RH * e_sat(Luft).
+static float computeLeafVpd(float airTempC, float relativeHumidity, float leafTempC) {
+  if (!isfinite(airTempC) || !isfinite(leafTempC) ||
+      !isfinite(relativeHumidity) || relativeHumidity < 0.0f ||
+      relativeHumidity > 100.0f) return NAN;
+  return saturatedVaporPressureKpa(leafTempC) -
+         saturatedVaporPressureKpa(airTempC) * (relativeHumidity / 100.0f);
+}
+struct VpdControlBand {
+  float minKpa;
+  float maxKpa;
+  const char *stage;
+  bool configured;
+};
+// Arduino-Prototyp nach Typdefinition halten (ESP32 IDE Sketch-Preprozessor).
+static VpdControlBand activeVpdControlBand();
+// 2 Wochen Wachstum, 2 Wochen Uebergang, 9 Wochen eigentliche Bluete.
+static VpdControlBand activeVpdControlBand() {
+  if (growPhase == GrowPhase::Wuchs && growWeek >= 1 && growWeek <= 2)
+    return {0.4f, 0.8f, "early_growth", true};
+  if (growPhase == GrowPhase::Bluete && growWeek >= 3 && growWeek <= 4)
+    return {0.8f, 1.2f, "transition", true};
+  if (growPhase == GrowPhase::Bluete && growWeek >= 5 && growWeek <= 13)
+    return {1.2f, 1.6f, "flowering", true};
+  return {NAN, NAN, "week_or_phase_not_set", false};
+}
+static const char *vpdChartBand(float value) {
+  if (!isfinite(value)) return "unavailable";
+  if (value < 0.4f || value > 1.6f) return "danger";
+  if (value < 0.8f) return "low_transpiration";
+  if (value < 1.2f) return "healthy_transpiration";
+  return "high_transpiration";
+}
 static void updateLeafVpdCandidate() {
   sensors.vpdLeafCandidate = NAN;
-  if (!sensors.mlx90640Ok || !isfinite(sensors.thermalRoiTempC)) return;
-  float values[3];
-  uint8_t n = 0;
-  for (uint8_t i = 0; i < 3; ++i) {
-    if (!sensors.dht[i].ok) continue;
-    const float actualVapor = saturatedVaporPressureKpa(sensors.dht[i].tempC)
-                              * (sensors.dht[i].rh / 100.0f);
-    values[n++] = saturatedVaporPressureKpa(sensors.thermalRoiTempC) - actualVapor;
+  // Kandidat aus denselben fusionierten Luftdaten wie der regulaere VPD.
+  // Die thermische ROI ist erst nach ausdruecklicher Validierung Blatttemperatur.
+  if (!sensors.air.ok || !sensors.mlx90640Ok ||
+      !isfinite(sensors.thermalRoiTempC)) return;
+  sensors.vpdLeafCandidate = computeLeafVpd(
+      sensors.air.tempC, sensors.air.rh, sensors.thermalRoiTempC);
+}
+
+static void updateActiveVpd() {
+  sensors.vpd = NAN;
+  sensors.vpdAir = NAN;
+  sensors.leafTemperatureC = NAN;
+  sensors.vpdFromCamera = false;
+  if (!sensors.air.ok) return;
+  const float airC = sensors.air.tempC;
+  const float rh = sensors.air.rh;
+  sensors.vpdAir = computeVpd(airC, rh);
+  sensors.leafTemperatureC = airC - VPD_LEAF_AIR_OFFSET_C;
+  sensors.vpd = computeLeafVpd(airC, rh, sensors.leafTemperatureC);
+#if GROW_ENABLE_MLX90640 && GROW_MLX_LEAF_VERIFIED
+  // Nur nach ausdruecklicher Validierung der Kamera-ROI, nicht bei blosser Montage.
+  if (sensors.mlx90640Ok && isfinite(sensors.thermalRoiTempC) &&
+      isfinite(sensors.vpdLeafCandidate)) {
+    sensors.leafTemperatureC = sensors.thermalRoiTempC;
+    sensors.vpd = sensors.vpdLeafCandidate;
+    sensors.vpdFromCamera = true;
   }
-  if (n < 2) return; // fuer Referenz mind. zwei gueltige Luftsensoren
-  for (uint8_t i = 1; i < n; ++i) {
-    float v = values[i];
-    uint8_t j = i;
-    while (j > 0 && values[j - 1] > v) {
-      values[j] = values[j - 1]; --j;
-    }
-    values[j] = v;
-  }
-  sensors.vpdLeafCandidate = n == 3 ? values[1] : 0.5f * (values[0] + values[1]);
+#endif
 }
 #if GROW_ENABLE_MLX90640
 static Adafruit_MLX90640 mlx90640;
@@ -966,6 +1244,7 @@ static void pollMlx90640(unsigned long nowMs) {
   sensors.thermalRoiTempC = NAN;
   if (error != 0) {
     updateLeafVpdCandidate();
+    updateActiveVpd();
     Serial.printf("MLX90640 Bildfehler: %d\n", error);
     return;
   }
@@ -977,7 +1256,7 @@ static void pollMlx90640(unsigned long nowMs) {
       if (isfinite(temp) && temp >= 0.0f && temp <= 60.0f) roi[n++] = temp;
     }
   }
-  if (n < 96) { updateLeafVpdCandidate(); return; }
+  if (n < 96) { updateLeafVpdCandidate(); updateActiveVpd(); return; }
   for (uint16_t i = 1; i < n; ++i) {
     const float temp = roi[i];
     uint16_t j = i;
@@ -988,6 +1267,7 @@ static void pollMlx90640(unsigned long nowMs) {
                             0.5f * (roi[n / 2 - 1] + roi[n / 2]);
   sensors.mlx90640Ok = true;
   updateLeafVpdCandidate();
+  updateActiveVpd();
   Serial.printf("MLX90640 ROI %.2f C | VPD-Blatt-Kandidat %.3f kPa | %u Pixel\n",
       sensors.thermalRoiTempC, sensors.vpdLeafCandidate, static_cast<unsigned>(n));
 }
@@ -1002,11 +1282,10 @@ static void readSensors() {
   sensors.dht[0] = readDht(dht1);
   sensors.dht[1] = readDht(dht2);
   sensors.dht[2] = readDht(dht3);
+  updateFusedAir();
 
-  sensors.vpd = sensors.dht[0].ok
-      ? computeVpd(sensors.dht[0].tempC, sensors.dht[0].rh)
-      : NAN;
   updateLeafVpdCandidate();
+  updateActiveVpd();
 
   // Sensor-Suche wiederholen, falls bei Programmstart noch kein
   // DS18B20 angeschlossen war (DallasTemperature cached die Geraetezahl).
@@ -1060,41 +1339,58 @@ static void readSensors() {
 /* ---------- Steuerung ---------- */
 
 static void autoControl() {
+  const time_t nowUtc = validatedUtcNow();
+  const bool pastEnd = phaseStartEpoch && nowUtc &&
+      grow_clock::evaluateCycle(phaseStartEpoch, static_cast<uint32_t>(nowUtc)).finished;
+  if (cycleStopped || pastEnd || !phaseStartEpoch || !nowUtc) {
+    if (!sameState(targets, ActuatorState{})) ++commandSeq;
+    targets = ActuatorState{};
+    return;
+  }
   if (strcmp(controlMode, "auto") != 0) return;
 
-  /* Licht wird spaeter durch Zeitplan/Serverziel ergaenzt und hier nicht veraendert. */
-
-  if (!sensors.dht[0].ok) {
-    // Waehrend der DHT22 noch nicht verkabelt oder ausgefallen ist,
-    // aktiviert AUTO keinerlei SSR. Keine automatisch laufenden
-    // Ventilatoren oder Heizung bei ungueltiger Temperatur/Feuchte.
-    const ActuatorState before = targets;
-    targets = ActuatorState{};
-    if (!sameState(before, targets)) ++commandSeq;
-    return;
-  }
-
-  const PhaseProfile &profile = phaseProfile();
-  if (!profile.configured) {
-    // Fehlende Bluete-Werte duerfen nicht still durch Wuchs-Werte ersetzt werden.
-    const ActuatorState before = targets;
-    targets = ActuatorState{};
-    if (!sameState(before, targets)) ++commandSeq;
-    return;
-  }
-  const float t = sensors.dht[0].tempC;
-  const float rh = sensors.dht[0].rh;
+  // Licht, Wasserpumpe und Dosierung bleiben von dieser Klimaregelung unberuehrt.
   ActuatorState before = targets;
+  const VpdControlBand band = activeVpdControlBand();
+  if (!sensors.air.ok || !isfinite(sensors.vpd) || !band.configured) {
+    targets.heater = false;
+    targets.circulation = false;
+    targets.exhaust = false;
+    if (!sameState(before, targets)) ++commandSeq;
+    return;
+  }
+  const float t = sensors.air.tempC;
+  const float vpd = sensors.vpd;
+  const PhaseProfile &profile = phaseProfile();
+  static constexpr float VPD_HYST = 0.05f; // verhindert Schaltflattern
+  const bool tooHumid = vpd < band.minKpa - VPD_HYST;
+  const bool tooDry = vpd > band.maxKpa + VPD_HYST;
 
-  if (t < profile.targetAirC - TEMP_HYST) targets.heater = true;
-  else if (t > profile.targetAirC + TEMP_HYST) targets.heater = false;
+  // Abluft kann bei hoher Feuchte nur helfen, wenn die Zuluft trockener ist.
+  // Ohne Zuluftsensor ist die Wirksamkeit nicht verifiziert.
+  if (tooHumid) targets.exhaust = true;
+  else if (vpd > band.minKpa + VPD_HYST) targets.exhaust = false;
+  if (tooDry) targets.exhaust = false;
 
-  if (rh > profile.targetHumidityPct + HUM_HYST) targets.circulation = true;
-  else if (rh < profile.targetHumidityPct - HUM_HYST) targets.circulation = false;
+  // Temperatur-Sollwert muss fuer die jeweilige Phase explizit konfiguriert sein.
+  if (!profile.configured) {
+    targets.heater = false;
+  } else {
+    if (t < profile.targetAirC - TEMP_HYST && !tooDry)
+      targets.heater = true;
+    else if (t > profile.targetAirC + TEMP_HYST || tooDry)
+      targets.heater = false;
 
-  if (t > profile.targetAirC + 2.0f) targets.exhaust = true;
-  else if (t < profile.targetAirC + 0.5f) targets.exhaust = false;
-
+    // Uebertemperatur relativ zum konfigurierten Sollwert hat Vorrang.
+    if (t > profile.targetAirC + 2.0f) {
+      targets.heater = false;
+      targets.exhaust = true;
+    }
+  }
+  // Nicht gleichzeitig heizen und Abluft einschalten.
+  if (targets.heater) targets.exhaust = false;
+  // Umluft verteilt nur die Raumluft, sie senkt die Feuchte nicht direkt.
+  targets.circulation = tooHumid || tooDry || targets.exhaust || targets.heater;
   if (!sameState(before, targets)) ++commandSeq;
 }
 
@@ -1111,6 +1407,20 @@ static void handleSummary() {
   control["phase"] = phaseName(growPhase);
   writeNutrientTargets(control);
   control["phase_profile_configured"] = phaseProfile().configured;
+  const VpdControlBand vpdBand = activeVpdControlBand();
+  control["phase_clock_status"] = phaseClockStatus();
+  control["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
+  control["phase_duration_elapsed"] = phaseDurationElapsed;
+  control["cycle_stopped"] = cycleStopped || !phaseStartEpoch || !validatedUtcNow();
+  control["vpd_control_stage"] = vpdBand.stage;
+  control["vpd_control_configured"] = vpdBand.configured;
+  if (vpdBand.configured) {
+    control["vpd_target_min_kpa"] = vpdBand.minKpa;
+    control["vpd_target_max_kpa"] = vpdBand.maxKpa;
+  } else {
+    control["vpd_target_min_kpa"] = nullptr;
+    control["vpd_target_max_kpa"] = nullptr;
+  }
   if (phaseProfile().configured) {
     control["phase_air_target_c"] = phaseProfile().targetAirC;
     control["phase_humidity_target_pct"] = phaseProfile().targetHumidityPct;
@@ -1123,14 +1433,21 @@ static void handleSummary() {
 
   JsonObject reading = doc.createNestedObject("reading");
   writeNutrientTargets(reading);
-  if (sensors.dht[0].ok) {
-    reading["air_temperature"] = sensors.dht[0].tempC;
-    reading["humidity"] = sensors.dht[0].rh;
+  if (sensors.air.ok) {
+    reading["air_temperature"] = sensors.air.tempC;
+    reading["humidity"] = sensors.air.rh;
   } else {
     reading["air_temperature"] = nullptr;
     reading["humidity"] = nullptr;
   }
+  reading["air_valid_sensor_count"] = sensors.airValidSensorCount;
+  reading["air_measurement_quality"] = airSensorQuality();
+  reading["air_sensor_warning"] = sensors.airValidSensorCount == 1;
   setJsonFloat(reading, "vpd", sensors.vpd);
+  setJsonFloat(reading, "vpd_air", sensors.vpdAir);
+  setJsonFloat(reading, "leaf_temperature_c", sensors.leafTemperatureC);
+  reading["vpd_source"] = sensors.vpdFromCamera ? "verified_infrared_leaf" : "leaf_air_minus_2c";
+  reading["vpd_chart_band"] = vpdChartBand(sensors.vpd);
   reading["mlx90640_ok"] = sensors.mlx90640Ok;
   setJsonFloat(reading, "thermal_roi_temperature", sensors.thermalRoiTempC);
   setJsonFloat(reading, "vpd_leaf_candidate", sensors.vpdLeafCandidate);
@@ -1186,7 +1503,7 @@ static void handleSummary() {
   outputs["pump_count"] = DOSING_PUMP_COUNT;
   outputs["pump_active"] = c3Connected() ? c3PumpActive : 0;
   outputs["pump_service_off"] = pumpServiceOff;
-  outputs["pump_service_off_confirmed"] = false; // keine physische Isolation belegt
+  outputs["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed && c3Connected();
   JsonObject actualObj = outputs.createNestedObject("actual");
   writeActuators(actualObj, actual);
 
@@ -1211,6 +1528,16 @@ static void handleActuatorTargets() {
   doc["phase"] = phaseName(growPhase);
   writeNutrientTargets(doc.as<JsonObject>());
   doc["phase_profile_configured"] = phaseProfile().configured;
+  const VpdControlBand vpdBand = activeVpdControlBand();
+  doc["phase_clock_status"] = phaseClockStatus();
+  doc["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
+  doc["phase_duration_elapsed"] = phaseDurationElapsed;
+  doc["cycle_stopped"] = cycleStopped || !phaseStartEpoch || !validatedUtcNow();
+  doc["vpd_control_stage"] = vpdBand.stage;
+  if (vpdBand.configured) {
+    doc["vpd_target_min_kpa"] = vpdBand.minKpa;
+    doc["vpd_target_max_kpa"] = vpdBand.maxKpa;
+  }
   doc["seq"] = commandSeq;
   doc["source_ms"] = millis();
   JsonObject commands = doc.createNestedObject("commands");
@@ -1233,6 +1560,7 @@ static void c3ApiError(int code, const char *reason) {
 }
 static void handleControlTargets() {
   if (!localAuthorized()) return sendUnauthorized();
+  if (cycleStopped || !phaseStartEpoch || !validatedUtcNow()) return c3ApiError(423, "cycle_not_running");
   if (strcmp(controlMode, "manual") != 0)
     return c3ApiError(409, "manual_mode_required");
   if (!c3Connected() || !c3OutputsEnabled)
@@ -1253,7 +1581,9 @@ static void handleControlTargets() {
     any = true;
   }
   if (!any) return c3ApiError(400, "no_target");
-  if (next.heater && !sensors.dht[0].ok)
+  if (pumpServiceOff && next.waterPump)
+    return c3ApiError(423, "pump_service_locked");
+  if (next.heater && !sensors.air.ok)
     return c3ApiError(409, "heater_sensor_unavailable");
   if (!sameState(next, targets)) {
     targets = next;
@@ -1264,6 +1594,7 @@ static void handleControlTargets() {
 }
 static void handlePumpPulse() {
   if (!localAuthorized()) return sendUnauthorized();
+  if (cycleStopped || !phaseStartEpoch || !validatedUtcNow()) return c3ApiError(423, "cycle_not_running");
   // The C3 does not yet process Sensor pump_seq/pump_index requests. Do not
   // report a queued request as successful or set a pending command that is
   // never acknowledged. Manual dosing is locked until integration + calibration.
@@ -1288,18 +1619,22 @@ static void handleActuatorStatus() {
   c3PumpActive = doc["pump_active"] | 0;
   c3PumpAckSeq = doc["pump_ack_seq"] | 0U;
   lastC3StatusMs = millis();
+  pumpServiceOffConfirmed = pumpServiceOff &&
+      (doc["pump_service_off"] | false) &&
+      (doc["pump_service_off_confirmed"] | false) &&
+      c3PumpActive == 0 && !actual.waterPump;
   if (pendingPumpIndex != 0 && c3PumpAckSeq == pumpCommandSeq) {
     pendingPumpIndex = 0;
     pendingPumpDurationMs = 0;
   }
-  // Keine elektrische Trennung nachweisbar: blaue Wartungs-LED bleibt AUS.
-  pumpServiceOffConfirmed = false;
+  // C3 bestaetigt nur die logische Pumpensperre, keine elektrische Trennung.
   refreshPhaseRgb();
   localServer.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handleControlMode() {
   if (!localAuthorized()) return sendUnauthorized();
+  if (cycleStopped || !phaseStartEpoch || !validatedUtcNow()) return c3ApiError(423, "cycle_not_running");
 
   StaticJsonDocument<128> in;
   if (deserializeJson(in, localServer.arg("plain"))) {
@@ -1331,11 +1666,11 @@ static void handleGrowWeek() {
         "{\"ok\":false,\"error\":\"bad_json\"}");
   }
   const int selected = input["week"].as<int>();
-  if (selected < 1 || selected > 12) {
+  if (selected < 1 || selected > 13) {
     return localServer.send(400, "application/json",
-        "{\"ok\":false,\"error\":\"week_must_be_1_to_12\"}");
+        "{\"ok\":false,\"error\":\"week_must_be_1_to_13\"}");
   }
-  if (!setGrowWeek(selected)) {
+  if (!setGrowWeekManually(selected)) {
     return localServer.send(500, "application/json",
         "{\"ok\":false,\"error\":\"week_nvs_not_saved\"}");
   }
@@ -1363,7 +1698,7 @@ static void handleGrowPhase() {
   }
   const GrowPhase next = strcmp(requested, "bluete") == 0
       ? GrowPhase::Bluete : GrowPhase::Wuchs;
-  // Unveraenderte, bereits vom D19-Taster verwendete Phasenfunktion.
+  // Dieselbe Phasenfunktion wie am D16-Taster.
   setGrowPhase(next);
   // Nur dann Erfolg melden, wenn der gewaehlte Zustand auch in NVS steht.
   Preferences prefs;
@@ -1373,7 +1708,7 @@ static void handleGrowPhase() {
   }
   const uint8_t stored = prefs.getUChar("phase", 255);
   prefs.end();
-  if (stored != static_cast<uint8_t>(next)) {
+  if (stored != static_cast<uint8_t>(growPhase)) {
     return localServer.send(500, "application/json",
         "{\"ok\":false,\"error\":\"phase_nvs_not_saved\"}");
   }
@@ -1385,6 +1720,78 @@ static void handleGrowPhase() {
   localServer.send(200, "application/json", response);
 }
 
+static void handlePhaseProfile() {
+  if (!localAuthorized()) return sendUnauthorized();
+  StaticJsonDocument<256> doc;
+  if (deserializeJson(doc, localServer.arg("plain")) || !doc.is<JsonObject>())
+    return localServer.send(400, "application/json", "{\"ok\":false,\"error\":\"bad_json\"}");
+  const char *phase = doc["phase"] | "";
+  if (strcmp(phase, "bluete") != 0)
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"phase_must_be_bluete\"}");
+  if (!doc["air_target_c"].is<float>() && !doc["air_target_c"].is<int>())
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"bad_air_target\"}");
+  if (!doc["humidity_target_pct"].is<float>() && !doc["humidity_target_pct"].is<int>())
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"bad_humidity_target\"}");
+  const float t = doc["air_target_c"].as<float>();
+  const float h = doc["humidity_target_pct"].as<float>();
+  if (!isfinite(t) || t < 10.0f || t > 40.0f ||
+      !isfinite(h) || h < 20.0f || h > 90.0f)
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"targets_out_of_range\"}");
+  Preferences prefs;
+  if (!prefs.begin(PHASE_PROFILE_NVS, false))
+    return localServer.send(500, "application/json", "{\"ok\":false,\"error\":\"nvs_unavailable\"}");
+  const bool saved = prefs.putFloat("air_c", t) == sizeof(float) &&
+                     prefs.putFloat("humidity", h) == sizeof(float) &&
+                     prefs.putBool("valid", true) == 1;
+  prefs.end();
+  if (!saved)
+    return localServer.send(500, "application/json", "{\"ok\":false,\"error\":\"nvs_write_failed\"}");
+  blueteProfile = {t, h, true};
+  targets = ActuatorState{};
+  ++commandSeq;
+  refreshPhaseRgb();
+  Serial.printf("BLUETE-Profil gespeichert: Luft %.1f C, Feuchte %.1f %%\n", t, h);
+  localServer.send(200, "application/json", "{\"ok\":true,\"phase\":\"bluete\",\"configured\":true}");
+}
+
+// Startzeit explizit setzen oder neu starten, ohne den Phasenschalter zu umgehen.
+// {"start_unix": <UTC timestamp>} oder {"start_now":true}
+static void handlePhaseClock() {
+  if (!localAuthorized()) return sendUnauthorized();
+  StaticJsonDocument<128> input;
+  if (deserializeJson(input, localServer.arg("plain")) || !input.is<JsonObject>())
+    return localServer.send(400, "application/json", "{\"ok\":false,\"error\":\"bad_json\"}");
+  const time_t now = validatedUtcNow();
+  if (!now)
+    return localServer.send(503, "application/json", "{\"ok\":false,\"error\":\"clock_unavailable\"}");
+  uint32_t start = 0;
+  if (input["start_now"].as<bool>() && input.size() == 1) {
+    start = static_cast<uint32_t>(now);
+  } else if (input.size() == 1 && input.containsKey("start_unix") &&
+             (input["start_unix"].is<int>() ||
+              input["start_unix"].is<long>() ||
+              input["start_unix"].is<unsigned int>() ||
+              input["start_unix"].is<unsigned long>())) {
+    start = input["start_unix"].as<uint32_t>();
+  } else {
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"start_now_or_start_unix_required\"}");
+  }
+  // Ein neuer vollstaendiger Durchlauf beginnt immer mit Wachstum.
+  if (!setPhaseClockEpoch(start))
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"invalid_start_or_nvs_failure\"}");
+  growPhase = GrowPhase::Wuchs;
+  Preferences prefs;
+  if (prefs.begin(PHASE_NVS, false)) {
+    prefs.putUChar("phase", static_cast<uint8_t>(growPhase));
+    prefs.end();
+  }
+  setGrowWeek(1);
+  targets = ActuatorState{};
+  ++commandSeq;
+  refreshPhaseRgb();
+  pollPhaseClock();
+  localServer.send(200, "application/json", "{\"ok\":true}");
+}
 static void setupLocalApi() {
   localServer.collectHeaders(LOCAL_HEADER_KEYS, 1);
   localServer.on("/api/local/summary", HTTP_GET, handleSummary);
@@ -1395,6 +1802,8 @@ static void setupLocalApi() {
   localServer.on("/api/local/control/mode", HTTP_POST, handleControlMode);
   localServer.on("/api/local/control/week", HTTP_POST, handleGrowWeek);
   localServer.on("/api/local/control/phase", HTTP_POST, handleGrowPhase);
+  localServer.on("/api/local/control/phase-profile", HTTP_POST, handlePhaseProfile);
+  localServer.on("/api/local/control/phase-clock", HTTP_POST, handlePhaseClock);
   localServer.begin();
 }
 
@@ -1406,14 +1815,27 @@ static bool sendTelemetry() {
   DynamicJsonDocument doc(4096);
   JsonObject root = doc.to<JsonObject>();
 
-  setJsonFloat(root, "air_temperature", sensors.dht[0].tempC);
-  setJsonFloat(root, "humidity", sensors.dht[0].rh);
+  setJsonFloat(root, "air_temperature", sensors.air.tempC);
+  setJsonFloat(root, "humidity", sensors.air.rh);
+  root["air_valid_sensor_count"] = sensors.airValidSensorCount;
+  root["air_measurement_quality"] = airSensorQuality();
+  root["air_sensor_warning"] = sensors.airValidSensorCount == 1;
   setJsonFloat(root, "water_temperature", sensors.waterTempC);
   setJsonFloat(root, "case_temperature", sensors.caseTempC);
   root["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
   root["phase"] = phaseName(growPhase);
   writeNutrientTargets(root);
   root["phase_profile_configured"] = phaseProfile().configured;
+  const VpdControlBand vpdBand = activeVpdControlBand();
+  root["phase_clock_status"] = phaseClockStatus();
+  root["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
+  root["phase_duration_elapsed"] = phaseDurationElapsed;
+  root["cycle_stopped"] = cycleStopped || !phaseStartEpoch || !validatedUtcNow();
+  root["vpd_control_stage"] = vpdBand.stage;
+  if (vpdBand.configured) {
+    root["vpd_target_min_kpa"] = vpdBand.minKpa;
+    root["vpd_target_max_kpa"] = vpdBand.maxKpa;
+  }
   root["ph_temperature_compensated"] = sensors.phTempCompensated;
   root["light_level"] = sensors.lux; // lx, Bestandstelemetrie unveraendert
   if (bh1750Present) {
@@ -1445,6 +1867,10 @@ static bool sendTelemetry() {
   }
 
   setJsonFloat(root, "vpd", sensors.vpd);
+  setJsonFloat(root, "vpd_air", sensors.vpdAir);
+  setJsonFloat(root, "leaf_temperature_c", sensors.leafTemperatureC);
+  root["vpd_source"] = sensors.vpdFromCamera ? "verified_infrared_leaf" : "leaf_air_minus_2c";
+  root["vpd_chart_band"] = vpdChartBand(sensors.vpd);
   root["mlx90640_ok"] = sensors.mlx90640Ok;
   setJsonFloat(root, "thermal_roi_temperature", sensors.thermalRoiTempC);
   setJsonFloat(root, "vpd_leaf_candidate", sensors.vpdLeafCandidate);
@@ -1552,22 +1978,30 @@ static void drawOled() {
   display.setTextColor(SSD1306_WHITE);
 
   display.setCursor(0, 0);
-  display.print(growPhase == GrowPhase::Wuchs ? F("WUCHS") : F("BLUETE"));
+  if (cycleStopped) display.print(F("STOPP"));
+  else display.print(growPhase == GrowPhase::Wuchs ? F("WUCHS") : F("BLUETE"));
   if (growWeek) display.printf(" W%u", growWeek);
   else display.print(F(" W?"));
   if (!phaseProfile().configured) display.print(F(" !"));
 
   display.setCursor(0, 12);
-  if (sensors.dht[0].ok) {
-    display.printf("T %.1fC RH %.0f%%", sensors.dht[0].tempC, sensors.dht[0].rh);
+  if (sensors.air.ok) {
+    display.printf("T %.1fC RH %.0f%%", sensors.air.tempC, sensors.air.rh);
   } else {
-    display.print("DHT1 FEHLER");
+    display.print("DHT FEHLER");
   }
 
   display.setCursor(0, 24);
-  // Zur Platzersparnis alle 5 s abwechselnd Temperatur oder Licht zeigen.
+  // Zur Platzersparnis alle 5 s zwischen Box/H2O, Lux und Blatt-VPD wechseln.
   // pH/EC und die Alarmzeile bleiben zu jeder Zeit sichtbar.
-  if ((millis() / 5000UL) % 2UL == 1UL) {
+  const uint8_t infoPage = (millis() / 5000UL) % 3UL;
+  if (infoPage == 2UL) {
+    if (isfinite(sensors.vpd)) display.printf("VPD %.2f kPa", sensors.vpd);
+    else display.print(F("VPD --"));
+    if (!sensors.vpdFromCamera) display.print(F(" -2C"));
+    if (sensors.airValidSensorCount == 1) display.print(F(" !1DHT"));
+    else if (sensors.airValidSensorCount == 2) display.print(F(" 2DHT"));
+  } else if (infoPage == 1UL) {
     if (bh1750Present) {
       display.printf("%lu lx ~%.0f lm",
                      static_cast<unsigned long>(sensors.lux),
@@ -1610,6 +2044,7 @@ void setup() {
   delay(300);
   setupGrowPhaseButtons();
   loadGrowWeek();
+  loadPhaseClock();
   setupPhBuzzer();
   Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
   loadPhCalibration();
@@ -1649,6 +2084,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  configTime(0, 0, "pool.ntp.org", "time.google.com"); // UTC-Zeit ohne Ortsannahme
 
   const unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
@@ -1664,6 +2100,7 @@ void setup() {
 
   readSensors();
   lastSensorRead = millis();
+  pollPhaseClock(); // Laufzeit-Grenzen vor dem ersten automatischen Schaltkommando pruefen.
   autoControl();
   applyActuators();
   setupLocalApi();
@@ -1678,8 +2115,10 @@ void loop() {
   }
 
   localServer.handleClient();
+  refreshPhaseRgb();  // Verbindungstimeout: blau sofort wieder aus.
   pollGrowPhaseButtons(now);
   pollPumpServiceButton(now);
+  pollPhaseClock();
   handlePhTestSerial();
   updatePhBuzzer(now);
   sampleTdsBackground(now);

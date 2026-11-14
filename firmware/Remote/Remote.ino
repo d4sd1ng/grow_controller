@@ -70,6 +70,7 @@ static lv_obj_t *topStatus = nullptr;
 static lv_obj_t *homeValues[4] = {};
 static lv_obj_t *homeMode = nullptr;
 static lv_obj_t *homeTds = nullptr;
+static lv_obj_t *homeVpd = nullptr;
 static lv_obj_t *homeAlert = nullptr;
 static lv_obj_t *climateButtons[3] = {};
 static lv_obj_t *climateValues[3] = {};
@@ -91,6 +92,9 @@ static bool fanStates[2] = {};
 static bool lightState = false;
 static bool waterPumpState = false;
 static int activeDoser = 0;
+static bool pumpServiceOff = true;
+static bool pumpServiceOffConfirmed = false;
+static bool cycleStopped = true;
 static uint32_t lastSummary = 0;
 static uint32_t lastC3 = 0;
 static uint32_t lastWifiTry = 0;
@@ -215,7 +219,7 @@ bool c3Request(const char *path, const String &payload) {
 void updateControls() {
   for (int i = 0; i < 3; ++i) {
     setButtonActive(climateButtons[i], climateStates[i], serverReady && TOUCH_ACTUATION_VERIFIED);
-    textIfChanged(climateValues[i], serverReady ? (climateStates[i] ? "EIN" : "AUS") : "--");
+    textIfChanged(climateValues[i], c3Online ? (climateStates[i] ? "EIN" : "AUS") : "--");
   }
   char status[90];
   snprintf(status, sizeof(status), "Licht: %s    Wasserpumpe: %s",
@@ -227,7 +231,8 @@ void updateControls() {
     textIfChanged(fanValues[i], c3Online ? (fanStates[i] ? "EIN" : "AUS") : "--");
   }
   textIfChanged(c3Info, !c3Online ? "C3: offline / nicht konfiguriert" :
-               (c3HardwareReady ? "C3: online / freigegeben" : "C3: online / gesperrt"));
+               (cycleStopped ? "Durchlauf STOPP" :
+                (c3HardwareReady ? "C3: online / freigegeben" : "C3: online / gesperrt")));
   setButtonEnabled(stopButton, c3Online);
   for (int i = 0; i < PUMP_COUNT; ++i) {
     char label[32];
@@ -237,7 +242,9 @@ void updateControls() {
     textIfChanged(child, label);
     setButtonEnabled(pumpButtons[i], false);  // Locked until a verified calibration.
   }
-  snprintf(status, sizeof(status), "Aktiver Kanal: %s", c3Online ? "siehe oben" : "unbekannt");
+  snprintf(status, sizeof(status), "Wartung: %s",
+           !c3Online ? "C3 offline" :
+           (pumpServiceOff ? (pumpServiceOffConfirmed ? "PUMPEN AUS bestaetigt" : "PUMPEN AUS angefordert") : "nicht aktiv"));
   textIfChanged(pumpActive, status);
   textIfChanged(pumpInfo, "Dosierung gesperrt: Kalibrierung offen");
 }
@@ -322,8 +329,9 @@ void buildUi() {
   makeMetric(pages[0], 165, 4, "LUFTFEUCHTE", 1);
   makeMetric(pages[0], 7, 69, "pH-WERT", 2);
   makeMetric(pages[0], 165, 69, "EC", 3);
-  homeMode = makeLabel(pages[0], 8, 138, 148, "Modus: --", MUTED, &lv_font_montserrat_12);
-  homeTds = makeLabel(pages[0], 167, 138, 145, "TDS: --", MUTED, &lv_font_montserrat_12);
+  homeMode = makeLabel(pages[0], 8, 138, 88, "Modus: --", MUTED, &lv_font_montserrat_12);
+  homeVpd = makeLabel(pages[0], 98, 138, 130, "VPD: --", ACCENT, &lv_font_montserrat_12);
+  homeTds = makeLabel(pages[0], 230, 138, 82, "TDS: --", MUTED, &lv_font_montserrat_12);
   homeAlert = makeLabel(pages[0], 8, 154, 303, "Keine Messdaten", WARN,
                         &lv_font_montserrat_12);
 
@@ -433,10 +441,26 @@ void fetchSummary() {
   updateReadingLabel(homeValues[2], reading["ph"], "%.2f");
   updateReadingLabel(homeValues[3], reading["ec"], "%.2f mS");
 
-  const char *mode = doc["control"]["control_mode"] | "--";
+  const bool runComplete = reading["extras"]["cycle_stopped"] | false;
+  const char *phase = reading["extras"]["phase"] | "";
+  const unsigned week = reading["extras"]["grow_week"] | 0U;
   char status[104];
-  snprintf(status, sizeof(status), "Modus: %.18s", mode);
-  textIfChanged(homeMode, status);
+  if (runComplete) textIfChanged(homeMode, "STOPP");
+  else if (week >= 1U && week <= 13U && strcmp(phase, "wuchs") == 0)
+    snprintf(status, sizeof(status), "W%u Wuchs", week);
+  else if (week >= 1U && week <= 13U && strcmp(phase, "bluete") == 0)
+    snprintf(status, sizeof(status), "W%u Bluete", week);
+  else textIfChanged(homeMode, "Woche: --");
+  if (!runComplete && week >= 1U && week <= 13U &&
+      (!strcmp(phase, "wuchs") || !strcmp(phase, "bluete")))
+    textIfChanged(homeMode, status);
+  // Die Telemetrie-API speichert zusaetzliche Sensorfelder in reading.extras.
+  JsonVariantConst vpd = reading["vpd"];
+  if (vpd.isNull()) vpd = reading["extras"]["vpd"];
+  if (vpd.is<float>() || vpd.is<double>() || vpd.is<int>()) {
+    snprintf(status, sizeof(status), "VPD %.2f kPa", vpd.as<float>());
+    textIfChanged(homeVpd, status);
+  } else textIfChanged(homeVpd, "VPD: --");
   JsonVariantConst tds = reading["tds_ppm"];
   if (tds.isNull()) tds = reading["tds"];
   if (tds.isNull()) textIfChanged(homeTds, "TDS: --");
@@ -446,16 +470,22 @@ void fetchSummary() {
   } else textIfChanged(homeTds, "TDS: --");
 
   JsonArrayConst alerts = doc["alerts"].as<JsonArrayConst>();
+  const unsigned validDht = reading["extras"]["air_valid_sensor_count"] | 255U;
   if (!alerts.isNull() && alerts.size() > 0) {
     const char *msg = alerts[0]["message"] | "Alarm vorhanden";
     snprintf(status, sizeof(status), "ALARM: %.74s", msg);
     textIfChanged(homeAlert, status);
+  } else if (validDht == 0U) {
+    textIfChanged(homeAlert, "DHT22 AUSFALL: KLIMA GESPERRT");
+  } else if (validDht == 1U) {
+    textIfChanged(homeAlert, "WARNUNG: nur 1 DHT22");
+  } else if (validDht == 2U) {
+    textIfChanged(homeAlert, "DHT22: 2/3 gueltig (Mittelwert)");
   } else textIfChanged(homeAlert, "Keine aktiven Meldungen");
 
   const JsonObjectConst target = doc["control"]["targets"].as<JsonObjectConst>();
-  climateStates[0] = target["heater"] | false;
-  climateStates[1] = target["circulation_vent"] | false;
-  climateStates[2] = target["exhaust_vent"] | false;
+  // Server-Sollwerte sind KEINE bestaetigten Schaltzustaende.
+  // Die Klimaanzeige wird ausschliesslich aus den C3-Istwerten gespeist.
   updateControls();
 }
 
@@ -489,11 +519,17 @@ void fetchC3() {
   }
   c3Online = true;
   c3HardwareReady = (doc["hardware_ready"] | false) && doc["fans"].is<JsonObject>();
+  climateStates[0] = doc["relays"]["heater"] | false;
+  climateStates[1] = doc["relays"]["circulation_vent"] | false;
+  climateStates[2] = doc["relays"]["exhaust_vent"] | false;
   lightState = doc["relays"]["light"] | false;
   waterPumpState = doc["relays"]["water_pump"] | false;
   fanStates[0] = doc["fans"]["fan_group_1"] | false;
   fanStates[1] = doc["fans"]["fan_group_2"] | false;
   activeDoser = doc["dosing"]["active_pump"] | 0;
+  cycleStopped = doc["cycle_stopped"] | true;
+  pumpServiceOff = doc["pump_service_off"] | true;
+  pumpServiceOffConfirmed = doc["pump_service_off_confirmed"] | false;
   updateControls();
 }
 
