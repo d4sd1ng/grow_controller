@@ -59,6 +59,7 @@ bool pcaAvailable = false;
 bool hardwareReady = false;
 bool outputsEnabled = false;  // OE bleibt gesperrt, bis ein gueltiger Sensorbefehl kommt
 bool stoppedLatch = false;
+bool cycleStopped = true; // Erst gueltiger Sensor-Start erlaubt Steuerbefehle.
 bool ssr[5] = {};
 bool fans[2] = {};
 int8_t activeDose = -1;
@@ -218,6 +219,7 @@ void stateApi() {
   d["hardware_config_valid"] = hardwareReady;
   d["pca9685_detected"] = pcaAvailable;
   d["stopped_latch"] = stoppedLatch;
+  d["cycle_stopped"] = cycleStopped;
   d["sensor_online"] = lastCommandMs != 0 && millis() - lastCommandMs <= COMMAND_TIMEOUT_MS;
   d["water_pump_control_available"] = sensorWaterPumpField;
   d["pump_service_off"] = pumpServiceOff;
@@ -239,6 +241,7 @@ void stateApi() {
 }
 void fanApi() {
   if (!keyOkay()) return;
+  if (cycleStopped) return replyError(423, "cycle_stopped");
   if (!hardwareReady || !outputsEnabled || stoppedLatch) return replyError(503, "hardware_locked");
   if (!lastCommandMs || millis() - lastCommandMs > COMMAND_TIMEOUT_MS)
     return replyError(503, "sensor_offline");
@@ -260,6 +263,7 @@ void fanApi() {
 }
 void doseApi() {
   if (!keyOkay()) return;
+  if (cycleStopped) return replyError(423, "cycle_stopped");
   if (pumpServiceOff) return replyError(423, "pump_service_locked");
   if (!hardwareReady || !outputsEnabled || stoppedLatch) return replyError(503, "hardware_locked");
   if (!lastCommandMs || millis() - lastCommandMs > COMMAND_TIMEOUT_MS)
@@ -329,7 +333,19 @@ void pollSensor() {
   http.end();
   StaticJsonDocument<1536> d;
   if (deserializeJson(d, body) || !d["ok"].as<bool>() || !d["commands"].is<JsonObject>()) return;
-  if (d["pump_count"].as<int>() != 5 || !d["pump_service_off"].is<bool>()) return;
+  if (d["pump_count"].as<int>() != 5 || !d["pump_service_off"].is<bool>() ||
+      !d["cycle_stopped"].is<bool>()) return;
+  const bool nextCycleStopped = d["cycle_stopped"].as<bool>();
+  if (nextCycleStopped) {
+    cycleStopped = true;
+    if (outputsEnabled || activeDose >= 0) shutAllOutputs();
+    lastCommandMs = millis();
+    pumpServiceOff = true;
+    pumpServiceOffConfirmed = false;
+    return;
+  }
+  // Neue Runde erlaubt Solltelegramme, aber KEINE automatische Hardware-Freigabe.
+  cycleStopped = false;
   pumpServiceOff = d["pump_service_off"].as<bool>();
   if (pumpServiceOff) {
     if (!lockPumpChannels()) return;
@@ -372,7 +388,8 @@ void sendStatus() {
   d["pump_service_off"] = pumpServiceOff;
   d["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed &&
       lastCommandMs != 0 && millis() - lastCommandMs <= COMMAND_TIMEOUT_MS;
-  d["failsafe"] = !hardwareReady || !outputsEnabled || stoppedLatch ||
+  d["cycle_stopped"] = cycleStopped;
+  d["failsafe"] = cycleStopped || !hardwareReady || !outputsEnabled || stoppedLatch ||
                     lastCommandMs == 0 || millis() - lastCommandMs > COMMAND_TIMEOUT_MS;
   JsonObject actual = d.createNestedObject("actual");
   for (int i = 0; i < 5; ++i) actual[SSR_KEY[i]] = ssr[i];
