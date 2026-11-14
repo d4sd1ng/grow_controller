@@ -68,6 +68,8 @@ static lv_obj_t *pages[4] = {};
 static lv_obj_t *navButtons[4] = {};
 static lv_obj_t *topStatus = nullptr;
 static lv_obj_t *homeValues[4] = {};
+static lv_obj_t *homeWater = nullptr;
+static lv_obj_t *homeLux = nullptr;
 static lv_obj_t *homeMode = nullptr;
 static lv_obj_t *homeTds = nullptr;
 static lv_obj_t *homeVpd = nullptr;
@@ -327,6 +329,11 @@ void buildUi() {
   // Page 0: four well-spaced measurements and system summary.
   makeMetric(pages[0], 7, 4, "TEMPERATUR", 0);
   makeMetric(pages[0], 165, 4, "LUFTFEUCHTE", 1);
+  // Zusaetzliche Sensorwerte, ohne weitere Navigation oder Aktor-Aenderungen.
+  homeWater = makeLabel(pages[0], 15, 47, 132, "Wasser: --", MUTED,
+                        &lv_font_montserrat_12);
+  homeLux = makeLabel(pages[0], 173, 47, 132, "Licht: --", MUTED,
+                      &lv_font_montserrat_12);
   makeMetric(pages[0], 7, 69, "pH-WERT", 2);
   makeMetric(pages[0], 165, 69, "EC", 3);
   homeMode = makeLabel(pages[0], 8, 138, 88, "Modus: --", MUTED, &lv_font_montserrat_12);
@@ -397,6 +404,20 @@ void updateReadingLabel(lv_obj_t *obj, JsonVariantConst value, const char *patte
   textIfChanged(obj, txt);
 }
 
+void updateSmallReading(lv_obj_t *obj, JsonVariantConst value,
+                        const char *missing, const char *pattern) {
+  if (value.isNull() || !(value.is<float>() || value.is<double>() ||
+      value.is<int>() || value.is<long>() || value.is<unsigned long>())) {
+    textIfChanged(obj, missing);
+    return;
+  }
+  const float reading = value.as<float>();
+  if (!isfinite(reading)) { textIfChanged(obj, missing); return; }
+  char txt[42];
+  snprintf(txt, sizeof(txt), pattern, reading);
+  textIfChanged(obj, txt);
+}
+
 void fetchSummary() {
   if (WiFi.status() != WL_CONNECTED || !SERVER_HOST || !SERVER_HOST[0]) {
     serverReady = false;
@@ -440,6 +461,12 @@ void fetchSummary() {
   updateReadingLabel(homeValues[1], reading["humidity"], "%.0f %%");
   updateReadingLabel(homeValues[2], reading["ph"], "%.2f");
   updateReadingLabel(homeValues[3], reading["ec"], "%.2f mS");
+  updateSmallReading(homeWater, reading["water_temperature"],
+                     "Wasser: --", "Wasser: %.1f C");
+  // BH1750-Gueltigkeit: nicht light_level (bei fehlendem BH ebenfalls 0),
+  // sondern den nur bei erkanntem Sensor gesetzten Extra-Wert verwenden.
+  updateSmallReading(homeLux, reading["extras"]["illuminance_lux"],
+                     "Licht: --", "Licht: %.0f lx");
 
   const bool runComplete = reading["extras"]["cycle_stopped"] | false;
   const char *phase = reading["extras"]["phase"] | "";
