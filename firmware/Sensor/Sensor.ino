@@ -1344,6 +1344,236 @@ static void readSensors() {
   sensors.lux = readBh1750();
 }
 
+/* ---------- Integrierte pH-/EC-Kalibrierung, ohne Firmwarewechsel ---------- */
+// Die 160x20ms (pH) bzw. 8x30x40ms (EC) Samples werden ueber den
+// regulaeren loop verteilt: Webserver, C3-Heartbeat und Alarme bleiben aktiv.
+enum class CalibrationMode : uint8_t { None, Ph7, Ph4, Ec1413 };
+struct CalibrationCapture {
+  CalibrationMode mode = CalibrationMode::None;
+  grow_cal::Stats window;
+  grow_cal::Stats medians;
+  float ecSamples[grow_cal::EC_SAMPLES_PER_WINDOW] = {};
+  float waterTempStartC = NAN;
+  uint8_t windowsDone = 0;
+  uint32_t nextSampleMs = 0;
+  uint32_t startedMs = 0;
+};
+static CalibrationCapture calibration;
+
+static const char *calibrationName(CalibrationMode mode) {
+  switch (mode) {
+    case CalibrationMode::Ph7: return "pH7";
+    case CalibrationMode::Ph4: return "pH4";
+    case CalibrationMode::Ec1413: return "EC1413";
+    default: return "inaktiv";
+  }
+}
+static void printCalibrationStatus() {
+  Serial.println(F("--- Kalibrierstatus / NVS ---"));
+  Serial.printf("ADS: %s | DS18B20 Wasser: ", sensors.adsOk ? "OK" : "FEHLT");
+  if (validDsTempC(sensors.waterTempC))
+    Serial.printf("%.2f C\n", sensors.waterTempC);
+  else Serial.println(F("FEHLT, Kalibrieren gesperrt"));
+  Serial.print(F("pH7: "));
+  if (isfinite(phVolt7)) Serial.printf("%.6f V\n", phVolt7);
+  else Serial.println(F("FEHLT"));
+  Serial.print(F("pH4: "));
+  if (isfinite(phVolt4)) Serial.printf("%.6f V\n", phVolt4);
+  else Serial.println(F("FEHLT"));
+  Serial.printf("pH: %s | EC: %s\n",
+                phCalibrated ? "KALIBRIERT" : "UNVOLLSTAENDIG",
+                ecCalibrated ? "KALIBRIERT" : "UNVOLLSTAENDIG");
+  if (ecCalibrated)
+    Serial.printf("EC A1 Referenz %.6f V | Faktor %.5f | %.2f C\n",
+                  ecReferenceInputV, ecFactor, ecCalTempC);
+  if (calibration.mode != CalibrationMode::None)
+    Serial.printf("LAEUFT: %s | Messungen %u | Fenster %u/%u\n",
+                  calibrationName(calibration.mode), calibration.window.count,
+                  calibration.windowsDone, grow_cal::EC_WINDOWS);
+}
+static bool storePhCalibrationPoint(CalibrationMode mode, float voltage, float temperatureC) {
+  const bool isSeven = mode == CalibrationMode::Ph7;
+  if (!isSeven && mode != CalibrationMode::Ph4) return false;
+  if (!isfinite(voltage) || voltage < 0.0f || voltage > 3.3f ||
+      !validDsTempC(temperatureC)) return false;
+  const float other = isSeven ? phVolt4 : phVolt7;
+  if (isfinite(other) && fabsf(other - voltage) < 0.001f) {
+    Serial.println(F("ABGELEHNT: Spannungsabstand zwischen pH4 und pH7 <1mV."));
+    return false;
+  }
+  const char *vk = isSeven ? "volt7" : "volt4";
+  const char *tk = isSeven ? "temp7" : "temp4";
+  const char *hk = isSeven ? "have7" : "have4";
+  Preferences p;
+  if (!p.begin("phads_v1", false)) return false;
+  // Existierende Punkte bleiben erhalten; Flag zuletzt schreiben.
+  const bool written = p.putFloat(vk, voltage) == sizeof(float) &&
+                       p.putFloat(tk, temperatureC) == sizeof(float) &&
+                       p.putBool(hk, true) == sizeof(bool);
+  p.end();
+  if (!written) return false;
+  Preferences verify;
+  if (!verify.begin("phads_v1", true)) return false;
+  const float savedV = verify.getFloat(vk, NAN);
+  const float savedT = verify.getFloat(tk, NAN);
+  const bool ok = verify.getBool(hk, false) &&
+                  isfinite(savedV) && isfinite(savedT) &&
+                  fabsf(savedV - voltage) <= 0.000001f &&
+                  fabsf(savedT - temperatureC) <= 0.01f;
+  verify.end();
+  loadPhCalibration();
+  return ok;
+}
+static bool storeEcCalibration(float voltage, float temperatureC, float factor) {
+  if (!isfinite(voltage) || voltage <= 0.05f || voltage > 2.3f ||
+      !validDsTempC(temperatureC) || !isfinite(factor) ||
+      factor < 0.1f || factor > 10.0f) return false;
+  Preferences p;
+  if (!p.begin("ecads_v1", false)) return false;
+  const bool written = p.putFloat("factor", factor) == sizeof(float) &&
+                       p.putFloat("ref_v", voltage) == sizeof(float) &&
+                       p.putFloat("temp_c", temperatureC) == sizeof(float) &&
+                       p.putBool("valid", true) == sizeof(bool);
+  p.end();
+  if (!written) return false;
+  Preferences verify;
+  if (!verify.begin("ecads_v1", true)) return false;
+  const float savedFactor = verify.getFloat("factor", NAN);
+  const float savedV = verify.getFloat("ref_v", NAN);
+  const float savedT = verify.getFloat("temp_c", NAN);
+  const bool ok = verify.getBool("valid", false) &&
+                  isfinite(savedFactor) && isfinite(savedV) && isfinite(savedT) &&
+                  fabsf(savedFactor - factor) <= 0.00001f &&
+                  fabsf(savedV - voltage) <= 0.000001f &&
+                  fabsf(savedT - temperatureC) <= 0.01f;
+  verify.end();
+  loadEcCalibration();
+  return ok && ecCalibrated;
+}
+static void finishCalibration() {
+  const CalibrationMode mode = calibration.mode;
+  if (!validDsTempC(sensors.waterTempC) ||
+      fabsf(sensors.waterTempC - calibration.waterTempStartC) > 3.0f) {
+    Serial.println(F("ABGELEHNT: DS18B20 fehlt oder Temperaturdifferenz >3C."));
+    calibration = CalibrationCapture{};
+    return;
+  }
+  const float waterC = sensors.waterTempC;
+  bool saved = false;
+  if (mode == CalibrationMode::Ph7 || mode == CalibrationMode::Ph4) {
+    const float v = calibration.window.mean();
+    const float sd = calibration.window.stdDev();
+    Serial.printf("%s ADS A0: %.6f V | Std %.2f mV | DS %.2f C\n",
+                  calibrationName(mode), v, sd * 1000.0f, waterC);
+    if (calibration.window.count == grow_cal::PH_SAMPLES &&
+        isfinite(sd) && sd <= grow_cal::PH_MAX_STD_V)
+      saved = storePhCalibrationPoint(mode, v, waterC);
+    else Serial.println(F("ABGELEHNT: pH-Messwerte instabil (>10mV) oder unvollstaendig."));
+  } else if (mode == CalibrationMode::Ec1413) {
+    const float v = calibration.medians.mean();
+    const float sd = calibration.medians.stdDev();
+    const float span = calibration.medians.maxV - calibration.medians.minV;
+    Serial.printf("EC ADS A1: %.6f V | Median-Std %.2f mV | Spanne %.2f mV | DS %.2f C\n",
+                  v, sd * 1000.0f, span * 1000.0f, waterC);
+    if (calibration.windowsDone == grow_cal::EC_WINDOWS &&
+        isfinite(sd) && sd <= grow_cal::EC_MAX_MEDIAN_STD_V &&
+        span <= grow_cal::EC_MAX_MEDIAN_SPAN_V) {
+      const float factor = grow_cal::ecCalibrationFactor(v, waterC);
+      if (isfinite(factor)) saved = storeEcCalibration(v, waterC, factor);
+      else Serial.println(F("ABGELEHNT: Referenzspannung/EC-Faktor unplausibel."));
+    } else Serial.println(F("ABGELEHNT: EC-Mediane instabil (>10mV Std oder >30mV Spanne)."));
+  }
+  calibration = CalibrationCapture{};
+  if (saved) {
+    Serial.println(F("OK: NVS-Kalibrierung gespeichert und zurueckgelesen."));
+    sensors.ph = phFromVoltage(sensors.phInputV, sensors.waterTempC);
+    sensors.ec = cqrobotEcMs(sensors.tdsInputV, sensors.waterTempC);
+    sensors.tdsPpm = isfinite(sensors.ec) ? sensors.ec * 500.0f : NAN;
+    updatePhAlarm();
+  } else Serial.println(F("NICHT GESPEICHERT: Kalibrierung abgelehnt oder NVS-Fehler."));
+  printCalibrationStatus();
+}
+static void handleCalibrationSerial(char command) {
+  if (command == 's' || command == 'S') {
+    printCalibrationStatus();
+    return;
+  }
+  if (command == 'x' || command == 'X') {
+    if (calibration.mode != CalibrationMode::None) {
+      calibration = CalibrationCapture{};
+      Serial.println(F("ABGEBROCHEN: kein neuer Kalibrierwert gespeichert."));
+    }
+    return;
+  }
+  if (calibration.mode != CalibrationMode::None) {
+    Serial.println(F("Kalibrierung laeuft, zum Abbrechen 'x' senden."));
+    return;
+  }
+  if (!sensors.adsOk) {
+    Serial.println(F("ABGELEHNT: ADS1115 0x48 nicht verfuegbar."));
+    return;
+  }
+  if (!validDsTempC(sensors.waterTempC)) {
+    Serial.println(F("ABGELEHNT: DS18B20-Wassertemperatur auf D23 fehlt."));
+    return;
+  }
+  CalibrationMode mode = CalibrationMode::None;
+  if (command == '7') mode = CalibrationMode::Ph7;
+  else if (command == '4') mode = CalibrationMode::Ph4;
+  else if (command == 'e' || command == 'E') mode = CalibrationMode::Ec1413;
+  if (mode == CalibrationMode::None) return;
+  calibration = CalibrationCapture{};
+  calibration.mode = mode;
+  calibration.waterTempStartC = sensors.waterTempC;
+  calibration.startedMs = millis();
+  calibration.nextSampleMs = millis();
+  Serial.printf("KALIBRIERUNG START: %s | DS %.2f C | mit x abbrechen.\n",
+                calibrationName(mode), calibration.waterTempStartC);
+}
+static void pollCalibrationCapture() {
+  if (calibration.mode == CalibrationMode::None) return;
+  const uint32_t now = millis();
+  if (static_cast<int32_t>(now - calibration.nextSampleMs) < 0) return;
+  if (!sensors.adsOk || !validDsTempC(sensors.waterTempC) ||
+      now - calibration.startedMs > 60000UL) {
+    Serial.println(F("KALIBRIERUNG ABBRUCH: ADS/DS18B20 fehlt oder Timeout."));
+    calibration = CalibrationCapture{};
+    return;
+  }
+  const bool ec = calibration.mode == CalibrationMode::Ec1413;
+  const float v = adsCountsToVolts(ads.readADC_SingleEnded(ec ? 1 : 0));
+  if (!calibration.window.add(v, ec ? 2.3f : 3.3f)) {
+    Serial.println(F("KALIBRIERUNG ABBRUCH: ADS-Messung ungueltig."));
+    calibration = CalibrationCapture{};
+    return;
+  }
+  if (!ec) {
+    calibration.nextSampleMs = now + grow_cal::PH_INTERVAL_MS;
+    if (calibration.window.count == grow_cal::PH_SAMPLES) finishCalibration();
+    return;
+  }
+  const uint16_t n = calibration.window.count;
+  calibration.ecSamples[n - 1] = v;
+  calibration.nextSampleMs = now + grow_cal::EC_INTERVAL_MS;
+  if (n != grow_cal::EC_SAMPLES_PER_WINDOW) return;
+  const float medianV = grow_cal::median30(calibration.ecSamples);
+  const float rawStd = calibration.window.stdDev();
+  if (!calibration.medians.add(medianV, 2.3f)) {
+    calibration = CalibrationCapture{};
+    Serial.println(F("EC ABBRUCH: ungueltiger Fenster-Median."));
+    return;
+  }
+  ++calibration.windowsDone;
+  Serial.printf("EC Fenster %u/%u: Median %.5f V | Roh-Std %.1f mV\n",
+                calibration.windowsDone, grow_cal::EC_WINDOWS, medianV, rawStd * 1000.0f);
+  if (calibration.windowsDone == grow_cal::EC_WINDOWS) {
+    finishCalibration();
+    return;
+  }
+  calibration.window = grow_cal::Stats{};
+  calibration.nextSampleMs = now + grow_cal::EC_WINDOW_GAP_MS;
+}
+
 /* ---------- Steuerung ---------- */
 
 static void autoControl() {
