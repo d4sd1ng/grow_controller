@@ -18,6 +18,7 @@
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <time.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -265,6 +266,11 @@ static const PhaseProfile &phaseProfile();
 static void setGrowPhase(GrowPhase next);
 static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true};
 static bool setGrowWeek(int week); // NVS-Funktion steht weiter unten
+static bool beginPhaseClock(GrowPhase next);
+static bool setGrowWeekManually(int week);
+static void loadPhaseClock();
+static void pollPhaseClock();
+static bool setPhaseClockEpoch(uint32_t startEpoch);
 static PhaseProfile blueteProfile = {NAN, NAN, false};
 static constexpr char PHASE_PROFILE_NVS[] = "phaseprof_v1";
 static constexpr char PHASE_NVS[] = "growphase_v1";
@@ -342,10 +348,12 @@ static void setGrowPhase(GrowPhase next) {
     saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) == sizeof(uint8_t);
     prefs.end();
   }
-  // Ein Phasenwechsel startet die jeweilige Phase mit ihrer ersten Woche.
-  // Die Zeit-basierte Wochenfortschaltung ist separat zu implementieren.
+  // Phasenwechsel startet W1 (Wuchs) oder W3 (Blueteeinleitung).
+  // Die 7-Tage-Fortschaltung benoetigt eine gueltige UTC-Zeit.
   if (!setGrowWeek(next == GrowPhase::Bluete ? 3 : 1))
     Serial.println(F("WARNUNG: Phasenwoche konnte nicht gespeichert werden."));
+  if (!beginPhaseClock(next))
+    Serial.println(F("PHASEN-UHR: Startzeit ausstehend; NTP wird benoetigt."));
   targets = ActuatorState{};
   ++commandSeq;
   Serial.printf("PHASE -> %s | Profil %s | Speicher %s\n",
@@ -442,6 +450,115 @@ static constexpr NutrientTargets NUTRIENT_WEEK_TARGETS[12] = {
 };
 static constexpr char GROW_WEEK_NVS[] = "growweek_v1";
 static uint8_t growWeek = 0;
+static constexpr char PHASE_CLOCK_NVS[] = "phaseclock_v1";
+static constexpr uint32_t PHASE_WEEK_SECONDS = 7UL * 24UL * 3600UL;
+static constexpr time_t PHASE_MIN_VALID_UNIX = 1700000000;
+static uint32_t phaseStartEpoch = 0;
+static bool phaseClockPending = false;
+static bool phaseDurationElapsed = false;
+static unsigned long lastPhaseClockPollMs = 0;
+
+static time_t validatedUtcNow() {
+  const time_t now = time(nullptr);
+  return now >= PHASE_MIN_VALID_UNIX ? now : 0;
+}
+static bool persistPhaseClock(uint32_t startEpoch) {
+  Preferences prefs;
+  if (!prefs.begin(PHASE_CLOCK_NVS, false)) return false;
+  const bool saved =
+      prefs.putUInt("start", startEpoch) == sizeof(uint32_t) &&
+      prefs.putUChar("phase", static_cast<uint8_t>(growPhase)) == sizeof(uint8_t);
+  prefs.end();
+  return saved;
+}
+static bool setPhaseClockEpoch(uint32_t startEpoch) {
+  const time_t now = validatedUtcNow();
+  if (!now || startEpoch < static_cast<uint32_t>(PHASE_MIN_VALID_UNIX) ||
+      startEpoch > static_cast<uint32_t>(now)) return false;
+  if (!persistPhaseClock(startEpoch)) return false;
+  phaseStartEpoch = startEpoch;
+  phaseClockPending = false;
+  phaseDurationElapsed = false;
+  lastPhaseClockPollMs = 0;
+  return true;
+}
+static bool beginPhaseClock(GrowPhase next) {
+  // Abgelaufene Zeit nie aus einem Neustart oder ungueltigen Uhrenwert erfinden.
+  (void)next;
+  phaseStartEpoch = 0;
+  phaseDurationElapsed = false;
+  phaseClockPending = true;
+  const time_t now = validatedUtcNow();
+  if (!now) return false;
+  return setPhaseClockEpoch(static_cast<uint32_t>(now));
+}
+static void loadPhaseClock() {
+  Preferences prefs;
+  if (!prefs.begin(PHASE_CLOCK_NVS, true)) {
+    Serial.println(F("PHASEN-UHR: kein Startdatum hinterlegt."));
+    return;
+  }
+  const uint32_t saved = prefs.getUInt("start", 0);
+  const uint8_t savedPhase = prefs.getUChar("phase", 255);
+  prefs.end();
+  if (saved >= static_cast<uint32_t>(PHASE_MIN_VALID_UNIX) &&
+      savedPhase == static_cast<uint8_t>(growPhase)) {
+    phaseStartEpoch = saved;
+    Serial.printf("PHASEN-UHR: UTC-Start %lu wiederhergestellt\n",
+                  static_cast<unsigned long>(saved));
+  } else {
+    Serial.println(F("PHASEN-UHR: Startdatum fehlt oder stimmt nicht mit Phase ueberein."));
+  }
+}
+static bool setGrowWeekManually(int week) {
+  const int first = growPhase == GrowPhase::Wuchs ? 1 : 3;
+  const int last = growPhase == GrowPhase::Wuchs ? 2 : 13;
+  if (week < first || week > last) return false;
+  const time_t now = validatedUtcNow();
+  if (!now) return false;
+  // Manuelle Auswahl definiert ausdruecklich den Beginn der Woche "jetzt".
+  const uint32_t elapsed = static_cast<uint32_t>(week - first) * PHASE_WEEK_SECONDS;
+  const uint32_t start = static_cast<uint32_t>(now) - elapsed;
+  if (!setPhaseClockEpoch(start)) return false;
+  const bool saved = setGrowWeek(week);
+  if (saved) Serial.printf("PHASEN-UHR: Woche %d manuell gestartet\n", week);
+  return saved;
+}
+static void pollPhaseClock() {
+  const unsigned long nowMs = millis();
+  if (lastPhaseClockPollMs && nowMs - lastPhaseClockPollMs < 10000UL) return;
+  lastPhaseClockPollMs = nowMs;
+  const time_t now = validatedUtcNow();
+  if (!now) return; // Keine geschätzte Wochenfortschaltung ohne Uhr.
+  if (phaseClockPending) {
+    if (setPhaseClockEpoch(static_cast<uint32_t>(now)))
+      Serial.println(F("PHASEN-UHR: Start nach NTP-Synchronisation gespeichert."));
+    else Serial.println(F("PHASEN-UHR: NVS-Start konnte nicht gespeichert werden."));
+  }
+  if (!phaseStartEpoch || now < static_cast<time_t>(phaseStartEpoch)) return;
+  const uint32_t elapsedWeeks =
+      static_cast<uint32_t>((static_cast<uint64_t>(now) - phaseStartEpoch)
+                            / PHASE_WEEK_SECONDS);
+  const uint32_t durationWeeks = growPhase == GrowPhase::Wuchs ? 2UL : 11UL;
+  const uint8_t first = growPhase == GrowPhase::Wuchs ? 1U : 3U;
+  const uint8_t capped = static_cast<uint8_t>(
+      elapsedWeeks < durationWeeks ? elapsedWeeks : durationWeeks - 1UL);
+  const bool finished = elapsedWeeks >= durationWeeks;
+  const uint8_t current = first + capped;
+  if (current != growWeek && !setGrowWeek(current))
+    Serial.println(F("PHASEN-UHR: Wochenstand konnte nicht gespeichert werden."));
+  if (finished && !phaseDurationElapsed)
+    Serial.printf("PHASEN-UHR: %s beendet; kein automatischer Phasenwechsel.\n",
+                  phaseName(growPhase));
+  phaseDurationElapsed = finished;
+}
+static const char *phaseClockStatus() {
+  if (phaseClockPending) return "waiting_for_ntp";
+  if (!phaseStartEpoch) return "start_not_set";
+  if (!validatedUtcNow()) return "clock_unavailable";
+  if (phaseDurationElapsed) return "duration_elapsed";
+  return "running";
+}
 static const NutrientTargets *activeNutrientTargets() {
   return growWeek >= 1 && growWeek <= 12
       ? &NUTRIENT_WEEK_TARGETS[growWeek - 1] : nullptr; // Woche 13: kein erfundener EC/pH-Wert
@@ -614,11 +731,11 @@ static void handlePhTestSerial() {
       String arg = Serial.readStringUntil('\n');
       arg.trim();
       const int week = arg.toInt();
-      if (!setGrowWeek(week)) Serial.println(F("WOCHE ungueltig/nicht gespeichert: k1 bis k12"));
+      if (!setGrowWeekManually(week)) Serial.println(F("WOCHE nicht erlaubt oder NTP fehlt: k1 bis k13"));
     }
     else if (c == 'h' || c == 'H' || c == '?') {
       Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
-      Serial.println(F("Woche per Serial: k1 bis k12 + Zeilenumbruch, im NVS gespeichert."));
+      Serial.println(F("Woche per Serial: k1 bis k13 + Zeilenumbruch (NTP erforderlich)."));
       Serial.println(F("i = alle I2C-Adressen auf D13/D14 und D21/D22 anzeigen (keine Neuzuordnung)"));
     }
   }
@@ -1216,6 +1333,9 @@ static void handleSummary() {
   writeNutrientTargets(control);
   control["phase_profile_configured"] = phaseProfile().configured;
   const VpdControlBand vpdBand = activeVpdControlBand();
+  control["phase_clock_status"] = phaseClockStatus();
+  control["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
+  control["phase_duration_elapsed"] = phaseDurationElapsed;
   control["vpd_control_stage"] = vpdBand.stage;
   control["vpd_control_configured"] = vpdBand.configured;
   if (vpdBand.configured) {
@@ -1330,6 +1450,9 @@ static void handleActuatorTargets() {
   writeNutrientTargets(doc.as<JsonObject>());
   doc["phase_profile_configured"] = phaseProfile().configured;
   const VpdControlBand vpdBand = activeVpdControlBand();
+  doc["phase_clock_status"] = phaseClockStatus();
+  doc["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
+  doc["phase_duration_elapsed"] = phaseDurationElapsed;
   doc["vpd_control_stage"] = vpdBand.stage;
   if (vpdBand.configured) {
     doc["vpd_target_min_kpa"] = vpdBand.minKpa;
@@ -1464,7 +1587,7 @@ static void handleGrowWeek() {
     return localServer.send(400, "application/json",
         "{\"ok\":false,\"error\":\"week_must_be_1_to_13\"}");
   }
-  if (!setGrowWeek(selected)) {
+  if (!setGrowWeekManually(selected)) {
     return localServer.send(500, "application/json",
         "{\"ok\":false,\"error\":\"week_nvs_not_saved\"}");
   }
@@ -1548,6 +1671,29 @@ static void handlePhaseProfile() {
   localServer.send(200, "application/json", "{\"ok\":true,\"phase\":\"bluete\",\"configured\":true}");
 }
 
+// Startzeit explizit setzen oder neu starten, ohne den Phasenschalter zu umgehen.
+// {"start_unix": <UTC timestamp>} oder {"start_now":true}
+static void handlePhaseClock() {
+  if (!localAuthorized()) return sendUnauthorized();
+  StaticJsonDocument<128> input;
+  if (deserializeJson(input, localServer.arg("plain")) || !input.is<JsonObject>())
+    return localServer.send(400, "application/json", "{\"ok\":false,\"error\":\"bad_json\"}");
+  const time_t now = validatedUtcNow();
+  if (!now)
+    return localServer.send(503, "application/json", "{\"ok\":false,\"error\":\"clock_unavailable\"}");
+  uint32_t start = 0;
+  if (input["start_now"].as<bool>() && input.size() == 1) {
+    start = static_cast<uint32_t>(now);
+  } else if (input["start_unix"].is<unsigned long>() && input.size() == 1) {
+    start = input["start_unix"].as<uint32_t>();
+  } else {
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"start_now_or_start_unix_required\"}");
+  }
+  if (!setPhaseClockEpoch(start))
+    return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"invalid_start_or_nvs_failure\"}");
+  pollPhaseClock();
+  localServer.send(200, "application/json", "{\"ok\":true}");
+}
 static void setupLocalApi() {
   localServer.collectHeaders(LOCAL_HEADER_KEYS, 1);
   localServer.on("/api/local/summary", HTTP_GET, handleSummary);
@@ -1559,6 +1705,7 @@ static void setupLocalApi() {
   localServer.on("/api/local/control/week", HTTP_POST, handleGrowWeek);
   localServer.on("/api/local/control/phase", HTTP_POST, handleGrowPhase);
   localServer.on("/api/local/control/phase-profile", HTTP_POST, handlePhaseProfile);
+  localServer.on("/api/local/control/phase-clock", HTTP_POST, handlePhaseClock);
   localServer.begin();
 }
 
@@ -1579,6 +1726,9 @@ static bool sendTelemetry() {
   writeNutrientTargets(root);
   root["phase_profile_configured"] = phaseProfile().configured;
   const VpdControlBand vpdBand = activeVpdControlBand();
+  root["phase_clock_status"] = phaseClockStatus();
+  root["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
+  root["phase_duration_elapsed"] = phaseDurationElapsed;
   root["vpd_control_stage"] = vpdBand.stage;
   if (vpdBand.configured) {
     root["vpd_target_min_kpa"] = vpdBand.minKpa;
@@ -1789,6 +1939,7 @@ void setup() {
   delay(300);
   setupGrowPhaseButtons();
   loadGrowWeek();
+  loadPhaseClock();
   setupPhBuzzer();
   Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
   loadPhCalibration();
@@ -1828,6 +1979,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  configTime(0, 0, "pool.ntp.org", "time.google.com"); // UTC-Zeit ohne Ortsannahme
 
   const unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
@@ -1860,6 +2012,7 @@ void loop() {
   refreshPhaseRgb();  // Verbindungstimeout: blau sofort wieder aus.
   pollGrowPhaseButtons(now);
   pollPumpServiceButton(now);
+  pollPhaseClock();
   handlePhTestSerial();
   updatePhBuzzer(now);
   sampleTdsBackground(now);
