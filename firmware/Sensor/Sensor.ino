@@ -33,6 +33,11 @@
 #if GROW_ENABLE_MLX90640
 #include <Adafruit_MLX90640.h>
 #endif
+// Kameratemperatur nur nach Blatt-ROI-Kalibrierung als VPD-Quelle freigeben.
+#ifndef GROW_MLX_LEAF_VERIFIED
+#define GROW_MLX_LEAF_VERIFIED 0
+#endif
+static constexpr float VPD_LEAF_AIR_OFFSET_C = 2.0f; // Nutzer-VPD-Tabelle
 
 /* Die Buzzer-Bauart ist noch unbekannt. Daher standardmaessig AUS.
  * Bei einem bestaetigten 3.3-V-kompatiblen aktiven Modul mit Logikeingang
@@ -194,7 +199,10 @@ struct SensorData {
   float tdsPpm = NAN;
   float ec = NAN; // mS/cm bei der aktuell gemessenen DS18B20-Wassertemperatur
 
-  float vpd = NAN; // bestehender Luft-VPD (DHT1), unveraendert
+  float vpd = NAN; // aktiver Blatt-VPD in kPa (standardmaessig T Blatt = T Luft - 2 C)
+  float vpdAir = NAN; // separater Luft-VPD, Blatt-Offset 0
+  float leafTemperatureC = NAN; // geschaetzte oder verifizierte Blatt-Temperatur
+  bool vpdFromCamera = false;
   float thermalRoiTempC = NAN; // mittlere Bildregion, NOCH NICHT als Blatt validiert
   float vpdLeafCandidate = NAN; // vorlaeufiger Blatt-VPD: ROI + mind. zwei DHT22
   bool mlx90640Ok = false;
@@ -943,6 +951,21 @@ static uint32_t readBh1750() {
 static float saturatedVaporPressureKpa(float tempC) {
   return 0.61078f * expf(17.27f * tempC / (tempC + 237.3f));
 }
+// Exakte Physik hinter der Tabelle: VPD = e_sat(Blatt) - RH * e_sat(Luft).
+static float computeLeafVpd(float airTempC, float relativeHumidity, float leafTempC) {
+  if (!isfinite(airTempC) || !isfinite(leafTempC) ||
+      !isfinite(relativeHumidity) || relativeHumidity < 0.0f ||
+      relativeHumidity > 100.0f) return NAN;
+  return saturatedVaporPressureKpa(leafTempC) -
+         saturatedVaporPressureKpa(airTempC) * (relativeHumidity / 100.0f);
+}
+static const char *vpdChartBand(float value) {
+  if (!isfinite(value)) return "unavailable";
+  if (value < 0.4f || value > 1.6f) return "danger";
+  if (value < 0.8f) return "low_transpiration";
+  if (value < 1.2f) return "healthy_transpiration";
+  return "high_transpiration";
+}
 static void updateLeafVpdCandidate() {
   sensors.vpdLeafCandidate = NAN;
   if (!sensors.mlx90640Ok || !isfinite(sensors.thermalRoiTempC)) return;
@@ -964,6 +987,27 @@ static void updateLeafVpdCandidate() {
     values[j] = v;
   }
   sensors.vpdLeafCandidate = n == 3 ? values[1] : 0.5f * (values[0] + values[1]);
+}
+static void updateActiveVpd() {
+  sensors.vpd = NAN;
+  sensors.vpdAir = NAN;
+  sensors.leafTemperatureC = NAN;
+  sensors.vpdFromCamera = false;
+  if (!sensors.dht[0].ok) return;
+  const float airC = sensors.dht[0].tempC;
+  const float rh = sensors.dht[0].rh;
+  sensors.vpdAir = computeVpd(airC, rh);
+  sensors.leafTemperatureC = airC - VPD_LEAF_AIR_OFFSET_C;
+  sensors.vpd = computeLeafVpd(airC, rh, sensors.leafTemperatureC);
+#if GROW_ENABLE_MLX90640 && GROW_MLX_LEAF_VERIFIED
+  // Nur nach ausdruecklicher Validierung der Kamera-ROI, nicht bei blosser Montage.
+  if (sensors.mlx90640Ok && isfinite(sensors.thermalRoiTempC) &&
+      isfinite(sensors.vpdLeafCandidate)) {
+    sensors.leafTemperatureC = sensors.thermalRoiTempC;
+    sensors.vpd = sensors.vpdLeafCandidate;
+    sensors.vpdFromCamera = true;
+  }
+#endif
 }
 #if GROW_ENABLE_MLX90640
 static Adafruit_MLX90640 mlx90640;
@@ -993,6 +1037,7 @@ static void pollMlx90640(unsigned long nowMs) {
   sensors.thermalRoiTempC = NAN;
   if (error != 0) {
     updateLeafVpdCandidate();
+    updateActiveVpd();
     Serial.printf("MLX90640 Bildfehler: %d\n", error);
     return;
   }
@@ -1004,7 +1049,7 @@ static void pollMlx90640(unsigned long nowMs) {
       if (isfinite(temp) && temp >= 0.0f && temp <= 60.0f) roi[n++] = temp;
     }
   }
-  if (n < 96) { updateLeafVpdCandidate(); return; }
+  if (n < 96) { updateLeafVpdCandidate(); updateActiveVpd(); return; }
   for (uint16_t i = 1; i < n; ++i) {
     const float temp = roi[i];
     uint16_t j = i;
@@ -1015,6 +1060,7 @@ static void pollMlx90640(unsigned long nowMs) {
                             0.5f * (roi[n / 2 - 1] + roi[n / 2]);
   sensors.mlx90640Ok = true;
   updateLeafVpdCandidate();
+  updateActiveVpd();
   Serial.printf("MLX90640 ROI %.2f C | VPD-Blatt-Kandidat %.3f kPa | %u Pixel\n",
       sensors.thermalRoiTempC, sensors.vpdLeafCandidate, static_cast<unsigned>(n));
 }
@@ -1030,10 +1076,8 @@ static void readSensors() {
   sensors.dht[1] = readDht(dht2);
   sensors.dht[2] = readDht(dht3);
 
-  sensors.vpd = sensors.dht[0].ok
-      ? computeVpd(sensors.dht[0].tempC, sensors.dht[0].rh)
-      : NAN;
   updateLeafVpdCandidate();
+  updateActiveVpd();
 
   // Sensor-Suche wiederholen, falls bei Programmstart noch kein
   // DS18B20 angeschlossen war (DallasTemperature cached die Geraetezahl).
@@ -1158,6 +1202,10 @@ static void handleSummary() {
     reading["humidity"] = nullptr;
   }
   setJsonFloat(reading, "vpd", sensors.vpd);
+  setJsonFloat(reading, "vpd_air", sensors.vpdAir);
+  setJsonFloat(reading, "leaf_temperature_c", sensors.leafTemperatureC);
+  reading["vpd_source"] = sensors.vpdFromCamera ? "verified_infrared_leaf" : "leaf_air_minus_2c";
+  reading["vpd_chart_band"] = vpdChartBand(sensors.vpd);
   reading["mlx90640_ok"] = sensors.mlx90640Ok;
   setJsonFloat(reading, "thermal_roi_temperature", sensors.thermalRoiTempC);
   setJsonFloat(reading, "vpd_leaf_candidate", sensors.vpdLeafCandidate);
@@ -1512,6 +1560,10 @@ static bool sendTelemetry() {
   }
 
   setJsonFloat(root, "vpd", sensors.vpd);
+  setJsonFloat(root, "vpd_air", sensors.vpdAir);
+  setJsonFloat(root, "leaf_temperature_c", sensors.leafTemperatureC);
+  root["vpd_source"] = sensors.vpdFromCamera ? "verified_infrared_leaf" : "leaf_air_minus_2c";
+  root["vpd_chart_band"] = vpdChartBand(sensors.vpd);
   root["mlx90640_ok"] = sensors.mlx90640Ok;
   setJsonFloat(root, "thermal_roi_temperature", sensors.thermalRoiTempC);
   setJsonFloat(root, "vpd_leaf_candidate", sensors.vpdLeafCandidate);
@@ -1632,9 +1684,14 @@ static void drawOled() {
   }
 
   display.setCursor(0, 24);
-  // Zur Platzersparnis alle 5 s abwechselnd Temperatur oder Licht zeigen.
+  // Zur Platzersparnis alle 5 s zwischen Box/H2O, Lux und Blatt-VPD wechseln.
   // pH/EC und die Alarmzeile bleiben zu jeder Zeit sichtbar.
-  if ((millis() / 5000UL) % 2UL == 1UL) {
+  const uint8_t infoPage = (millis() / 5000UL) % 3UL;
+  if (infoPage == 2UL) {
+    if (isfinite(sensors.vpd)) display.printf("VPD %.2f kPa", sensors.vpd);
+    else display.print(F("VPD --"));
+    if (!sensors.vpdFromCamera) display.print(F(" -2C"));
+  } else if (infoPage == 1UL) {
     if (bh1750Present) {
       display.printf("%lu lx ~%.0f lm",
                      static_cast<unsigned long>(sensors.lux),
