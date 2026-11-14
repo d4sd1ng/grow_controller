@@ -41,6 +41,23 @@ class FirmwareContractTests(unittest.TestCase):
             with self.subTest(pin=name):
                 self.assertRegex(self.sensor, rf"\b{name}\s*=\s*{pin}\s*;")
 
+    def test_headless_sensor_and_visible_readings(self):
+        # Sensor board has no OLED; I2C must still serve ADS1115 and BH1750.
+        for removed in ("Adafruit_GFX.h", "Adafruit_SSD1306.h",
+                        "SSD1306_", "OLED_ADDR", "OLED_REFRESH_MS",
+                        "oledOk", "drawOled(", "display.begin("):
+            with self.subTest(removed=removed):
+                self.assertNotIn(removed, self.sensor)
+        self.assertIn("Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000)", self.sensor)
+        self.assertIn("ads.begin(0x48, &Wire)", self.sensor)
+        self.assertIn("bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000)", self.sensor)
+        self.assertIn("ds18b20.requestTemperatures();", self.sensor)
+        self.assertIn("sensors.lux = readBh1750();", self.sensor)
+        self.assertIn("static void printLiveSensorValues()", self.sensor)
+        self.assertEqual(self.sensor.count("  printLiveSensorValues();"), 2)
+        self.assertIn('updateSmallReading(homeWater, reading["water_temperature"]', self.remote)
+        self.assertIn('updateSmallReading(homeLux, reading["extras"]["illuminance_lux"]', self.remote)
+
     def test_five_pumps_and_locked_dosing(self):
         self.assertIn("DOSING_PUMP_COUNT = 5;", self.sensor)
         self.assertIn("PUMP_COUNT = 5;", self.remote)
