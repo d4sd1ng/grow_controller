@@ -264,6 +264,7 @@ static const char *phaseName(GrowPhase p);
 static const PhaseProfile &phaseProfile();
 static void setGrowPhase(GrowPhase next);
 static constexpr PhaseProfile WUCHS_PROFILE = {24.0f, 60.0f, true};
+static bool setGrowWeek(int week); // NVS-Funktion steht weiter unten
 static PhaseProfile blueteProfile = {NAN, NAN, false};
 static constexpr char PHASE_PROFILE_NVS[] = "phaseprof_v1";
 static constexpr char PHASE_NVS[] = "growphase_v1";
@@ -341,6 +342,10 @@ static void setGrowPhase(GrowPhase next) {
     saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) == sizeof(uint8_t);
     prefs.end();
   }
+  // Ein Phasenwechsel startet die jeweilige Phase mit ihrer ersten Woche.
+  // Die Zeit-basierte Wochenfortschaltung ist separat zu implementieren.
+  if (!setGrowWeek(next == GrowPhase::Bluete ? 3 : 1))
+    Serial.println(F("WARNUNG: Phasenwoche konnte nicht gespeichert werden."));
   targets = ActuatorState{};
   ++commandSeq;
   Serial.printf("PHASE -> %s | Profil %s | Speicher %s\n",
@@ -439,7 +444,7 @@ static constexpr char GROW_WEEK_NVS[] = "growweek_v1";
 static uint8_t growWeek = 0;
 static const NutrientTargets *activeNutrientTargets() {
   return growWeek >= 1 && growWeek <= 12
-      ? &NUTRIENT_WEEK_TARGETS[growWeek - 1] : nullptr;
+      ? &NUTRIENT_WEEK_TARGETS[growWeek - 1] : nullptr; // Woche 13: kein erfundener EC/pH-Wert
 }
 static void loadGrowWeek() {
   Preferences prefs;
@@ -449,7 +454,7 @@ static void loadGrowWeek() {
   }
   const uint8_t saved = prefs.getUChar("week", 0);
   prefs.end();
-  growWeek = saved <= 12 ? saved : 0;
+  growWeek = saved <= 13 ? saved : 0;
   if (const NutrientTargets *t = activeNutrientTargets()) {
     Serial.printf("WOCHE %u | Soll pH %.2f | Soll EC %.2f mS/cm\n",
         growWeek, t->ph, t->ecMsCm);
@@ -458,7 +463,7 @@ static void loadGrowWeek() {
   }
 }
 static bool setGrowWeek(int week) {
-  if (week < 1 || week > 12) return false;
+  if (week < 1 || week > 13) return false;
   if (growWeek == static_cast<uint8_t>(week)) return true;
   Preferences prefs;
   if (!prefs.begin(GROW_WEEK_NVS, false)) return false;
@@ -467,8 +472,9 @@ static bool setGrowWeek(int week) {
   if (!saved) return false;
   growWeek = static_cast<uint8_t>(week);
   const NutrientTargets *t = activeNutrientTargets();
-  Serial.printf("WOCHE -> %u | pH-Soll %.2f | EC-Soll %.2f mS/cm (NVS gespeichert)\n",
+  if (t) Serial.printf("WOCHE -> %u | pH-Soll %.2f | EC-Soll %.2f mS/cm (NVS gespeichert)\n",
       growWeek, t->ph, t->ecMsCm);
+  else Serial.printf("WOCHE -> %u | kein pH/EC-Wochenprofil hinterlegt\n", growWeek);
   return true;
 }
 static void writeNutrientTargets(JsonObject obj) {
@@ -959,6 +965,22 @@ static float computeLeafVpd(float airTempC, float relativeHumidity, float leafTe
   return saturatedVaporPressureKpa(leafTempC) -
          saturatedVaporPressureKpa(airTempC) * (relativeHumidity / 100.0f);
 }
+struct VpdControlBand {
+  float minKpa;
+  float maxKpa;
+  const char *stage;
+  bool configured;
+};
+// 2 Wochen Wachstum, 2 Wochen Uebergang, 9 Wochen eigentliche Bluete.
+static VpdControlBand activeVpdControlBand() {
+  if (growPhase == GrowPhase::Wuchs && growWeek >= 1 && growWeek <= 2)
+    return {0.4f, 0.8f, "early_growth", true};
+  if (growPhase == GrowPhase::Bluete && growWeek >= 3 && growWeek <= 4)
+    return {0.8f, 1.2f, "transition", true};
+  if (growPhase == GrowPhase::Bluete && growWeek >= 5 && growWeek <= 13)
+    return {1.2f, 1.6f, "flowering", true};
+  return {NAN, NAN, "week_or_phase_not_set", false};
+}
 static const char *vpdChartBand(float value) {
   if (!isfinite(value)) return "unavailable";
   if (value < 0.4f || value > 1.6f) return "danger";
@@ -1133,39 +1155,48 @@ static void readSensors() {
 static void autoControl() {
   if (strcmp(controlMode, "auto") != 0) return;
 
-  /* Licht wird spaeter durch Zeitplan/Serverziel ergaenzt und hier nicht veraendert. */
-
-  if (!sensors.dht[0].ok) {
-    // Waehrend der DHT22 noch nicht verkabelt oder ausgefallen ist,
-    // aktiviert AUTO keinerlei SSR. Keine automatisch laufenden
-    // Ventilatoren oder Heizung bei ungueltiger Temperatur/Feuchte.
-    const ActuatorState before = targets;
-    targets = ActuatorState{};
-    if (!sameState(before, targets)) ++commandSeq;
-    return;
-  }
-
-  const PhaseProfile &profile = phaseProfile();
-  if (!profile.configured) {
-    // Fehlende Bluete-Werte duerfen nicht still durch Wuchs-Werte ersetzt werden.
-    const ActuatorState before = targets;
-    targets = ActuatorState{};
+  // Licht, Wasserpumpe und Dosierung bleiben von dieser Klimaregelung unberuehrt.
+  ActuatorState before = targets;
+  const VpdControlBand band = activeVpdControlBand();
+  if (!sensors.dht[0].ok || !isfinite(sensors.vpd) || !band.configured) {
+    targets.heater = false;
+    targets.circulation = false;
+    targets.exhaust = false;
     if (!sameState(before, targets)) ++commandSeq;
     return;
   }
   const float t = sensors.dht[0].tempC;
-  const float rh = sensors.dht[0].rh;
-  ActuatorState before = targets;
+  const float vpd = sensors.vpd;
+  const PhaseProfile &profile = phaseProfile();
+  static constexpr float VPD_HYST = 0.05f; // verhindert Schaltflattern
+  const bool tooHumid = vpd < band.minKpa - VPD_HYST;
+  const bool tooDry = vpd > band.maxKpa + VPD_HYST;
 
-  if (t < profile.targetAirC - TEMP_HYST) targets.heater = true;
-  else if (t > profile.targetAirC + TEMP_HYST) targets.heater = false;
+  // Abluft kann bei hoher Feuchte nur helfen, wenn die Zuluft trockener ist.
+  // Ohne Zuluftsensor ist die Wirksamkeit nicht verifiziert.
+  if (tooHumid) targets.exhaust = true;
+  else if (vpd > band.minKpa + VPD_HYST) targets.exhaust = false;
+  if (tooDry) targets.exhaust = false;
 
-  if (rh > profile.targetHumidityPct + HUM_HYST) targets.circulation = true;
-  else if (rh < profile.targetHumidityPct - HUM_HYST) targets.circulation = false;
+  // Temperatur-Sollwert muss fuer die jeweilige Phase explizit konfiguriert sein.
+  if (!profile.configured) {
+    targets.heater = false;
+  } else {
+    if (t < profile.targetAirC - TEMP_HYST && !tooDry)
+      targets.heater = true;
+    else if (t > profile.targetAirC + TEMP_HYST || tooDry)
+      targets.heater = false;
 
-  if (t > profile.targetAirC + 2.0f) targets.exhaust = true;
-  else if (t < profile.targetAirC + 0.5f) targets.exhaust = false;
-
+    // Uebertemperatur relativ zum konfigurierten Sollwert hat Vorrang.
+    if (t > profile.targetAirC + 2.0f) {
+      targets.heater = false;
+      targets.exhaust = true;
+    }
+  }
+  // Nicht gleichzeitig heizen und Abluft einschalten.
+  if (targets.heater) targets.exhaust = false;
+  // Umluft verteilt nur die Raumluft, sie senkt die Feuchte nicht direkt.
+  targets.circulation = tooHumid || tooDry || targets.exhaust || targets.heater;
   if (!sameState(before, targets)) ++commandSeq;
 }
 
@@ -1182,6 +1213,16 @@ static void handleSummary() {
   control["phase"] = phaseName(growPhase);
   writeNutrientTargets(control);
   control["phase_profile_configured"] = phaseProfile().configured;
+  const VpdControlBand vpdBand = activeVpdControlBand();
+  control["vpd_control_stage"] = vpdBand.stage;
+  control["vpd_control_configured"] = vpdBand.configured;
+  if (vpdBand.configured) {
+    control["vpd_target_min_kpa"] = vpdBand.minKpa;
+    control["vpd_target_max_kpa"] = vpdBand.maxKpa;
+  } else {
+    control["vpd_target_min_kpa"] = nullptr;
+    control["vpd_target_max_kpa"] = nullptr;
+  }
   if (phaseProfile().configured) {
     control["phase_air_target_c"] = phaseProfile().targetAirC;
     control["phase_humidity_target_pct"] = phaseProfile().targetHumidityPct;
@@ -1286,6 +1327,12 @@ static void handleActuatorTargets() {
   doc["phase"] = phaseName(growPhase);
   writeNutrientTargets(doc.as<JsonObject>());
   doc["phase_profile_configured"] = phaseProfile().configured;
+  const VpdControlBand vpdBand = activeVpdControlBand();
+  doc["vpd_control_stage"] = vpdBand.stage;
+  if (vpdBand.configured) {
+    doc["vpd_target_min_kpa"] = vpdBand.minKpa;
+    doc["vpd_target_max_kpa"] = vpdBand.maxKpa;
+  }
   doc["seq"] = commandSeq;
   doc["source_ms"] = millis();
   JsonObject commands = doc.createNestedObject("commands");
@@ -1411,9 +1458,9 @@ static void handleGrowWeek() {
         "{\"ok\":false,\"error\":\"bad_json\"}");
   }
   const int selected = input["week"].as<int>();
-  if (selected < 1 || selected > 12) {
+  if (selected < 1 || selected > 13) {
     return localServer.send(400, "application/json",
-        "{\"ok\":false,\"error\":\"week_must_be_1_to_12\"}");
+        "{\"ok\":false,\"error\":\"week_must_be_1_to_13\"}");
   }
   if (!setGrowWeek(selected)) {
     return localServer.send(500, "application/json",
@@ -1529,6 +1576,12 @@ static bool sendTelemetry() {
   root["phase"] = phaseName(growPhase);
   writeNutrientTargets(root);
   root["phase_profile_configured"] = phaseProfile().configured;
+  const VpdControlBand vpdBand = activeVpdControlBand();
+  root["vpd_control_stage"] = vpdBand.stage;
+  if (vpdBand.configured) {
+    root["vpd_target_min_kpa"] = vpdBand.minKpa;
+    root["vpd_target_max_kpa"] = vpdBand.maxKpa;
+  }
   root["ph_temperature_compensated"] = sensors.phTempCompensated;
   root["light_level"] = sensors.lux; // lx, Bestandstelemetrie unveraendert
   if (bh1750Present) {
