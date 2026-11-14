@@ -4,17 +4,17 @@ Stand: 13.11.2026. **Drei getrennte Arduino-Sketches, eindeutige Namen.**
 
 | Rolle | Firmware | Board | Status |
 | --- | --- | --- | --- |
-| Sensor | `firmware/Sensor/Sensor.ino` | ESP32-WROOM mit OLED, ADS1115, DHT22 und DS18B20 | Historisch aus PR #1 wiederhergestellt; Hardwarestand nicht erneut verifiziert |
+| Sensor | `firmware/Sensor/Sensor.ino` | ESP32-Pro-Controller ohne lokales Display, mit ADS1115, DHT22 und DS18B20 | Serielle Live-Messwerte im Korrektur-Branch; Hardwaretest offen |
 | Remote | `firmware/Remote/Remote.ino` | CYD ESP32-2432S028R mit LVGL 8.4 / TFT_eSPI | Neu strukturierte 320×240-Querformatoberfläche, Hardwaretest offen |
 | C3 | `firmware/C3/C3.ino` | ESP32-C3 SuperMini + PCA9685 | Hardwareausgänge gesperrt, fünf Dosierkanäle, Hardwaretest offen |
 
 **Keine der drei Rollen darf eine Firmwaredatei einer anderen Rolle ersetzen.** Es gibt kein Installationsskript, das Dateien anderer Geräte überschreibt. Der Arduino-Sketchname entspricht immer dem jeweiligen Ordnernamen.
 
-**Verbindlicher Sensor-GPIO-Abgleich:** [Sensor/PINOUT.md](Sensor/PINOUT.md). Die älteren Verdrahtungsanleitungen enthalten widersprüchliche Pin- und Boardpositionen und dürfen nicht als aktive Anschlusspläne verwendet werden.
+**Verbindlicher Sensor-GPIO-Abgleich:** [Sensor/PINOUT.md](Sensor/PINOUT.md). Die früher dokumentierten physischen Kontaktpositionen beziehen sich auf das ältere Board. Beim Pro-Controller sind diese Positionen noch nicht verifiziert; ältere Verdrahtungsanleitungen dürfen nicht als aktive Anschlusspläne verwendet werden.
 
 ## Wiederherstellung Sensor
 
-`Sensor.ino` wurde aus dem letzten erhaltenen umfangreichen Sensor-Entwicklungsstand des geschlossenen, nicht gemergten PR #1 (Commit `48e2677dc9094118a16ebd9a58c9afefb57a5f9e`) wiederhergestellt, statt den veralteten Stand von `main` zu verwenden. Enthalten sind drei DHT22 (GPIO25/26/27), DS18B20 (GPIO23), ADS1115 (A0 pH / A1 TDS; I²C GPIO21/22), integriertes OLED, optionaler BH1750 (GPIO13/14), pH-/EC-Kalibrierbehandlung, Phasentaster GPIO16 und Wartungstaster GPIO19. Die lokale API auf Port 8081 bietet `/api/local/summary`, `/api/local/actuators` und weitere Funktionen. **Der Stand ist rekonstruiert, nicht auf realer Hardware als identisch mit der zuletzt installierten Firmware bestätigt.** Lokale, nicht in Git gespeicherte Änderungen und Kalibrierwerte lassen sich nicht aus GitHub rekonstruieren.
+`Sensor.ino` wurde aus dem letzten erhaltenen umfangreichen Sensor-Entwicklungsstand des geschlossenen, nicht gemergten PR #1 (Commit `48e2677dc9094118a16ebd9a58c9afefb57a5f9e`) wiederhergestellt, statt den veralteten Stand von `main` zu verwenden. Enthalten sind drei DHT22 (GPIO25/26/27), DS18B20 (GPIO23), ADS1115 (A0 pH / A1 TDS; I²C GPIO21/22), optionaler BH1750 (GPIO13/14), pH-/EC-Kalibrierbehandlung, Phasentaster GPIO16 und Wartungstaster GPIO19. Die lokale OLED-Ansteuerung wurde aus der Sensor-Firmware entfernt; Live-Messwerte werden alle 2 Sekunden im seriellen Monitor ausgegeben. Der separate LVGL-Remote zeigt die Messwerte über die Server-API an. Die lokale API auf Port 8081 bietet `/api/local/summary`, `/api/local/actuators` und weitere Funktionen. **Der Stand ist rekonstruiert, nicht auf realer Hardware als identisch mit der zuletzt installierten Firmware bestätigt.** Lokale, nicht in Git gespeicherte Änderungen und Kalibrierwerte lassen sich nicht aus GitHub rekonstruieren.
 
 ## Remote
 
