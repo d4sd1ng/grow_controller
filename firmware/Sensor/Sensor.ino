@@ -971,6 +971,8 @@ struct VpdControlBand {
   const char *stage;
   bool configured;
 };
+// Arduino-Prototyp nach Typdefinition halten (ESP32 IDE Sketch-Preprozessor).
+static VpdControlBand activeVpdControlBand();
 // 2 Wochen Wachstum, 2 Wochen Uebergang, 9 Wochen eigentliche Bluete.
 static VpdControlBand activeVpdControlBand() {
   if (growPhase == GrowPhase::Wuchs && growWeek >= 1 && growWeek <= 2)
