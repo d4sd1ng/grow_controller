@@ -277,6 +277,9 @@ static PhaseProfile blueteProfile = {NAN, NAN, false};
 static constexpr char PHASE_PROFILE_NVS[] = "phaseprof_v1";
 static constexpr char PHASE_NVS[] = "growphase_v1";
 GrowPhase growPhase = GrowPhase::Wuchs;
+static bool cycleStopped = false; // Nach W13 dauerhaft STOP, bis neuer Durchlauf gestartet wird.
+static uint32_t phaseStartEpoch = 0;
+static bool phaseClockPending = false;
 // FALLING-Interrupt erfasst auch kurze Tastendruecke waehrend blockierender ADC-Messungen.
 // Kein Kontaktprellen als mehrere Eingaben werten (50 ms Mindestabstand).
 static volatile uint32_t phasePendingPresses = 0;
@@ -309,9 +312,9 @@ static void refreshPhaseRgb() {
 #if GROW_ENABLE_PHASE_RGB
   // Blau hat Vorrang: bei bestaetigter Filterwartung R/G AUS statt
   // Mischfarben wie Cyan/Weiss. Ohne Rueckmeldung nur Wuchs/Bluete.
-  const bool blueOn = pumpServiceOff && pumpServiceOffConfirmed && c3Connected();
-  const bool redOn = !blueOn && growPhase == GrowPhase::Bluete;
-  const bool greenOn = !blueOn;
+  const bool blueOn = !cycleStopped && pumpServiceOff && pumpServiceOffConfirmed && c3Connected();
+  const bool redOn = !cycleStopped && !blueOn && growPhase == GrowPhase::Bluete;
+  const bool greenOn = !cycleStopped && !blueOn;
   digitalWrite(PIN_RGB_RED, redOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
   digitalWrite(PIN_RGB_GREEN, greenOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
   digitalWrite(PIN_RGB_BLUE, blueOn == (GROW_RGB_COMMON_ANODE == 0) ? HIGH : LOW);
@@ -341,7 +344,10 @@ static void loadGrowPhase() {
       phaseName(growPhase), phaseProfile().configured ? "bereit" : "FEHLT");
 }
 static void setGrowPhase(GrowPhase next) {
-  if (next == growPhase) return;
+  // Ohne gestarteten Durchlauf oder nach STOP beginnt der physische Taster
+  // einen kompletten NEUEN Durchlauf in Wachstum.
+  if (cycleStopped || (!phaseStartEpoch && !phaseClockPending)) next = GrowPhase::Wuchs;
+  if (next == growPhase && phaseStartEpoch && !cycleStopped) return;
   growPhase = next;
   refreshPhaseRgb();
   Preferences prefs;
@@ -415,6 +421,10 @@ static void pollPumpServiceButton(unsigned long nowMs) {
   Serial.printf("PUMPENTASTER D19: %lu Druck-Flanke(n)\n",
                 static_cast<unsigned long>(count));
   if (!(count & 1UL)) return;
+  if (cycleStopped) {
+    Serial.println(F("Pumpen bleiben gesperrt: Durchlauf abgeschlossen."));
+    return;
+  }
   pumpServiceOff = !pumpServiceOff;
   pendingPumpIndex = 0;
   pendingPumpDurationMs = 0;
@@ -452,24 +462,23 @@ static constexpr NutrientTargets NUTRIENT_WEEK_TARGETS[12] = {
 };
 static constexpr char GROW_WEEK_NVS[] = "growweek_v1";
 static uint8_t growWeek = 0;
-static constexpr char PHASE_CLOCK_NVS[] = "phaseclock_v1";
+static constexpr char PHASE_CLOCK_NVS[] = "cycleclock_v1";
 static constexpr uint32_t PHASE_WEEK_SECONDS = grow_clock::SECONDS_PER_WEEK;
 static constexpr time_t PHASE_MIN_VALID_UNIX = 1700000000;
-static uint32_t phaseStartEpoch = 0;
-static bool phaseClockPending = false;
 static bool phaseDurationElapsed = false;
+static bool phaseClockPendingBloom = false;
 static unsigned long lastPhaseClockPollMs = 0;
 
 static time_t validatedUtcNow() {
   const time_t now = time(nullptr);
   return now >= PHASE_MIN_VALID_UNIX ? now : 0;
 }
-static bool persistPhaseClock(uint32_t startEpoch) {
+static bool persistPhaseClock(uint32_t startEpoch, bool stopped = false) {
   Preferences prefs;
   if (!prefs.begin(PHASE_CLOCK_NVS, false)) return false;
   const bool saved =
       prefs.putUInt("start", startEpoch) == sizeof(uint32_t) &&
-      prefs.putUChar("phase", static_cast<uint8_t>(growPhase)) == sizeof(uint8_t);
+      prefs.putBool("stopped", stopped) == 1;
   prefs.end();
   return saved;
 }
@@ -477,89 +486,124 @@ static bool setPhaseClockEpoch(uint32_t startEpoch) {
   const time_t now = validatedUtcNow();
   if (!now || startEpoch < static_cast<uint32_t>(PHASE_MIN_VALID_UNIX) ||
       startEpoch > static_cast<uint32_t>(now)) return false;
-  if (!persistPhaseClock(startEpoch)) return false;
+  if (!persistPhaseClock(startEpoch, false)) return false;
   phaseStartEpoch = startEpoch;
   phaseClockPending = false;
+  cycleStopped = false;
   phaseDurationElapsed = false;
   lastPhaseClockPollMs = 0;
   return true;
 }
 static bool beginPhaseClock(GrowPhase next) {
-  // Abgelaufene Zeit nie aus einem Neustart oder ungueltigen Uhrenwert erfinden.
-  (void)next;
+  // Manueller Phasenwechsel setzt den Start einer neuen 13-Wochen-Runde.
+  // Bei ausdruecklich vorgezogener Bluete wird W3 als Startpunkt verwendet.
   phaseStartEpoch = 0;
   phaseDurationElapsed = false;
+  cycleStopped = false;
   phaseClockPending = true;
+  phaseClockPendingBloom = next == GrowPhase::Bluete;
   const time_t now = validatedUtcNow();
   if (!now) return false;
-  return setPhaseClockEpoch(static_cast<uint32_t>(now));
+  const uint32_t offset = phaseClockPendingBloom ? 2U * PHASE_WEEK_SECONDS : 0U;
+  return setPhaseClockEpoch(static_cast<uint32_t>(now) - offset);
 }
 static void loadPhaseClock() {
   Preferences prefs;
   if (!prefs.begin(PHASE_CLOCK_NVS, true)) {
-    Serial.println(F("PHASEN-UHR: kein Startdatum hinterlegt."));
+    Serial.println(F("DURCHLAUF: kein Startdatum hinterlegt."));
     return;
   }
   const uint32_t saved = prefs.getUInt("start", 0);
-  const uint8_t savedPhase = prefs.getUChar("phase", 255);
+  const bool stopped = prefs.getBool("stopped", false);
   prefs.end();
-  if (saved >= static_cast<uint32_t>(PHASE_MIN_VALID_UNIX) &&
-      savedPhase == static_cast<uint8_t>(growPhase)) {
+  if (saved >= static_cast<uint32_t>(PHASE_MIN_VALID_UNIX)) {
     phaseStartEpoch = saved;
-    Serial.printf("PHASEN-UHR: UTC-Start %lu wiederhergestellt\n",
-                  static_cast<unsigned long>(saved));
-  } else {
-    Serial.println(F("PHASEN-UHR: Startdatum fehlt oder stimmt nicht mit Phase ueberein."));
-  }
+    cycleStopped = stopped;
+    phaseDurationElapsed = stopped;
+    if (cycleStopped) {
+      targets = ActuatorState{};
+      pumpServiceOff = true;
+    }
+    Serial.printf("DURCHLAUF: UTC-Start %lu; Status %s\\n",
+                  static_cast<unsigned long>(saved), stopped ? "STOP" : "aktiv");
+  } else Serial.println(F("DURCHLAUF: Startdatum nicht konfiguriert."));
+  refreshPhaseRgb();
 }
 static bool setGrowWeekManually(int week) {
-  const int first = growPhase == GrowPhase::Wuchs ? 1 : 3;
-  const int last = growPhase == GrowPhase::Wuchs ? 2 : 13;
-  if (week < first || week > last) return false;
+  if (week < 1 || week > 13) return false;
   const time_t now = validatedUtcNow();
   if (!now) return false;
-  // Manuelle Auswahl definiert ausdruecklich den Beginn der Woche "jetzt".
-  const uint32_t elapsed = static_cast<uint32_t>(week - first) * PHASE_WEEK_SECONDS;
+  const uint32_t elapsed = static_cast<uint32_t>(week - 1) * PHASE_WEEK_SECONDS;
   const uint32_t start = static_cast<uint32_t>(now) - elapsed;
   if (!setPhaseClockEpoch(start)) return false;
   const bool saved = setGrowWeek(week);
-  if (saved) Serial.printf("PHASEN-UHR: Woche %d manuell gestartet\n", week);
+  if (saved) Serial.printf("DURCHLAUF: Woche %d manuell gestartet\\n", week);
   return saved;
+}
+static void stopCompletedCycle() {
+  // Einmalig ausfuehren. Laufende Aktoren und Pumpen sperren;
+  // Anzeige/Telemetrie weiter betreiben.
+  cycleStopped = true;
+  phaseDurationElapsed = true;
+  phaseClockPending = false;
+  pumpServiceOff = true;
+  pumpServiceOffConfirmed = false;
+  pendingPumpIndex = 0;
+  pendingPumpDurationMs = 0;
+  targets = ActuatorState{};
+  ++commandSeq;
+  ++pumpCommandSeq;
+  if (!persistPhaseClock(phaseStartEpoch, true))
+    Serial.println(F("FEHLER: STOP-Status konnte nicht im NVS gespeichert werden."));
+  Serial.println(F("DURCHLAUF BEENDET: W1-W13 abgeschlossen, Steuerung STOP."));
+  refreshPhaseRgb();
 }
 static void pollPhaseClock() {
   const unsigned long nowMs = millis();
   if (lastPhaseClockPollMs && nowMs - lastPhaseClockPollMs < 10000UL) return;
   lastPhaseClockPollMs = nowMs;
   const time_t now = validatedUtcNow();
-  if (!now) return; // Keine geschätzte Wochenfortschaltung ohne Uhr.
+  if (!now) return; // Ohne gueltige Uhr bleibt der Controller gesperrt.
   if (phaseClockPending) {
-    if (setPhaseClockEpoch(static_cast<uint32_t>(now)))
-      Serial.println(F("PHASEN-UHR: Start nach NTP-Synchronisation gespeichert."));
-    else Serial.println(F("PHASEN-UHR: NVS-Start konnte nicht gespeichert werden."));
+    const uint32_t offset = phaseClockPendingBloom ? 2U * PHASE_WEEK_SECONDS : 0U;
+    if (setPhaseClockEpoch(static_cast<uint32_t>(now) - offset))
+      Serial.println(F("DURCHLAUF: Start nach NTP-Synchronisation gespeichert."));
+    else Serial.println(F("DURCHLAUF: Start konnte nicht gespeichert werden."));
   }
   if (!phaseStartEpoch || now < static_cast<time_t>(phaseStartEpoch)) return;
-  const grow_clock::PhaseWeek period =
-      grow_clock::evaluate(growPhase == GrowPhase::Bluete,
-                           phaseStartEpoch, static_cast<uint32_t>(now));
-  if (!period.valid) return;
-  const bool finished = period.finished;
-  const uint8_t current = period.totalWeek;
-  if (current != growWeek && !setGrowWeek(current))
-    Serial.println(F("PHASEN-UHR: Wochenstand konnte nicht gespeichert werden."));
-  if (finished && !phaseDurationElapsed)
-    Serial.printf("PHASEN-UHR: %s beendet; kein automatischer Phasenwechsel.\n",
-                  phaseName(growPhase));
-  phaseDurationElapsed = finished;
+  const grow_clock::CycleState state =
+      grow_clock::evaluateCycle(phaseStartEpoch, static_cast<uint32_t>(now));
+  if (!state.valid) return;
+  // Nach zwei Wochen AUTOMATISCH in die Blueteeinleitung wechseln.
+  const GrowPhase desiredPhase = state.bloom ? GrowPhase::Bluete : GrowPhase::Wuchs;
+  if (growPhase != desiredPhase) {
+    growPhase = desiredPhase;
+    Preferences prefs;
+    bool saved = false;
+    if (prefs.begin(PHASE_NVS, false)) {
+      saved = prefs.putUChar("phase", static_cast<uint8_t>(growPhase)) == sizeof(uint8_t);
+      prefs.end();
+    }
+    targets = ActuatorState{};
+    ++commandSeq;
+    Serial.printf("AUTOMATISCHER PHASENWECHSEL: %s | NVS: %s\\n",
+                  phaseName(growPhase), saved ? "OK" : "FEHLER");
+    refreshPhaseRgb();
+  }
+  if (state.totalWeek != growWeek && !setGrowWeek(state.totalWeek))
+    Serial.println(F("DURCHLAUF: Wochenstand konnte nicht gespeichert werden."));
+  if (state.finished && !cycleStopped) stopCompletedCycle();
 }
 static const char *phaseClockStatus() {
+  if (cycleStopped) return "completed_stopped";
   if (phaseClockPending) return "waiting_for_ntp";
   if (!phaseStartEpoch) return "start_not_set";
   const time_t now = validatedUtcNow();
   if (!now) return "clock_unavailable";
-  if (now < static_cast<time_t>(phaseStartEpoch)) return "clock_before_phase_start";
-  if (phaseDurationElapsed) return "duration_elapsed";
+  if (now < static_cast<time_t>(phaseStartEpoch)) return "clock_before_cycle_start";
   return "running";
 }
+
 static const NutrientTargets *activeNutrientTargets() {
   return growWeek >= 1 && growWeek <= 12
       ? &NUTRIENT_WEEK_TARGETS[growWeek - 1] : nullptr; // Woche 13: kein erfundener EC/pH-Wert
@@ -1273,6 +1317,11 @@ static void readSensors() {
 /* ---------- Steuerung ---------- */
 
 static void autoControl() {
+  if (cycleStopped || !phaseStartEpoch || !validatedUtcNow()) {
+    if (!sameState(targets, ActuatorState{})) ++commandSeq;
+    targets = ActuatorState{};
+    return;
+  }
   if (strcmp(controlMode, "auto") != 0) return;
 
   // Licht, Wasserpumpe und Dosierung bleiben von dieser Klimaregelung unberuehrt.
@@ -1337,6 +1386,7 @@ static void handleSummary() {
   control["phase_clock_status"] = phaseClockStatus();
   control["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
   control["phase_duration_elapsed"] = phaseDurationElapsed;
+  control["cycle_stopped"] = cycleStopped;
   control["vpd_control_stage"] = vpdBand.stage;
   control["vpd_control_configured"] = vpdBand.configured;
   if (vpdBand.configured) {
@@ -1454,6 +1504,7 @@ static void handleActuatorTargets() {
   doc["phase_clock_status"] = phaseClockStatus();
   doc["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
   doc["phase_duration_elapsed"] = phaseDurationElapsed;
+  doc["cycle_stopped"] = cycleStopped;
   doc["vpd_control_stage"] = vpdBand.stage;
   if (vpdBand.configured) {
     doc["vpd_target_min_kpa"] = vpdBand.minKpa;
@@ -1481,6 +1532,7 @@ static void c3ApiError(int code, const char *reason) {
 }
 static void handleControlTargets() {
   if (!localAuthorized()) return sendUnauthorized();
+  if (cycleStopped || !phaseStartEpoch) return c3ApiError(423, "cycle_not_running");
   if (strcmp(controlMode, "manual") != 0)
     return c3ApiError(409, "manual_mode_required");
   if (!c3Connected() || !c3OutputsEnabled)
@@ -1514,6 +1566,7 @@ static void handleControlTargets() {
 }
 static void handlePumpPulse() {
   if (!localAuthorized()) return sendUnauthorized();
+  if (cycleStopped || !phaseStartEpoch) return c3ApiError(423, "cycle_not_running");
   // The C3 does not yet process Sensor pump_seq/pump_index requests. Do not
   // report a queued request as successful or set a pending command that is
   // never acknowledged. Manual dosing is locked until integration + calibration.
@@ -1553,6 +1606,7 @@ static void handleActuatorStatus() {
 
 static void handleControlMode() {
   if (!localAuthorized()) return sendUnauthorized();
+  if (cycleStopped || !phaseStartEpoch) return c3ApiError(423, "cycle_not_running");
 
   StaticJsonDocument<128> in;
   if (deserializeJson(in, localServer.arg("plain"))) {
@@ -1694,8 +1748,19 @@ static void handlePhaseClock() {
   } else {
     return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"start_now_or_start_unix_required\"}");
   }
+  // Ein neuer vollstaendiger Durchlauf beginnt immer mit Wachstum.
   if (!setPhaseClockEpoch(start))
     return localServer.send(422, "application/json", "{\"ok\":false,\"error\":\"invalid_start_or_nvs_failure\"}");
+  growPhase = GrowPhase::Wuchs;
+  Preferences prefs;
+  if (prefs.begin(PHASE_NVS, false)) {
+    prefs.putUChar("phase", static_cast<uint8_t>(growPhase));
+    prefs.end();
+  }
+  setGrowWeek(1);
+  targets = ActuatorState{};
+  ++commandSeq;
+  refreshPhaseRgb();
   pollPhaseClock();
   localServer.send(200, "application/json", "{\"ok\":true}");
 }
@@ -1734,6 +1799,7 @@ static bool sendTelemetry() {
   root["phase_clock_status"] = phaseClockStatus();
   root["phase_started_at_unix"] = phaseStartEpoch ? static_cast<unsigned long>(phaseStartEpoch) : 0UL;
   root["phase_duration_elapsed"] = phaseDurationElapsed;
+  root["cycle_stopped"] = cycleStopped;
   root["vpd_control_stage"] = vpdBand.stage;
   if (vpdBand.configured) {
     root["vpd_target_min_kpa"] = vpdBand.minKpa;
