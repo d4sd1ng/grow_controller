@@ -34,3 +34,42 @@ Fünf 12-V-Dosierpumpen an PCA9685-Ausgängen 0–4 vorgesehen; PCA-Kanal 5 ist 
 4. Zuerst kompilieren und den seriellen Monitor prüfen; danach getrennt flashen und die Hardwarefunktion verifizieren. Keine automatisch ausführbaren Kopier-/Installationsskripte.
 
 **Teststatus:** Git-Dateikonsistenz und Schnittstellen sind textuell überprüft. Ein vollständiger Arduino-Compile, reale Touch-Kalibrierung, Sensor-Kalibrierung und integrierter Hardwaretest sind **nicht** nachgewiesen. Keine automatische Dosierung freigeben.
+
+
+## VPD-Klimaregelung (Entwicklungsbranch, nicht hardwarevalidiert)
+
+Der Sensor-ESP32 berechnet ab jetzt Blatt-VPD aus DHT1 mit Blatt-Temperatur
+**Lufttemperatur minus 2 C**, entsprechend der Referenztabelle.
+Die optionale MLX90640-ROI darf erst nach Verifikation als Blattmessung
+verwendet werden (`GROW_MLX_LEAF_VERIFIED`).
+
+Die VPD-Bandwahl ist derzeit an die gespeicherte **Gesamtwoche** gekoppelt:
+W1-2 Wachstum = 0,4-0,8 kPa, W3-4 Uebergang = 0,8-1,2 kPa,
+W5-13 Bluete = 1,2-1,6 kPa. Beim Phasenwechsel ueber den Taster
+wird W1 bzw. W3 eingestellt. **Die automatische wochenweise Fortschaltung
+mit verifizierter Echtzeit-Uhr ist noch nicht implementiert;**
+die Woche muss bis dahin ueber die vorhandene Schnittstelle manuell
+gesetzt werden. Ein Phasenwechsel darf dadurch nicht stillschweigend
+ausgeloest werden. Die pH-/EC-Wochentabelle enthaelt derzeit nur
+12 Eintraege; fuer Woche 13 wird bewusst kein Wert erfunden.
+
+Die Regelentscheidung `autoControl()` setzt getrennte Sollkommandos fuer
+Heizung, Umluft und Abluft. Bei ungueltigem DHT1 oder fehlender
+Phasen-/Wochenkonfiguration werden die drei Klima-Sollkommandos
+abgeschaltet. Abluft kann hohe Luftfeuchtigkeit nur dann reduzieren,
+wenn die zugefuehrte Luft trockener ist; der benoetigte
+Aussenluftsensor ist noch nicht nachgewiesen. Der Heizungs-Sollwert
+ist fuer Wuchs aus dem Bestand (24 C) vorhanden, fuer Bluete erst
+nach ausdruecklicher Konfiguration ueber
+`POST /api/local/control/phase-profile` (mit `phase=bluete`,
+`air_target_c` und `humidity_target_pct`). Die VPD-Bereiche ersetzen
+nicht eine gesonderte Sicherheitsgrenze fuer Uebertemperatur.
+
+Die drei Klima-Sollwerte werden vom Sensor-ESP32 ueber
+`GET /api/local/actuators` an den C3 uebergeben und ueber
+`POST /api/local/actuator-status` rueckgemeldet. Die
+**Leistungsausgaenge bleiben mit `HARDWARE_OUTPUTS_ARMED=false` gesperrt**.
+Ein erfolgreicher statischer Vertragstest ist KEIN Hardwaretest.
+Netzspannungsseitige Verdrahtung, SSR-Polung und Ausfallsicherheit
+muessen vor einer spaeteren Freigabe separat durch eine qualifizierte
+Person geprueft werden.
