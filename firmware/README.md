@@ -46,11 +46,17 @@ verwendet werden (`GROW_MLX_LEAF_VERIFIED`).
 Die VPD-Bandwahl ist derzeit an die gespeicherte **Gesamtwoche** gekoppelt:
 W1-2 Wachstum = 0,4-0,8 kPa, W3-4 Uebergang = 0,8-1,2 kPa,
 W5-13 Bluete = 1,2-1,6 kPa. Beim Phasenwechsel ueber den Taster
-wird W1 bzw. W3 eingestellt. **Die automatische wochenweise Fortschaltung
-mit verifizierter Echtzeit-Uhr ist noch nicht implementiert;**
-die Woche muss bis dahin ueber die vorhandene Schnittstelle manuell
-gesetzt werden. Ein Phasenwechsel darf dadurch nicht stillschweigend
-ausgeloest werden. Die pH-/EC-Wochentabelle enthaelt derzeit nur
+wird W1 bzw. W3 eingestellt. Die automatische wochenweise Fortschaltung liest eine UTC-Uhr
+ueber NTP (7 Tage je Woche) und speichert den Phasenstart im NVS.
+Nach einem Stromausfall wird die letzte Startzeit wiederhergestellt.
+Der Phasenwechsel erfolgt NICHT automatisch; am Ende von W2 bzw. W13
+wird die Wochenzahl gehalten und eine serielle Warnung ausgegeben.
+Bei erstmaliger Installation ohne bekannte Phasenstartzeit wird das
+Datum nicht erfunden: Start ueber physischen Phasenwechsel oder
+`POST /api/local/control/phase-clock` mit
+`{"start_now":true}` oder `{"start_unix":1760000000}`
+(nur Beispiel fuer das Format, keine Annahme ueber Startdatum).
+Wenn NTP ausfaellt, bleibt die letzte gespeicherte Woche bestehen. Die pH-/EC-Wochentabelle enthaelt derzeit nur
 12 Eintraege; fuer Woche 13 wird bewusst kein Wert erfunden.
 
 Die Regelentscheidung `autoControl()` setzt getrennte Sollkommandos fuer
