@@ -1,23 +1,24 @@
 import math
 
-def calculate_vpd(temperature, relative_humidity):
+# Referenz: vom Nutzer bereitgestellte VPD-Tabelle (Blatt 2 C unter Luft).
+LEAF_AIR_OFFSET_C = 2.0
+
+
+def _saturation_vapor_pressure_kpa(temp_c):
+    """Saettigungsdampfdruck nach Tetens (kPa)."""
+    return 0.61078 * math.exp(17.27 * temp_c / (temp_c + 237.3))
+
+
+def calculate_vpd(temperature, relative_humidity, leaf_temperature=None):
+    """Blatt-VPD in kPa.
+
+    Bis eine IR-Blattmessung verifiziert ist, wird T_leaf=T_air-2 C
+    gemaess der bereitgestellten VPD-Tabelle verwendet.
+    Eine explizit angegebene Blatt-Temperatur ersetzt die -2-C-Annahme.
     """
-    Calculate Vapor Pressure Deficit (VPD) given temperature and relative humidity.
-
-    :param temperature: Temperature in Celsius
-    :param relative_humidity: Relative humidity as a percentage
-    :return: VPD in kPa
-    """
-    # Calculate saturation vapor pressure (SVP)
-    svp = 0.61078 * math.exp(17.27 * temperature / (temperature + 237.3))
-
-    # Calculate actual vapor pressure (AVP)
-    avp = svp * (relative_humidity / 100)
-
-    # Calculate VPD
-    vpd = svp - avp
-
-    return round(vpd, 2)
+    leaf_c = temperature - LEAF_AIR_OFFSET_C if leaf_temperature is None else leaf_temperature
+    actual_vapor_air = _saturation_vapor_pressure_kpa(temperature) * (relative_humidity / 100.0)
+    return round(_saturation_vapor_pressure_kpa(leaf_c) - actual_vapor_air, 2)
 
 def get_vpd_range(growth_stage):
     """
@@ -56,11 +57,10 @@ def calculate_target_humidity(temperature, growth_stage):
     vpd_min, vpd_max, humidity_min, humidity_max = get_vpd_range(growth_stage)
     vpd_target = (vpd_min + vpd_max) / 2
 
-    # Calculate saturation vapor pressure (SVP)
-    svp = 0.61078 * math.exp(17.27 * temperature / (temperature + 237.3))
-
-    # Calculate target humidity
-    target_humidity = ((svp - vpd_target) / svp) * 100
+    # Ziel-RH aus demselben -2-C-Blattmodell wie die VPD-Tabelle.
+    svp_air = _saturation_vapor_pressure_kpa(temperature)
+    svp_leaf = _saturation_vapor_pressure_kpa(temperature - LEAF_AIR_OFFSET_C)
+    target_humidity = ((svp_leaf - vpd_target) / svp_air) * 100
 
     # Ensure target humidity is within the stage-specific range
     target_humidity = max(humidity_min, min(humidity_max, target_humidity))
