@@ -20,6 +20,7 @@
 #include <Preferences.h>
 #include <time.h>
 #include "phase_clock_math.h"
+#include "air_fusion.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -186,6 +187,8 @@ static AirReading readDht(DHT &dht);
 
 struct SensorData {
   AirReading dht[3];
+  AirReading air; // fusionierte Lufttemperatur / Feuchte fuer Regelung und VPD
+  uint8_t airValidSensorCount = 0;
   float ds1C = NAN;
   float ds2C = NAN;
   float waterTempC = NAN;
@@ -206,7 +209,7 @@ struct SensorData {
   float leafTemperatureC = NAN; // geschaetzte oder verifizierte Blatt-Temperatur
   bool vpdFromCamera = false;
   float thermalRoiTempC = NAN; // mittlere Bildregion, NOCH NICHT als Blatt validiert
-  float vpdLeafCandidate = NAN; // vorlaeufiger Blatt-VPD: ROI + mind. zwei DHT22
+  float vpdLeafCandidate = NAN; // vorlaeufiger Blatt-VPD: ROI + fusionierte DHT22-Werte
   bool mlx90640Ok = false;
   uint32_t lux = 0;
 
@@ -861,6 +864,36 @@ static AirReading readDht(DHT &dht) {
   return r;
 }
 
+static void updateFusedAir() {
+  const grow_air::Reading samples[3] = {
+      {sensors.dht[0].tempC, sensors.dht[0].rh, sensors.dht[0].ok},
+      {sensors.dht[1].tempC, sensors.dht[1].rh, sensors.dht[1].ok},
+      {sensors.dht[2].tempC, sensors.dht[2].rh, sensors.dht[2].ok}
+  };
+  const grow_air::Fusion combined = grow_air::fuseThree(samples);
+  sensors.airValidSensorCount = combined.validCount;
+  sensors.air.tempC = combined.tempC;
+  sensors.air.rh = combined.humidityPct;
+  sensors.air.ok = combined.valid;
+  static uint8_t lastCount = 255;
+  if (combined.validCount != lastCount) {
+    lastCount = combined.validCount;
+    Serial.printf("DHT22-KLIMA: %u/3 gueltig | %s\\n",
+                  combined.validCount,
+                  combined.validCount == 3 ? "Median" :
+                  combined.validCount == 2 ? "Mittelwert (redundanzreduziert)" :
+                  combined.validCount == 1 ? "WARNUNG: nur ein Sensor" :
+                                              "FEHLER: Klimaregelung gesperrt");
+  }
+}
+static const char *airSensorQuality() {
+  switch (sensors.airValidSensorCount) {
+    case 3: return "median_3";
+    case 2: return "mean_2";
+    case 1: return "warning_single_sensor";
+    default: return "invalid_no_sensors";
+  }
+}
 static float adsCountsToVolts(int16_t raw) {
   /* GAIN_ONE = +/-4.096 V -> 125 uV/bit */
   return static_cast<float>(raw) * 0.000125f;
@@ -1022,7 +1055,7 @@ static bool sameState(const ActuatorState &a, const ActuatorState &b) {
 
 static void applyActuators() {
   // Der C3 holt Sollwerte ueber HTTP ab. Keine Sensor-GPIOs fuer Aktoren.
-  if (!sensors.dht[0].ok && targets.heater) {
+  if (!sensors.air.ok && targets.heater) {
     targets.heater = false;
     ++commandSeq;
   }
@@ -1154,34 +1187,22 @@ static const char *vpdChartBand(float value) {
 }
 static void updateLeafVpdCandidate() {
   sensors.vpdLeafCandidate = NAN;
-  if (!sensors.mlx90640Ok || !isfinite(sensors.thermalRoiTempC)) return;
-  float values[3];
-  uint8_t n = 0;
-  for (uint8_t i = 0; i < 3; ++i) {
-    if (!sensors.dht[i].ok) continue;
-    const float actualVapor = saturatedVaporPressureKpa(sensors.dht[i].tempC)
-                              * (sensors.dht[i].rh / 100.0f);
-    values[n++] = saturatedVaporPressureKpa(sensors.thermalRoiTempC) - actualVapor;
-  }
-  if (n < 2) return; // fuer Referenz mind. zwei gueltige Luftsensoren
-  for (uint8_t i = 1; i < n; ++i) {
-    float v = values[i];
-    uint8_t j = i;
-    while (j > 0 && values[j - 1] > v) {
-      values[j] = values[j - 1]; --j;
-    }
-    values[j] = v;
-  }
-  sensors.vpdLeafCandidate = n == 3 ? values[1] : 0.5f * (values[0] + values[1]);
+  // Kandidat aus denselben fusionierten Luftdaten wie der regulaere VPD.
+  // Die thermische ROI ist erst nach ausdruecklicher Validierung Blatttemperatur.
+  if (!sensors.air.ok || !sensors.mlx90640Ok ||
+      !isfinite(sensors.thermalRoiTempC)) return;
+  sensors.vpdLeafCandidate = computeLeafVpd(
+      sensors.air.tempC, sensors.air.rh, sensors.thermalRoiTempC);
 }
+
 static void updateActiveVpd() {
   sensors.vpd = NAN;
   sensors.vpdAir = NAN;
   sensors.leafTemperatureC = NAN;
   sensors.vpdFromCamera = false;
-  if (!sensors.dht[0].ok) return;
-  const float airC = sensors.dht[0].tempC;
-  const float rh = sensors.dht[0].rh;
+  if (!sensors.air.ok) return;
+  const float airC = sensors.air.tempC;
+  const float rh = sensors.air.rh;
   sensors.vpdAir = computeVpd(airC, rh);
   sensors.leafTemperatureC = airC - VPD_LEAF_AIR_OFFSET_C;
   sensors.vpd = computeLeafVpd(airC, rh, sensors.leafTemperatureC);
@@ -1261,6 +1282,7 @@ static void readSensors() {
   sensors.dht[0] = readDht(dht1);
   sensors.dht[1] = readDht(dht2);
   sensors.dht[2] = readDht(dht3);
+  updateFusedAir();
 
   updateLeafVpdCandidate();
   updateActiveVpd();
@@ -1330,14 +1352,14 @@ static void autoControl() {
   // Licht, Wasserpumpe und Dosierung bleiben von dieser Klimaregelung unberuehrt.
   ActuatorState before = targets;
   const VpdControlBand band = activeVpdControlBand();
-  if (!sensors.dht[0].ok || !isfinite(sensors.vpd) || !band.configured) {
+  if (!sensors.air.ok || !isfinite(sensors.vpd) || !band.configured) {
     targets.heater = false;
     targets.circulation = false;
     targets.exhaust = false;
     if (!sameState(before, targets)) ++commandSeq;
     return;
   }
-  const float t = sensors.dht[0].tempC;
+  const float t = sensors.air.tempC;
   const float vpd = sensors.vpd;
   const PhaseProfile &profile = phaseProfile();
   static constexpr float VPD_HYST = 0.05f; // verhindert Schaltflattern
@@ -1411,13 +1433,16 @@ static void handleSummary() {
 
   JsonObject reading = doc.createNestedObject("reading");
   writeNutrientTargets(reading);
-  if (sensors.dht[0].ok) {
-    reading["air_temperature"] = sensors.dht[0].tempC;
-    reading["humidity"] = sensors.dht[0].rh;
+  if (sensors.air.ok) {
+    reading["air_temperature"] = sensors.air.tempC;
+    reading["humidity"] = sensors.air.rh;
   } else {
     reading["air_temperature"] = nullptr;
     reading["humidity"] = nullptr;
   }
+  reading["air_valid_sensor_count"] = sensors.airValidSensorCount;
+  reading["air_measurement_quality"] = airSensorQuality();
+  reading["air_sensor_warning"] = sensors.airValidSensorCount == 1;
   setJsonFloat(reading, "vpd", sensors.vpd);
   setJsonFloat(reading, "vpd_air", sensors.vpdAir);
   setJsonFloat(reading, "leaf_temperature_c", sensors.leafTemperatureC);
@@ -1558,7 +1583,7 @@ static void handleControlTargets() {
   if (!any) return c3ApiError(400, "no_target");
   if (pumpServiceOff && next.waterPump)
     return c3ApiError(423, "pump_service_locked");
-  if (next.heater && !sensors.dht[0].ok)
+  if (next.heater && !sensors.air.ok)
     return c3ApiError(409, "heater_sensor_unavailable");
   if (!sameState(next, targets)) {
     targets = next;
@@ -1790,8 +1815,11 @@ static bool sendTelemetry() {
   DynamicJsonDocument doc(4096);
   JsonObject root = doc.to<JsonObject>();
 
-  setJsonFloat(root, "air_temperature", sensors.dht[0].tempC);
-  setJsonFloat(root, "humidity", sensors.dht[0].rh);
+  setJsonFloat(root, "air_temperature", sensors.air.tempC);
+  setJsonFloat(root, "humidity", sensors.air.rh);
+  root["air_valid_sensor_count"] = sensors.airValidSensorCount;
+  root["air_measurement_quality"] = airSensorQuality();
+  root["air_sensor_warning"] = sensors.airValidSensorCount == 1;
   setJsonFloat(root, "water_temperature", sensors.waterTempC);
   setJsonFloat(root, "case_temperature", sensors.caseTempC);
   root["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
@@ -1957,10 +1985,10 @@ static void drawOled() {
   if (!phaseProfile().configured) display.print(F(" !"));
 
   display.setCursor(0, 12);
-  if (sensors.dht[0].ok) {
-    display.printf("T %.1fC RH %.0f%%", sensors.dht[0].tempC, sensors.dht[0].rh);
+  if (sensors.air.ok) {
+    display.printf("T %.1fC RH %.0f%%", sensors.air.tempC, sensors.air.rh);
   } else {
-    display.print("DHT1 FEHLER");
+    display.print("DHT FEHLER");
   }
 
   display.setCursor(0, 24);
@@ -1971,6 +1999,8 @@ static void drawOled() {
     if (isfinite(sensors.vpd)) display.printf("VPD %.2f kPa", sensors.vpd);
     else display.print(F("VPD --"));
     if (!sensors.vpdFromCamera) display.print(F(" -2C"));
+    if (sensors.airValidSensorCount == 1) display.print(F(" !1DHT"));
+    else if (sensors.airValidSensorCount == 2) display.print(F(" 2DHT"));
   } else if (infoPage == 1UL) {
     if (bh1750Present) {
       display.printf("%lu lx ~%.0f lm",
