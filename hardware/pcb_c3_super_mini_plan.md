@@ -145,8 +145,8 @@ externe Signale belastet werden.
 - **Servicekante:** ESP32-C3 Super Mini mit von außen erreichbarem USB-C,
   Antennenbereich ohne störende Leiterbahnen oder Abschirmung.
 - **Logikbereich:** PCA9685, Logikversorgung und Diagnosepunkte.
-- **Anschlusskante 1:** fünf SSR-Steuerschnittstellen und zwei
-  Lüftergruppen-Schnittstellen.
+- **Anschlusskante 1:** fünf SSR-Steuerschnittstellen und eine
+  gemeinsame Lüftertreiber-Steuerschnittstelle.
 - **Anschlusskante 2:** sechs mechanisch reservierte Pumpenanschlüsse;
   noch keine aktive Treiberschaltung zur Förderung konzentrierter Säure.
 - **Versorgungskante:** separate Einspeisung und später festzulegende
@@ -199,19 +199,23 @@ Datenblattbestätigte zusammenpassende Serien:
 | --- | ---: | ---: | --- | --- |
 | PWR-12V | 1 | 2 | MSTB 5,08 | 12-V-Niederspannung, Auslegung offen |
 | SSR-01 … SSR-05 | 5 | 2 | MSTB 5,08 | Nur Steuersignale; individuelle SSR-Prüfung nötig |
-| FAN-01 … FAN-02 | 2 | 3 | MSTB 5,08 | Drei Anschlusspositionen reserviert, tatsächliche Belegung offen |
+| FAN-CONTROL | 1 | 3 | MSTB 5,08 | Ein gemeinsames Steuersignal für den 12-V-Lüftertreiber; Kontakte noch nicht zugewiesen |
 | MOTOR-01 … MOTOR-06 | 6 | 2 | MSTB 5,08 | Mechanische Reservierung; aktive Ansteuerung nicht freigegeben |
 
-**Summe:** 12 zweipolige und 2 dreipolige Steckplätze
-(14 Grundleisten + 14 Gegenstecker). Davon sind sechs
+**Summe:** 12 zweipolige und 1 dreipoliger Steckplatz
+(13 Grundleisten + 13 Gegenstecker). Davon sind sechs
 zweipolige Plätze für die Motor-Anschlussgruppe reserviert.
 Der Anschluss von Pumpe 1 für konzentriertes pH-Minus erhält
 aus dieser reinen Steckverbinderplanung **keine** elektrische
 Freigabe oder Ansteuerungsanleitung.
 
-Die 3-poligen Lüfter-Steckplätze sind **mechanische Reserven**
-für unterschiedliche Signalarten; eine konkrete
-Pinbelegung ist nicht entschieden.
+Der **eine** 3-polige Lüfter-Steckplatz ist eine mechanische
+Reserve. Laut Nutzer laufen beide Lüfter an **einem 12-V-Treiber
+mit zwei Lüfterausgängen** und benötigen nur **ein gemeinsames
+Steuersignal**. Die Lüfter selbst werden am Treiber angeschlossen,
+nicht als zwei getrennte C3-Steueranschlüsse.
+**Weder die Art des Steuersignals (Enable, PWM, Dimmung etc.)
+noch die Kontakte des Treibers sind verifiziert.**
 
 ### PCB-Stückliste: Steckverbinder als Planungsbasis
 
@@ -219,8 +223,8 @@ Pinbelegung ist nicht entschieden.
 | --- | --- | ---: |
 | 1757242 | MSTBA 2,5/ 2-G-5,08, Grundleiste 2-polig | 12 |
 | 1757019 | MSTB 2,5/ 2-ST-5,08, Stecker 2-polig | 12 |
-| 1757255 | MSTBA 2,5/ 3-G-5,08, Grundleiste 3-polig | 2 |
-| 1757022 | MSTB 2,5/ 3-ST-5,08, Stecker 3-polig | 2 |
+| 1757255 | MSTBA 2,5/ 3-G-5,08, Grundleiste 3-polig | 1 |
+| 1757022 | MSTB 2,5/ 3-ST-5,08, Stecker 3-polig | 1 |
 
 Die Steckerserie wurde für Raster, dokumentierte Paarung und
 Lösbarkeit ausgewählt. Die Hersteller-Nennstromwerte bedeuten
@@ -246,3 +250,25 @@ separat geprüft werden.
 Quellen:
 - https://www.phoenixcontact.com/en-de/products/pcb-connector-mstb-25-3-st-508-1757022
 - https://assets.rs-online.com/image/upload/v1698744215/Datasheets/9a177187be001fcb7f378a85a8dbc040.pdf
+
+### Aktualisierung: gemeinsamer 12-V-Lüftertreiber
+
+**Neue verbindliche Anforderung:** Zwei Lüfter werden über
+**einen gemeinsamen 12-V-Treiber mit zwei Abgängen** betrieben.
+Auf der C3-Steuerplatine ist dafür **ein einziger**
+Treiber-Steckplatz `FAN-CONTROL` reserviert, nicht zwei
+unabhängige Lüftersteueranschlüsse.
+
+**Softwareabweichung:** Die bestehende `firmware/C3/C3.ino`
+kennt noch `fan_group_1` auf PCA9685 OUT6 und
+`fan_group_2` auf OUT7 und behandelt sie unabhängig.
+Die Firmware ist also **noch nicht** an die neue
+Ein-Kanal-Anforderung angeglichen. Die Umstellung darf
+erst erfolgen, wenn die tatsächliche Steuerart und
+Schnittstelle des 12-V-Treibers feststehen. OUT7 wird
+nicht automatisch anders belegt.
+
+Offene Treiberdaten: Modell/Typenschild, Versorgung,
+zwei Lastabgänge, Steuereingang samt Pegel-/Strombedarf
+und Eingangsbezugspotential. **12-V-Versorgung allein
+belegt keinen geeigneten PWM- oder Enable-Eingang.**
