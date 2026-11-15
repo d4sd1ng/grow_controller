@@ -160,19 +160,30 @@ noch abhängig vom realen Modul zu verifizieren.
 
 ### Steckanschlüsse und Eingangsbeschaltung für pH und EC/TDS
 
-Auf der **Sensor-ESP32-Platine** zwei separate, abziehbare
-**3-polige** Anschlüsse in der bisher vorgesehenen Baureihe
-Phoenix Contact MSTB 2,5 / 5,08 mm vorsehen:
+Auf der **Sensor-ESP32-Platine** zwei getrennte, abziehbare Anschlüsse
+der vorgesehenen Phoenix-Contact-MSTB-2,5-Familie (Raster 5,08 mm):
+**pH vierpolig**, **EC/TDS dreipolig**.
 
-| Anschluss | Kontakt 1 | Kontakt 2 | Kontakt 3 | ADS1115 |
-| --- | --- | --- | --- | --- |
-| PH-4502C | 5 V | GND | PO (Analogsignal) | A0 |
-| EC-TDS | 5 V | GND | Analogsignal | A1 |
+Vom Nutzer bestätigte Kontaktbezeichnungen am pH-Modul:
+**VCC, GND, GND, PO**.
 
-Dies ist die **Belegung der Platinenstecker**, nicht die unbestätigte
-Reihenfolge am Sensormodul. Vom Modul müssen nur die tatsächlich
-benötigten analogen Signale geführt werden; PH4502C DO/TO werden
-von der aktuellen Firmware nicht ausgewertet.
+| Anschluss | Kontakt | Signal | Weiterführung |
+| --- | ---: | --- | --- |
+| PH-4502C | 1 | VCC | 5-V-Modulversorgung, vor Anschluss verifizieren |
+| PH-4502C | 2 | GND 1 | Massekontakt 1, interne Verbindung noch ungeprüft |
+| PH-4502C | 3 | GND 2 | Massekontakt 2, interne Verbindung noch ungeprüft |
+| PH-4502C | 4 | PO | Analogsignal zum geplanten A0-Eingangskreis |
+| EC-TDS | 1 | 5 V | Modulversorgung |
+| EC-TDS | 2 | GND | Masse |
+| EC-TDS | 3 | Analogsignal | Zum ADS1115 A1 |
+
+Die zwei GND-Kontakte am pH-Modul bleiben im Plan ausdrücklich
+**als separate Kontakte** dokumentiert. Ob sie intern direkt miteinander
+verbunden sind und wie sie auf der Platine angeschlossen werden,
+ist vor der Freigabe am konkreten Modul zu überprüfen.
+Die obige Kontaktfolge ist die **vorgesehene Steckverbinderbelegung**;
+die reale Steckerorientierung und Pinreihenfolge sind noch zu prüfen.
+PH4502C DO/TO werden von der Firmware nicht ausgewertet.
 
 **ADS1115 A0:** Im ausdrücklich als **veraltet** gekennzeichneten
 `wiring_plan_v2.md` ist ein Spannungsteiler **10 kΩ vom
@@ -191,11 +202,13 @@ elektrisch geprüft werden. Der ADS1115 wird mit 3,3 V betrieben;
 ein eingestellter Messbereich von ±4,096 V macht seine Eingänge
 nicht 5-V-tolerant.
 
-**Steckverbinder-Budget dieser Erweiterung:** zwei zusätzliche
-3-polige Grundleisten `1757255` und zwei Gegenstecker `1757022`.
+**Steckverbinder-Budget dieser Erweiterung:** pH erhält
+**1 × 4-polig** (genaue vierpolige MSTB-Artikelnummer noch zu prüfen),
+EC/TDS erhält **1 × 3-polig** (Grundleiste `1757255`,
+Gegenstecker `1757022`).
 Damit sind bei den hier dokumentierten Sensoren insgesamt
-**7 × 3-polig** (3 × DHT22, 1 × DS18B20, 1 × A02YYUW, pH, EC)
-plus **1 × 4-polig** (BH1750) vorgesehen. Hinzu kommen vier
+**6 × 3-polig** (3 × DHT22, 1 × DS18B20, 1 × A02YYUW, 1 × EC/TDS)
+plus **2 × 4-polig** (BH1750, pH) vorgesehen. Hinzu kommen vier
 bisher festgelegte 4,7-kΩ-Pull-ups (DHT22 und DS18B20); die
 pH-Teilerwerte und die I²C-Pull-ups sind separat zu verifizieren.
 
