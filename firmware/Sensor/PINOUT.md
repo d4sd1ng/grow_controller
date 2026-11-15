@@ -212,6 +212,36 @@ plus **2 × 4-polig** (BH1750, pH) vorgesehen. Hinzu kommen vier
 bisher festgelegte 4,7-kΩ-Pull-ups (DHT22 und DS18B20); die
 pH-Teilerwerte und die I²C-Pull-ups sind separat zu verifizieren.
 
+### Steckverbindungen für externe Taster
+
+Die zwei in der Sensor-Firmware bereits vorhandenen Taster erhalten
+**je einen separaten 2-poligen, abziehbaren Gehäuseanschluss**:
+
+| Steckplatz | Kontakt 1 | Kontakt 2 | Funktion |
+| --- | --- | --- | --- |
+| BTN-PHASE | GPIO16 | GND | Umschaltung Wuchs/Blüte |
+| BTN-SERVICE | GPIO19 | GND | Pumpen-Wartungssperre |
+
+Vorgesehene Steckverbinder: **Phoenix Contact MSTB 2,5,
+2-polig, 5,08 mm Raster**:
+- 2 × PCB-Grundleiste `1757242`
+- 2 × Gegenstecker `1757019`
+
+Die Firmware verwendet für **beide** Taster `INPUT_PULLUP`
+und reagiert auf das Schließen nach GND. Es sind deshalb **keine
+zusätzlichen externen Pull-up-Widerstände** vorgesehen.
+Die Gehäusetaster sind als potenzialfreie Schließkontakte zu planen,
+nicht mit einer externen Spannung zu speisen. Der Wartungstaster
+bildet nur eine **softwareseitige** Sperre, keine galvanische Trennung.
+
+**Aktueller Steckverbinder-Zwischenstand Sensorplatine:**
+- 6 × 3-polig (DHT22 × 3, DS18B20, A02YYUW, EC/TDS)
+- 2 × 4-polig (BH1750, PH4502C)
+- 2 × 2-polig (Wuchs/Blüte, Pumpen-Wartung)
+- **Summe: 10 Steckerplätze** für bisher einzeln festgelegte
+  externe Komponenten; Anschlüsse anderer Boardbaugruppen
+  sind nicht mitgezählt.
+
 Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
 
 Versorgung und Masse sowie physische Pinpositionen sind anhand des tatsächlich verbauten Pro-Boards zu verifizieren. Keine Netzspannungs-/SSR-Lastverkabelung am Sensorcontroller.
