@@ -66,6 +66,17 @@ class FirmwareContractTests(unittest.TestCase):
             with self.subTest(pin=name):
                 self.assertRegex(self.sensor, rf"\b{name}\s*=\s*{pin}\s*;")
 
+    def test_ph_minus_channel_metadata_stays_safe(self):
+        self.assertIn('DOSING_CHANNEL_1_PRODUCT = "Plagron pH Min"', self.sensor)
+        self.assertIn('DOSING_CHANNEL_1_ENABLED = false', self.sensor)
+        self.assertIn('outputs["pump_1_enabled"] = DOSING_CHANNEL_1_ENABLED;', self.sensor)
+        self.assertIn('DOSE_CHANNEL_NAME[5]', self.c3)
+        self.assertIn('DOSE_CHANNEL_ENABLED[5] = {false, false, false, false, false}', self.c3)
+        self.assertIn('HARDWARE_OUTPUTS_ARMED = false', self.c3)
+        self.assertIn('MAX_DOSE_MS[5] = {0, 0, 0, 0, 0}', self.c3)
+        self.assertIn('if (i == 0) snprintf(name, sizeof(name), "P1 pH MIN");', self.remote)
+        self.assertIn('setButtonEnabled(pumpButtons[i], false);', self.remote)
+
     def test_a02yyuw_tank_level_readonly(self):
         self.assertIn("PIN_LEVEL_UART_RX = 18;", self.sensor)
         self.assertIn("LEVEL_UART_BAUD = 9600;", self.sensor)
