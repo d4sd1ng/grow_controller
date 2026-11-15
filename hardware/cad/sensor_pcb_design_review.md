@@ -164,3 +164,14 @@ Nutzerangabe 15.11.2026: **pH- und EC-Module werden aus der Versorgung des Senso
 Der Nutzer bestätigt ausdrücklich, dass die über USB-C gespeiste 5-V-Versorgung des Sensor-ESP32 für pH- und EC-Modul **ausreichend** ist. Diese Kapazität wird als **Nutzervorgabe** übernommen, nicht als von uns durch Strommessung oder Board-Schaltplan verifizierter Wert. Der Versorgungsweg ist keine offene *Planungsentscheidung* mehr: Im CAD-Vorentwurf nutzen **J_PH Kontakt 1**, **J_EC Kontakt 1** und **U_ESP32 Kontakt 15** das gemeinsame Netz `5V_USB_BOARD`. Ein zusätzliches Netzteil oder ein zweiter 5-V-Einspeisepunkt ist nicht vorgesehen.
 
 **Unverändert offen:** Das PCB besitzt bislang **keine gerouteten Leiterbahnen**, und die tatsächliche Stromreserve wurde nicht unabhängig gemessen. Die pH- und EC-Analogeingangsspannungen sowie ihre Beschaltung zum mit 3,3 V versorgten ADS1115 müssen unabhängig von der ausreichenden Versorgung geprüft werden.
+
+
+## 8. Korrektur: pH und EC funktionieren bereits im bestehenden Aufbau
+
+**Nutzerbestätigung vom 15.11.2026:** Beide Sensoren, pH und EC/TDS, haben am bisherigen Sensor-ESP32/ADS1115-Aufbau bereits funktioniert; die 5-V-Versorgung ist laut Nutzer ausreichend. Deshalb darf die PCB-Planung die analogen Messpfade **nicht als neu zu entwickelnde oder grundsätzlich fragliche Funktion** behandeln.
+
+**Verbindliches Konstruktionsprinzip:** **Ist-Verdrahtung unverändert ins PCB übertragen.** pH über ADS1115 A0, EC/TDS über ADS1115 A1; vorhandene Signalaufbereitung/Spannungsteilung und bestehende Kalibrierskalierung erhalten. Keine pauschalen Neuwerte, keine neuen Signalteiler, keine Änderungen nur aufgrund theoretischer Grenzwertdiskussion.
+
+Die offene Aufgabe besteht ausschließlich darin, die **exakte, aktuell funktionierende Hardwareverbindung** in den KiCad-Schaltplan zu übertragen; die als *veraltet* gekennzeichnete Datei `wiring_plan_v2.md` ist dafür allein keine hinreichende Quelle. Die unfertigen A0/A1-Prüfnetze des bisherigen CAD-Prototyps sind **ein Dokumentations-/CAD-Mangel**, kein Nachweis eines Problems im funktionierenden Aufbau. Die erfolgreiche Funktion ersetzt jedoch keine Fertigungs-DRC/Netzlistenprüfung der neuen Platine.
+
+**Status:** Sensorfunktion laut Nutzer **bestätigt**; exakte Reproduktion im PCB **noch nicht umgesetzt**.
