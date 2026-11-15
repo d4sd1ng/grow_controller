@@ -366,6 +366,10 @@ ActuatorState targets;
 ActuatorState actual;
 uint32_t commandSeq = 0;
 static constexpr uint8_t DOSING_PUMP_COUNT = 5; // exakt 5, gemeinsam mit C3/Remote
+static constexpr const char *DOSING_CHANNEL_1_PRODUCT = "Plagron pH Min";
+static constexpr bool DOSING_CHANNEL_1_ENABLED = false; // chemische Dosierung gesperrt
+// Die noch nicht zugeordneten Kanäle 2-5 werden nicht automatisch belegt.
+// Physischer Kanal 6 ist bisher auf dem C3 nicht vorhanden.
 static constexpr uint16_t PUMP_PULSE_MAX_MS = 2000;
 static constexpr unsigned long C3_HEARTBEAT_TIMEOUT_MS = 8000UL;
 unsigned long lastC3StatusMs = 0;
@@ -1987,6 +1991,8 @@ static void handleSummary() {
   outputs["outputs_enabled"] = c3Connected() && c3OutputsEnabled;
   outputs["failsafe"] = c3Failsafe;
   outputs["pump_count"] = DOSING_PUMP_COUNT;
+  outputs["pump_1_product"] = DOSING_CHANNEL_1_PRODUCT;
+  outputs["pump_1_enabled"] = DOSING_CHANNEL_1_ENABLED;
   outputs["pump_active"] = c3Connected() ? c3PumpActive : 0;
   outputs["pump_service_off"] = pumpServiceOff;
   outputs["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed && c3Connected();
@@ -2005,6 +2011,8 @@ static void handleActuatorTargets() {
   doc["ok"] = true;
   doc["power_controller_connected"] = c3Connected();
   doc["pump_count"] = DOSING_PUMP_COUNT;
+  doc["pump_1_product"] = DOSING_CHANNEL_1_PRODUCT;
+  doc["pump_1_enabled"] = DOSING_CHANNEL_1_ENABLED;
   doc["pump_service_off"] = pumpServiceOff;
   doc["pump_pending"] = pendingPumpIndex != 0 && (millis() - pumpCommandMs) < 3000UL;
   doc["pump_index"] = pendingPumpIndex;
