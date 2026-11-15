@@ -70,10 +70,10 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertIn('DOSING_CHANNEL_1_PRODUCT = "Plagron pH Min"', self.sensor)
         self.assertIn('DOSING_CHANNEL_1_ENABLED = false', self.sensor)
         self.assertIn('outputs["pump_1_enabled"] = DOSING_CHANNEL_1_ENABLED;', self.sensor)
-        self.assertIn('DOSE_CHANNEL_NAME[5]', self.c3)
-        self.assertIn('DOSE_CHANNEL_ENABLED[5] = {false, false, false, false, false}', self.c3)
+        self.assertIn('DOSE_CHANNEL_NAME[DOSING_PUMP_COUNT]', self.c3)
+        self.assertIn('DOSE_CHANNEL_ENABLED[DOSING_PUMP_COUNT] = {false, false, false, false, false, false}', self.c3)
         self.assertIn('HARDWARE_OUTPUTS_ARMED = false', self.c3)
-        self.assertIn('MAX_DOSE_MS[5] = {0, 0, 0, 0, 0}', self.c3)
+        self.assertIn('MAX_DOSE_MS[DOSING_PUMP_COUNT] = {0, 0, 0, 0, 0, 0}', self.c3)
         self.assertIn('if (i == 0) snprintf(name, sizeof(name), "P1 pH MIN");', self.remote)
         self.assertIn('setButtonEnabled(pumpButtons[i], false);', self.remote)
 
@@ -112,12 +112,21 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertIn('updateSmallReading(homeWater, reading["water_temperature"]', self.remote)
         self.assertIn('updateSmallReading(homeLux, reading["extras"]["illuminance_lux"]', self.remote)
 
-    def test_five_pumps_and_locked_dosing(self):
-        self.assertIn("DOSING_PUMP_COUNT = 5;", self.sensor)
-        self.assertIn("PUMP_COUNT = 5;", self.remote)
-        self.assertIn("MAX_DOSE_MS[5] = {0, 0, 0, 0, 0}", self.c3)
+    def test_six_pumps_and_locked_dosing(self):
+        self.assertIn("DOSING_PUMP_COUNT = 6;", self.sensor)
+        self.assertIn("PUMP_COUNT = 6;", self.remote)
+        self.assertIn("MAX_DOSE_MS[DOSING_PUMP_COUNT] = {0, 0, 0, 0, 0, 0}", self.c3)
         self.assertIn("HARDWARE_OUTPUTS_ARMED = false", self.c3)
         self.assertIn("TOUCH_ACTUATION_VERIFIED = false", self.remote)
+        self.assertIn("PCA OUT0..5: 6 Dosierpumpen", self.c3)
+        self.assertIn("PCA_FAN_FIRST = 6;", self.c3)
+        self.assertIn('p["channel_count"] = DOSING_PUMP_COUNT;', self.c3)
+        self.assertIn('d["pump_count"] = DOSING_PUMP_COUNT;', self.c3)
+        self.assertIn("pump > DOSING_PUMP_COUNT", self.c3)
+        self.assertIn("activeDose < DOSING_PUMP_COUNT", self.c3)
+        self.assertIn("i < DOSING_PUMP_COUNT; ++i", self.c3)
+        self.assertIn("P1 pH MIN", self.remote)
+        self.assertIn("setButtonEnabled(pumpButtons[i], false)", self.remote)
         self.assertIn('c3ApiError(503, "dosing_not_implemented")', self.sensor)
 
     def test_c3_sensor_status_contract(self):
