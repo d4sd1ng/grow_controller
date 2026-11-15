@@ -287,3 +287,27 @@ Die tatsächlichen elektrischen Anschluss-/SSR-Anforderungen des
 Abluftlüfters sind weiterhin vor Inbetriebnahme zu prüfen.
 Dies ist von der getrennten Funktion der zwei anderen Lüfter am
 gemeinsamen 12-V-Treiber zu unterscheiden.
+
+
+### Modellnachtrag: Prima Klima PK125-2
+
+Der verbaute Abluftlüfter ist der **Prima Klima PK125-2**,
+ein 230-V-AC-Rohrventilator mit integriertem Zweistufenschalter.
+Offizielle Produktangaben (Stand der Prüfung 15.11.2026):
+
+- 230 V, 50/60 Hz, 0,29 A, 63 W;
+- 125-mm-Anschluss; Stufe I 220 m³/h, Stufe II 400 m³/h;
+- integriertes Anschluss- und Steuerungssystem;
+- Herstellervermerk: **„Nicht elektrisch regelbar!“**.
+
+Quelle: https://primaklima.com/de/shop/ventilatoren-de/ac-ventilatoren/pk125-2/
+
+**Gültige Hardwareanforderung:** Abluft wird durch das bereits
+vorgesehene SSR nur EIN/AUS geschaltet; die Wahl zwischen Stufe I
+und Stufe II erfolgt am vorhandenen manuellen Geräteschalter.
+Eine automatische Stufenumschaltung wird **nicht** als
+Platinenfunktion vorgesehen, da dafür keine dokumentierte,
+herstellerseitig freigegebene Steuerschnittstelle vorliegt.
+Keine Änderung an Netzspannungsverdrahtung, Schalter, Motor
+oder interner Gerätesteuerung aus dieser Planungsdatei ableiten.
+SSR-Typ und Eignung für Motorlast sind noch zu prüfen.
