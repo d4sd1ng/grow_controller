@@ -346,3 +346,7 @@ Versorgung und Masse sowie physische Pinpositionen sind anhand des tatsächlich 
 - **Der exakte Footprint ist noch nicht freigegeben:** Die tatsächliche Modellrevision und Kontaktabstände des Sensor-ESP32 sind vor der PCB-Fertigung zu verifizieren.
 
 Die steckbare ESP32-Aufnahme ist **keiner der 12 externen Sensor-/Bedienstecker** und wird separat in der Bauteilliste geführt. Keine Änderung der Firmware oder GPIO-Zuordnung.
+
+### LED-Bestückung: ausschließlich vorhandene externe RGB-LED
+
+**Verbindliche Nutzerfestlegung (15.11.2026):** Die einzige vorgesehene Status-LED ist die **bereits vorhandene externe RGB-LED mit gemeinsamer Kathode**. Sie wird über den dokumentierten vierpoligen Stecker `LED-RGB` (R=GPIO33, G=GPIO4, B=GPIO17, gemeinsame Kathode=GND) angeschlossen. Auf der Trägerplatine **keine zusätzlichen SMD-LEDs, keine Power-LEDs, keine separaten Status-LEDs** vorsehen. Die drei erforderlichen **Vorwiderstände** dürfen weiterhin als SMD-Widerstände (vorläufig 0805) auf der Platine liegen; das sind keine LEDs. Die Vorwiderstandswerte bleiben bis zur Spezifikation der vorhandenen RGB-LED offen. Diese Festlegung betrifft die Trägerplatine; integrierte LEDs auf fertig gekauften ESP32-Modulen sind keine zusätzlich zu bestückenden Leiterplatten-LEDs.
