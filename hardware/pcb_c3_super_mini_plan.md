@@ -86,3 +86,94 @@ Offene Fertigungsangaben:
 
 Diese Datei dokumentiert nur die **festgelegte Hardware-Architektur**,
 keine bestellfähige Stückliste und keine Anleitung zur Säuredosierung.
+
+
+## 15.11.2026 — Versorgung, Steckverbinder und PCB-Aufteilung konkretisiert
+
+### A. Versorgungsarchitektur (Funktionsplan, keine freigegebene Schaltung)
+
+Die sechs Pumpen sind als getrennte 12-V-Lastgruppe spezifiziert; die
+ESP32-C3- und PCA9685-Logik gehört zu einer getrennten Niederspannungsgruppe.
+Für das ESP32-C3 Super Mini ist die 5-V-Einspeisung am vorgesehenen
+Versorgungseingang eine mögliche Architektur, **sofern die eingesetzte
+Board-Revision dies erlaubt**. Die 3,3 V am PCA9685 müssen unter allen
+Betriebszuständen stabil bleiben. Es wird **kein** direkter 12-V-Anschluss
+an einen C3- oder PCA9685-Pin vorgesehen.
+
+Die endgültige Stromversorgung erhält eigene Prüfpositionen für:
+- gemessenen Lastbedarf von C3, PCA9685, SSR-Eingängen und Lüfterelektronik;
+- Eingangs-/Ausgangsspannung, Stromreserve und Wärmeabfuhr des Wandlers;
+- Kurzschluss-, Verpolungs- und Überspannungsbehandlung;
+- störungsarme Logikversorgung unabhängig von Motor-Anlaufspitzen;
+- Massereferenz und Trennung der störanfälligen Mess-/Steuersignale;
+- Vermeidung unerwünschter Rückspeisung beim parallelen USB-C-Anschluss.
+
+Vor Messung von Motor-Anlaufströmen wird **keine** verbindliche
+Netzteilgröße, Sicherungsgröße oder Leiterbahnbreite behauptet.
+
+### B. Elektrische Anschlussgruppen
+
+| Gruppe | Anzahl | Zweck | Stand |
+| --- | ---: | --- | --- |
+| PWR-12V | 1 | Einspeisung Pumpenversorgung | Konzept |
+| LOGIC-PWR | 1 | Versorgung C3/PCA9685 | Konzept |
+| MOTOR-01 … MOTOR-06 | 6 | getrennte Pumpenanschlüsse | nur Anschlussplätze |
+| SSR-01 … SSR-05 | 5 | vorhandene Kleinspannungs-Steuersignale | Eingangsanforderungen der SSR offen |
+| FAN-01 … FAN-02 | 2 | zwei Lüftergruppen | elektrische Signalart offen |
+| SERVICE | 1 | zugänglicher USB-C-/Servicebereich | mechanisch offen |
+
+Diese Gruppen sind eine **Schnittstellenliste**, keine Festlegung auf
+Schraubklemmen, JST-Serien oder Leiterquerschnitte. Die Positionen müssen
+nach den realen Steckerabmessungen und Strömen ausgelegt werden.
+
+### C. ESP32-C3 Super Mini als Steckmodul
+
+Das generische Super-Mini-Pinout zeigt **2 × 8 Anschlüsse** mit 2,54-mm-
+Raster *entlang* der jeweiligen Stiftleiste und den Außenabmessungen
+23 × 18 mm. Die **Reihenmittenabstände**, Lötpad-/Bohrungsmaße,
+USB-C-Überstände, Modul-Toleranzen und Antennenfreihaltung sind für die
+konkrete gelieferte Revision noch zu prüfen. Deshalb wird **noch kein
+verbindlicher Leiterplatten-Footprint erzeugt**.
+
+Die dokumentierte GPIO20-Nutzung als PCA-/OE-Signal ist wegen der
+UART0-RX-Doppelfunktion auf Boot-/Debug-Konflikte zu prüfen. GPIO2, 8
+und 9 sind ESP32-C3-Strapping-Pins und dürfen nicht ohne Prüfung für
+externe Signale belastet werden.
+
+### D. Platzierungskonzept (nicht maßstäblich)
+
+- **Servicekante:** ESP32-C3 Super Mini mit von außen erreichbarem USB-C,
+  Antennenbereich ohne störende Leiterbahnen oder Abschirmung.
+- **Logikbereich:** PCA9685, Logikversorgung und Diagnosepunkte.
+- **Anschlusskante 1:** fünf SSR-Steuerschnittstellen und zwei
+  Lüftergruppen-Schnittstellen.
+- **Anschlusskante 2:** sechs mechanisch reservierte Pumpenanschlüsse;
+  noch keine aktive Treiberschaltung zur Förderung konzentrierter Säure.
+- **Versorgungskante:** separate Einspeisung und später festzulegende
+  Schutz-/Regelungskomponenten.
+
+Die endgültige Platinengröße ergibt sich erst aus realen Bauteil-
+Footprints, Anschlussrastern und Gehäuseinnenmaßen. Eine gewählte
+Platinenbreite ohne diese Daten wäre eine Vermutung.
+
+### E. Entdeckte elektrische Architekturfrage
+
+PCA9685 `/OE` ist ein **gemeinsames** Sperrsignal für sämtliche
+PWM-Ausgänge. Da OUT0–OUT5 den Dosierkanälen und OUT6–OUT7 den
+Lüftergruppen zugeordnet sind, ist `/OE` **keine unabhängige
+Pumpenverriegelung**. Diese Anforderung muss vor Freigabe des
+Hardwareentwurfs geprüft und von der übrigen Lüftersteuerung
+unabhängig gelöst werden. Die Firmware bleibt derzeit gesperrt.
+
+### F. Referenzdatenblätter
+
+- Espressif ESP32-C3 (GPIO-/Strapping-Einschränkungen):
+  https://documentation.espressif.com/esp32-c3_datasheet_en.html
+- NXP PCA9685 (Versorgung, globale /OE-Funktion):
+  https://www.nxp.com/docs/en/data-sheet/PCA9685.pdf
+- Generisches ESP32-C3-Super-Mini-Board:
+  https://dl.artronshop.co.th/ESP32-C3%20SuperMini%20datasheet.pdf
+
+**Status:** Funktionsaufteilung und Anschlussgruppen dokumentiert;
+MOSFET-Schaltung, reale Bauteil-Footprints, Platinenmaße, DRC und
+Fertigungsdateien weiterhin offen.
