@@ -356,3 +356,7 @@ Die steckbare ESP32-Aufnahme ist **keiner der 12 externen Sensor-/Bedienstecker*
 Verbindliche Nutzerfestlegung vom 15.11.2026: **Auf der Sensor-Trägerplatine keine SMD-Widerstände bestücken.** Sämtliche geplanten Widerstandspositionen sind für **vorhandene bedrahtete Keramikwiderstände** auszulegen. Das betrifft DHT22-/DS18B20-Pull-ups, RGB-Vorwiderstände, optional bestückbare I²C-Pull-ups sowie die beiden pH-Eingangswiderstände. **SMD-/0805-Vorschläge aus früheren Planungsständen sind hiermit überholt.**
 
 Vor Footprint-Freigabe sind Körperlänge/-durchmesser, Drahtdurchmesser, benötigtes Anschlussraster, Widerstandswerte und zulässige Verlustleistung der tatsächlich vorhandenen Widerstände zu prüfen. Die frühere elektrische Vorgabe **4,7 kΩ** für vier Daten-Pull-ups wird dadurch nicht geändert; für alle weiteren Positionen bleiben Werte unbestätigt. „Keramikwiderstand“ allein belegt weder Wert noch Bauform.
+
+### RGB-Vorwiderstände: korrigiert auf 3 × 440 Ω
+
+**Verbindliche Korrektur der Nutzerangabe (15.11.2026):** Die vorhandene externe RGB-LED mit gemeinsamer Kathode erhält **drei bedrahtete Vorwiderstände zu je 440 Ω**, einen je Farbe (R/G/B). Bisherige Angaben von 2 × 220 Ω oder 3 × 220 Ω sind **überholt**. Es werden keine SMD-Widerstände und keine zusätzlichen LEDs auf der Sensor-Trägerplatine vorgesehen. **Elektrische Eignung der 440 Ω für das tatsächliche LED-Modell sowie die tatsächlichen Teilekennzeichnungen sind noch nicht geprüft.**
