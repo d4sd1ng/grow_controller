@@ -4,7 +4,7 @@
   Libraries: TFT_eSPI 2.5.x, LVGL 8.4.x, XPT2046_Touchscreen, ArduinoJson 7.x.
   External local files preserved: device_secrets.h, grow_http_client.h, lv_conf.h.
 
-  Important: five pump channels are DISPLAYED, but dosing remains LOCKED until
+  Important: six pump channels are DISPLAYED, but dosing remains LOCKED until
   calibration and hardware integration have been verified. No dosing commands.
   Touch coordinates are initial CYD defaults, NOT a confirmed calibration.
 */
@@ -33,7 +33,7 @@
 namespace {
 constexpr uint16_t SCREEN_W = 320;
 constexpr uint16_t SCREEN_H = 240;
-constexpr uint8_t PUMP_COUNT = 5;  // Current agreed controller configuration.
+constexpr uint8_t PUMP_COUNT = 6;  // six locked dosing channels
 constexpr uint32_t SUMMARY_INTERVAL_MS = 5000;
 constexpr uint32_t C3_INTERVAL_MS = 8000;
 constexpr uint32_t WIFI_RETRY_MS = 10000;
@@ -363,7 +363,7 @@ void buildUi() {
                           0x77392E, &lv_font_montserrat_12);
   lv_obj_add_event_cb(stopButton, onStop, LV_EVENT_CLICKED, nullptr);
 
-  // Page 3: all five physically planned pumps, permanently locked for now.
+  // Page 3: all six dosing channels, permanently locked for now.
   for (int i = 0; i < PUMP_COUNT; ++i) {
     const int x = 7 + (i % 3) * 104;
     const int y = 7 + (i / 3) * 49;
