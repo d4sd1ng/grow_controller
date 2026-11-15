@@ -41,7 +41,7 @@ ihre Pinabstände, Höhen und USB-Zugänglichkeit.
   modulinterne Widerstände noch prüfen.
 - **R_DS18 = 4,7 kΩ** von DATA/GPIO23 nach 3,3 V.
 - **R_RGB_R/G/B** = drei separate Vorwiderstandspositionen;
-  **3 × 440 Ω laut korrigierter Nutzerangabe**, elektrische Eignung für die vorhandene RGB-LED noch zu prüfen.
+  **3 × 220 Ω als gewünschte Einzelbestückung**, elektrische Eignung der vorhandenen RGB-LED noch zu prüfen.
 - **R_PH_OBEN und R_PH_UNTEN** = zwei Widerstands-Footprints
   für bisher dokumentierten Eingangsspannungsteiler A0. Die alte,
   ausdrücklich **veraltete** Verkabelungsdatei nennt 10 kΩ / 20 kΩ;
@@ -184,7 +184,7 @@ Stand 15.11.2026: Ableitung aus dem bereits dokumentierten Sensor-Pinout;
 | --- | ---: | --- | --- | --- |
 | R_DHT1–3 | 3 | 4,7 kΩ, bedrahteter Keramikwiderstand aus Nutzerbestand; Bauform/Belastbarkeit prüfen | bedingt, nach Kontrolle bereits vorhandener Pull-ups | DATA nach 3V3 |
 | R_DS18 | 1 | 4,7 kΩ, bedrahteter Keramikwiderstand aus Nutzerbestand; Bauform/Belastbarkeit prüfen | vorgesehen | DATA nach 3V3 |
-| R_RGB_R/G/B | 3 | **440 Ω laut korrigierter Nutzerangabe, elektrisch noch zu verifizieren**, bedrahtete Positionen, Abmessungen offen | **DNP** bis LED-Typ und Sollstrom feststehen | je eine Strombegrenzung |
+| R_RGB_R/G/B | 3 | **220 Ω pro Kanal bevorzugt, elektrisch noch zu verifizieren**, bedrahtete Positionen, Abmessungen offen | **DNP** bis LED-Typ und Sollstrom feststehen | je eine Strombegrenzung |
 | R_PH_OBEN/UNTEN | 2 | **offen**, passende Widerstandspositionen vorsehen | **DNP** bis reale Eingangsbeschaltung und Kalibrierbezug geprüft | ADS1115 A0 |
 | R_I2C_ADS_SDA/SCL | 2 | **offen**, optionale bedrahtete Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO21/22 |
 | R_I2C_BH_SDA/SCL | 2 | **offen**, optionale bedrahtete Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO13/14 |
@@ -267,14 +267,6 @@ Verbindliche Nutzerfestlegung vom 15.11.2026: **Auf der Sensor-Trägerplatine ke
 
 Vor Footprint-Freigabe sind Körperlänge/-durchmesser, Drahtdurchmesser, benötigtes Anschlussraster, Widerstandswerte und zulässige Verlustleistung der tatsächlich vorhandenen Widerstände zu prüfen. Die frühere elektrische Vorgabe **4,7 kΩ** für vier Daten-Pull-ups wird dadurch nicht geändert; für alle weiteren Positionen bleiben Werte unbestätigt. „Keramikwiderstand“ allein belegt weder Wert noch Bauform.
 
-### Vorläufiger RGB-Widerstandsbestand (15.11.2026)
-
-**Korrigierte Nutzerangabe:** **3 × 440 Ω** für die drei RGB-LED-Kanäle Rot, Grün und Blau. Alle drei Widerstände sind **bedrahtet, keine SMD-Bauform**, gemäß Nutzerfestlegung. **Die Werte sind als Nutzerangabe eingeplant; elektrische Eignung und reale Kennzeichnung der vorhandenen Bauteile sind noch nicht nachgemessen bzw. anhand des LED-Datenblatts verifiziert.**
-
-### RGB-Vorwiderstände: korrigiert auf 3 × 440 Ω
-
-**Verbindliche Korrektur der Nutzerangabe (15.11.2026):** Die vorhandene externe RGB-LED mit gemeinsamer Kathode erhält **drei bedrahtete Vorwiderstände zu je 440 Ω**, einen je Farbe (R/G/B). Bisherige Angaben von 2 × 220 Ω oder 3 × 220 Ω sind **überholt**. Es werden keine SMD-Widerstände und keine zusätzlichen LEDs auf der Sensor-Trägerplatine vorgesehen. **Elektrische Eignung der 440 Ω für das tatsächliche LED-Modell sowie die tatsächlichen Teilekennzeichnungen sind noch nicht geprüft.**
-
 ### RGB-Vorwiderstände: bevorzugt einzelne 220 Ω je Farbe
 
-**Aktuelle Nutzerfestlegung (15.11.2026):** Keine zwei 220-Ω-Widerstände in Reihe, um 440 Ω zu bilden. Wenn elektrisch zulässig, **je ein einzelner bedrahteter 220-Ω-Vorwiderstand** für Rot (GPIO33), Grün (GPIO4) und Blau (GPIO17). Insgesamt drei Widerstände, **keine SMD-Bestückung** und **keine zusätzliche LED**. Die ältere Angabe von 3 × 440 Ω ist durch diese Festlegung ersetzt. Die 220-Ω-Werte sind ein **bevorzugter Bestückungsansatz**, keine verifizierte elektrische Freigabe: LED-Durchlassspannungen, gewünschte Ströme und GPIO-Toleranzen des tatsächlichen Moduls sind noch zu bestätigen. Beispiel bei 3,3 V: Rot mit Vf = 2,0 V ergibt ca. 5,9 mA; Grün/Blau mit Vf = 3,0 V ergeben ca. 1,4 mA. Diese Vf-Werte sind Rechenannahmen, keine Messungen.
+**Aktuelle Nutzerfestlegung (15.11.2026):** Keine Widerstände in Reihe schalten. Wenn elektrisch zulässig, **je ein einzelner bedrahteter 220-Ω-Vorwiderstand** für Rot (GPIO33), Grün (GPIO4) und Blau (GPIO17). Insgesamt drei Widerstände, **keine SMD-Bestückung** und **keine zusätzliche LED**. Die 220-Ω-Werte sind ein **bevorzugter Bestückungsansatz**, keine verifizierte elektrische Freigabe: LED-Durchlassspannungen, gewünschte Ströme und GPIO-Toleranzen des tatsächlichen Moduls sind noch zu bestätigen. Beispiel bei 3,3 V: Rot mit Vf = 2,0 V ergibt ca. 5,9 mA; Grün/Blau mit Vf = 3,0 V ergeben ca. 1,4 mA. Diese Vf-Werte sind Rechenannahmen, keine Messungen.
