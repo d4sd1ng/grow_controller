@@ -146,3 +146,7 @@ Nutzer bestätigt: Die Steckkontakte des **30-Pin-Sensor-ESP32** und des **10-Pi
 ### Sensor-ESP32 Reihenabstand: unbestätigte Angabe
 
 Nutzerangabe: **vermutlich 36 mm** Abstand der beiden Pinreihen beim 30-Pin-Sensor-ESP32. Die Angabe ist eine **Schätzung**, nicht nachgemessen; zudem noch nicht bestätigt, ob Pinmitte-zu-Pinmitte gemeint ist. **Keinesfalls als freigegebenen Footprint verwenden.** Vor Layout-Freigabe exaktes Reihenmittenmaß am realen Modul ermitteln.
+
+### Recherche zum 30-Pin-ESP32-Reihenabstand
+
+15.11.2026: Nutzer schätzt 35–36 mm, ohne Messung. Recherchierte **verschiedene** 30-Pin-ESP32-DevKit-V1-Bauformen geben stattdessen beispielsweise 22,86 mm (0,9 Zoll) oder 25,40 mm (1 Zoll) Reihenmittenabstand an. Die Angabe 36 mm darf **nicht** für den Footprint übernommen werden. Die exakte Boardvariante muss an den realen Steckleisten oder anhand eines passenden, maßhaltigen Hersteller-Footprints geklärt werden. Quellen: https://mokxi.com/docs/boards/esp32-devkit und https://electronics360.org/parts/esp32-devkit-v1
