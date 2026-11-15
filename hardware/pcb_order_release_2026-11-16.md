@@ -138,3 +138,7 @@ Vom Nutzer am 15.11.2026 bestätigt:
 - **ADS1115-Breakout: insgesamt 10 Pins.** Anzahl Pins pro Seite, Pinreihen und Raster sind **noch nicht bestätigt**.
 - **Sensor-ESP32: 30-Pin-Ausführung.** Konkrete Anzahl je Reihe, Reihenmittenabstand und Raster sind **noch zu messen**.
 - Beide Module sind **steckbar** auszuführen; kein Footprint ohne verifizierte Kontaktabmessungen freigeben.
+
+### Steckkontakt-Raster
+
+Nutzer bestätigt: Die Steckkontakte des **30-Pin-Sensor-ESP32** und des **10-Pin-ADS1115-Moduls** passen auf eine gewöhnliche Lochrasterplatine. **Daraus folgt nominal 2,54 mm Kontaktabstand entlang der Pinreihe** (vor Fertigung am tatsächlichen Modul nachprüfen). **Reihenmittenabstände** der Module bleiben unbekannt; außerdem sind die Modulaußenmaße noch zu ermitteln. Ein kompletter Footprint kann deshalb noch nicht freigegeben werden.
