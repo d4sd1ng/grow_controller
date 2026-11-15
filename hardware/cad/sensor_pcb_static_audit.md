@@ -26,7 +26,7 @@ Prüfgrundlagen:
 | Überschneidungen der 12 Steckerrechtecke miteinander | 0 |
 | Überschneidungen der Steckerrechtecke mit ESP32-F.Fab-Rechteck | 0 |
 | Klammerbalance der .kicad_pcb-Datei | 0 Rest |
-| Geroutete Leiterbahnsegmente | **0** |
+| Geroutete Leiterbahnsegmente | **81**, plus **1 Durchkontaktierung (Via)** – Teilbereich pH/EC/ADS1115 |
 | Endgültige Platinenabmessung | **Nicht vom Nutzer freigegeben** |
 
 Die anfänglich gefundenen **30 unterschiedlichen Netzbezeichnungen**
@@ -97,10 +97,38 @@ Die zur Produktion benötigten Schritte sind **nicht abgeschlossen**:
 1. Funktionsfähigen vollständigen Schaltplan mit belastbaren
    Analog- und Versorgungsnetzen erstellen.
 2. Mechanische Baugruppen und echte Footprints gegen Bauteile abgleichen.
-3. Leiterbahnen routen.
+3. Alle weiteren Sensornetze fertig routen (pH/EC/ADS1115 ist teilweise geroutet).
 4. KiCad ERC/DRC tatsächlich ausführen und Findings bereinigen.
 5. Gerber und Excellon aus genau dem geprüften Board exportieren
    und visuell prüfen.
 
 **KiCad-CLI steht in der aktuellen Bearbeitungsumgebung nicht zur
 Verfügung. Daher keine Behauptung einer erfolgreichen KiCad-Prüfung.**
+
+
+## Nachprüfung nach ADC-Layoutänderungen am 15.11.2026
+
+Der KiCad-Vorentwurf enthält jetzt **81 echte `segment`-Objekte**
+auf F.Cu/B.Cu und **ein `via`**. Dafür wurden statisch überprüft:
+
+- **78/78** Kontakt-Netz-Einträge aus beiden CSV-Tabellen passen zu den
+  PAD-Netzen im KiCad-Entwurf (38 externe, 40 interne Kontaktpositionen).
+- **15/15** exemplarisch abgefragte pH-/EC-/ADS1115-Verbindungspaare
+  sind auf Segment- und Lagenebene elektrisch zusammenhängend.
+  Darunter EC→ADS A1 direkt, PO→R_PH_TOP, R_PH_TOP/R_PH_BOTTOM→ADS A0,
+  PH/EC 5-V-Versorgung→ESP32-Pin15, PH-GND1/GND2→GND,
+  ADS VDD→ESP32 3V3, ADS GND→ESP32 GND, SDA→GPIO21, SCL→GPIO22,
+  ADDR→ADS GND.
+- **0** geometrisch erkannte fremde Pad-/Leiterbahn-Kollisionen
+  für den teilgerouteten Bereich (0,2-mm-Prüfabstand plus Kupferradien).
+- **0** geometrisch erkannte Fremdnetz-Leiterbahn-Abstandsverletzungen
+  auf derselben Kupferlage, **0** erkannte Via-Kollisionen.
+
+**Grenzen:** Das sind eigene geometrische/netzbezogene statische
+Prüfungen, **kein KiCad-DRC/ERC**; sie ersetzen weder den Schaltplan
+noch die reale Prüfung der Bauteile und des pH-Widerstandsnetzwerks.
+`R_PH_TOP` und `R_PH_BOTTOM` sind nur **physisch geroutete,
+aber noch ohne bestätigte Bestückungswerte** vorgesehene Positionen.
+Der alte Plan (10/20 kΩ) ist als veraltet gekennzeichnet und keine
+verlässliche Freigabe der Ist-Werte. Die übrigen Sensoranschlüsse sind
+noch nicht vollständig geroutet. **Nicht fertigen.**
