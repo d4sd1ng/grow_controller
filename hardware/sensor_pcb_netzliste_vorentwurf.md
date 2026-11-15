@@ -193,3 +193,10 @@ werden, dass diese **fotografierte Reihenfolge** erhalten bleibt.
 **Noch offen vor Herstellungsfreigabe:** echte ESP32-Modulvariante,
 Reihenmittenmaß, Rückseite/Orientierung, ADS1115-Modulumriss,
 USB-C-Freiraum, Versorgungskapazität und geprüfte Analogpegel.
+
+
+## pH-/EC-Statuskorrektur (15.11.2026)
+
+Die vorhandenen pH- und EC/TDS-Sensoren funktionieren laut Nutzer **bereits am Sensor-ESP32 über den ADS1115**; die bestehende Versorgung reicht aus. Die neue Platine soll **die tatsächlich funktionierende Verdrahtung 1:1 ersetzen**, ohne Änderungen der Analogsignalaufbereitung oder Kalibrierung. `PH_A0_CONDITIONED_UNVERIFIED` und `EC_A1_CONDITIONED_UNVERIFIED` bedeuten lediglich, dass die **konkreten Ist-Verbindungen im CAD noch nicht abgebildet** sind, nicht dass die Sensoren aktuell nicht funktionieren. Der ältere Kabelplan ist als veraltet markiert und darf nicht unbesehen als aktuelle Schaltung gelten.
+
+**Nächste CAD-Arbeit:** Existierende Anschluss-/Widerstandsreihenfolge des funktionierenden Aufbaus anhand einer aktuellen, belastbaren Verdrahtungsquelle übernehmen, dann Schaltplan/Netzliste konsistent aktualisieren. Keine eigenmächtigen neuen Teilerwerte.
