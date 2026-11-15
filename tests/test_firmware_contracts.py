@@ -9,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SENSOR = ROOT / "firmware" / "Sensor" / "Sensor.ino"
 REMOTE = ROOT / "firmware" / "Remote" / "Remote.ino"
+PH_TOOL = ROOT / "firmware" / "ph_calibration_tool" / "ph_calibration_tool.ino"
 C3 = ROOT / "firmware" / "C3" / "C3.ino"
 
 
@@ -18,6 +19,7 @@ class FirmwareContractTests(unittest.TestCase):
         cls.sensor = SENSOR.read_text(encoding="utf-8")
         cls.remote = REMOTE.read_text(encoding="utf-8")
         cls.c3 = C3.read_text(encoding="utf-8")
+        cls.ph_tool = PH_TOOL.read_text(encoding="utf-8")
 
     def test_sketch_files_and_entrypoints(self):
         for name, source in [("Sensor", self.sensor), ("Remote", self.remote), ("C3", self.c3)]:
@@ -27,7 +29,30 @@ class FirmwareContractTests(unittest.TestCase):
                 self.assertIn('#include "device_secrets.h"', source)
                 self.assertIn("#error", source)
         self.assertEqual(sorted(p.name for p in (ROOT / "firmware").glob("*/*.ino")),
-                         ["C3.ino", "Remote.ino", "Sensor.ino"])
+                         ["C3.ino", "Remote.ino", "Sensor.ino", "ph_calibration_tool.ino"])
+
+    def test_standalone_calibration_tool_compatibility(self):
+        self.assertEqual(self.ph_tool.count("void setup() {"), 1)
+        self.assertEqual(self.ph_tool.count("void loop() {"), 1)
+        self.assertIn("PIN_I2C_SDA = 21;", self.ph_tool)
+        self.assertIn("PIN_I2C_SCL = 22;", self.ph_tool)
+        self.assertIn("PIN_ONEWIRE = 23;", self.ph_tool)
+        self.assertIn("ads.readADC_SingleEnded(channel)", self.ph_tool)
+        self.assertIn("sampleChannel(0, CAPTURE_SAMPLE_COUNT", self.ph_tool)
+        self.assertIn("sampleChannel(1, grow_cal::EC_SAMPLES_PER_WINDOW", self.ph_tool)
+        self.assertIn("grow_cal::ecCalibrationFactor(meanV, afterC)", self.ph_tool)
+        for key in ('"phads_v1"', '"ecads_v1"', '"have7"', '"have4"',
+                    '"volt7"', '"volt4"', '"temp7"', '"temp4"',
+                    '"factor"', '"ref_v"', '"temp_c"', '"valid"'):
+            with self.subTest(key=key):
+                self.assertIn(key, self.ph_tool)
+                self.assertIn(key, self.sensor)
+        for unsupported in ("Adafruit_SSD1306", "Adafruit_GFX", "WiFi.begin",
+                            "display.begin(", "ESP.eraseFlash", "preferences.clear()"):
+            self.assertNotIn(unsupported, self.ph_tool)
+        self.assertIn('loadCalibration();\n  return verified &&', self.ph_tool)
+        self.assertIn("handleSerial();\n  delay(2);", self.ph_tool)
+        self.assertIn("NVS-Loeschung deaktiviert.", self.ph_tool)
 
     def test_sensor_pinout(self):
         pins = {"PIN_DHT1": 25, "PIN_DHT2": 26, "PIN_DHT3": 27,
