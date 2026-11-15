@@ -508,7 +508,19 @@ void fetchSummary() {
     textIfChanged(homeAlert, "WARNUNG: nur 1 DHT22");
   } else if (validDht == 2U) {
     textIfChanged(homeAlert, "DHT22: 2/3 gueltig (Mittelwert)");
-  } else textIfChanged(homeAlert, "Keine aktiven Meldungen");
+  } else {
+    // Füllstand auf der Startseite, solange keine wichtigere Warnung anliegt.
+    JsonVariantConst level = reading["extras"]["level_liters"];
+    const bool levelOk = reading["extras"]["level_sensor_ok"] | false;
+    if (levelOk && (level.is<float>() || level.is<double>() || level.is<int>())) {
+      snprintf(status, sizeof(status), "Tank: %.1f L (kalibriert)", level.as<float>());
+      textIfChanged(homeAlert, status);
+    } else if (levelOk) {
+      textIfChanged(homeAlert, "Tank: Sensor OK, Literkalibrierung fehlt");
+    } else {
+      textIfChanged(homeAlert, "Tank: Füllstandssensor nicht verfügbar");
+    }
+  }
 
   const JsonObjectConst target = doc["control"]["targets"].as<JsonObjectConst>();
   // Server-Sollwerte sind KEINE bestaetigten Schaltzustaende.
