@@ -41,8 +41,7 @@ ihre Pinabstände, Höhen und USB-Zugänglichkeit.
   modulinterne Widerstände noch prüfen.
 - **R_DS18 = 4,7 kΩ** von DATA/GPIO23 nach 3,3 V.
 - **R_RGB_R/G/B** = drei separate Vorwiderstandspositionen;
-  **Werte offen**, da LED-Durchlassspannung und Betriebsstrom nicht
-  genannt wurden.
+  **3 × 220 Ω laut Nutzerangabe**, elektrische Eignung für die vorhandene RGB-LED noch zu prüfen.
 - **R_PH_OBEN und R_PH_UNTEN** = zwei Widerstands-Footprints
   für bisher dokumentierten Eingangsspannungsteiler A0. Die alte,
   ausdrücklich **veraltete** Verkabelungsdatei nennt 10 kΩ / 20 kΩ;
@@ -185,7 +184,7 @@ Stand 15.11.2026: Ableitung aus dem bereits dokumentierten Sensor-Pinout;
 | --- | ---: | --- | --- | --- |
 | R_DHT1–3 | 3 | 4,7 kΩ, bedrahteter Keramikwiderstand aus Nutzerbestand; Bauform/Belastbarkeit prüfen | bedingt, nach Kontrolle bereits vorhandener Pull-ups | DATA nach 3V3 |
 | R_DS18 | 1 | 4,7 kΩ, bedrahteter Keramikwiderstand aus Nutzerbestand; Bauform/Belastbarkeit prüfen | vorgesehen | DATA nach 3V3 |
-| R_RGB_R/G/B | 3 | **offen**, bedrahtete Positionen, Abmessungen offen | **DNP** bis LED-Typ und Sollstrom feststehen | je eine Strombegrenzung |
+| R_RGB_R/G/B | 3 | **220 Ω laut Nutzerangabe, elektrisch noch zu verifizieren**, bedrahtete Positionen, Abmessungen offen | **DNP** bis LED-Typ und Sollstrom feststehen | je eine Strombegrenzung |
 | R_PH_OBEN/UNTEN | 2 | **offen**, passende Widerstandspositionen vorsehen | **DNP** bis reale Eingangsbeschaltung und Kalibrierbezug geprüft | ADS1115 A0 |
 | R_I2C_ADS_SDA/SCL | 2 | **offen**, optionale bedrahtete Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO21/22 |
 | R_I2C_BH_SDA/SCL | 2 | **offen**, optionale bedrahtete Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO13/14 |
@@ -270,4 +269,4 @@ Vor Footprint-Freigabe sind Körperlänge/-durchmesser, Drahtdurchmesser, benöt
 
 ### Vorläufiger RGB-Widerstandsbestand (15.11.2026)
 
-Nutzerangabe **„Ich glaube zweimal 220“** im Kontext der RGB-Vorwiderstände: **vermutlich 2 × 220 Ω vorhanden, aber nicht bestätigt/gemessen**. Ein dritter RGB-Vorwiderstand ist hinsichtlich Wert und Bestand **noch offen**. Keine Zuordnung der beiden vermuteten 220-Ω-Widerstände zu Rot/Grün/Blau und keine Freigabe der Bestückungswerte ohne Prüfung der konkreten RGB-LED und ihrer zulässigen Ströme. Alle Widerstände **bedrahtet, keine SMD-Bauform**, gemäß Nutzerfestlegung.
+**Korrigierte Nutzerangabe:** **3 × 220 Ω** für die drei RGB-LED-Kanäle Rot, Grün und Blau. Alle drei Widerstände sind **bedrahtet, keine SMD-Bauform**, gemäß Nutzerfestlegung. **Die Werte sind als Nutzerangabe eingeplant; elektrische Eignung und reale Kennzeichnung der vorhandenen Bauteile sind noch nicht nachgemessen bzw. anhand des LED-Datenblatts verifiziert.**
