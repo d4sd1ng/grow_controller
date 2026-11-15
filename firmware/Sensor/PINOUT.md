@@ -364,3 +364,79 @@ Vor Footprint-Freigabe sind Körperlänge/-durchmesser, Drahtdurchmesser, benöt
 ### RGB-Vorwiderstände: bevorzugt einzelne 220 Ω je Farbe
 
 **Aktuelle Nutzerfestlegung (15.11.2026):** Keine zwei 220-Ω-Widerstände in Reihe, um 440 Ω zu bilden. Wenn elektrisch zulässig, **je ein einzelner bedrahteter 220-Ω-Vorwiderstand** für Rot (GPIO33), Grün (GPIO4) und Blau (GPIO17). Insgesamt drei Widerstände, **keine SMD-Bestückung** und **keine zusätzliche LED**. Die ältere Angabe von 3 × 440 Ω ist durch diese Festlegung ersetzt. Die 220-Ω-Werte sind ein **bevorzugter Bestückungsansatz**, keine verifizierte elektrische Freigabe: LED-Durchlassspannungen, gewünschte Ströme und GPIO-Toleranzen des tatsächlichen Moduls sind noch zu bestätigen. Beispiel bei 3,3 V: Rot mit Vf = 2,0 V ergibt ca. 5,9 mA; Grün/Blau mit Vf = 3,0 V ergeben ca. 1,4 mA. Diese Vf-Werte sind Rechenannahmen, keine Messungen.
+
+
+## Bildgestützter physischer Pinout-Abgleich (15.11.2026)
+
+**Quelle:** Die zwei vom Nutzer am 15.11.2026 hochgeladenen Produktbilder.
+Nicht mit elektrischer Durchgangsmessung verifiziert.
+
+### 30-Pin ESP32 DevKit — Kontaktpositionen aus dem Pinoutbild
+
+Zählweise der Abbildung: **linke Reihe von oben nach unten 1–15**,
+**rechte Reihe von unten nach oben 16–30**; Draufsicht mit
+Antennenende oben und USB unten.
+
+| Kontakt | Platinenbeschriftung | GPIO/Netz | Projektverwendung |
+| ---: | --- | --- | --- |
+| 1 | EN | EN | Reset/Enable, keine Sensorleitung |
+| 2 | VP | GPIO36 | derzeit frei |
+| 3 | VN | GPIO39 | derzeit frei |
+| 4 | D34 | GPIO34 | derzeit frei |
+| 5 | D35 | GPIO35 | derzeit frei |
+| 6 | D32 | GPIO32 | derzeit frei |
+| 7 | D33 | GPIO33 | RGB Rot |
+| 8 | D25 | GPIO25 | DHT22 #1 |
+| 9 | D26 | GPIO26 | DHT22 #2 |
+| 10 | D27 | GPIO27 | DHT22 #3 |
+| 11 | D14 | GPIO14 | BH1750 SCL |
+| 12 | D12 | GPIO12 | derzeit frei |
+| 13 | D13 | GPIO13 | BH1750 SDA |
+| 14 | GND | GND | Masse |
+| 15 | VIN / 5V | 5 V | 5-V-Pin; keine separate Einspeisung, USB-C-Versorgung |
+| 16 | 3V3 | 3,3 V | Sensor-Versorgung nach Reglerprüfung |
+| 17 | GND | GND | Masse |
+| 18 | D15 | GPIO15 | derzeit frei |
+| 19 | D2 | GPIO2 | derzeit frei |
+| 20 | D4 | GPIO4 | RGB Grün |
+| 21 | D16 | GPIO16 | Phasentaster |
+| 22 | D17 | GPIO17 | RGB Blau |
+| 23 | D5 | GPIO5 | Buzzer reserviert, deaktiviert |
+| 24 | D18 | GPIO18 | A02YYUW TX → UART RX |
+| 25 | D19 | GPIO19 | Wartungstaster |
+| 26 | D21 | GPIO21 | ADS1115 + MLX90640 SDA |
+| 27 | RX0 | GPIO3 | UART0 RX, derzeit frei |
+| 28 | TX0 | GPIO1 | UART0 TX, derzeit frei |
+| 29 | D22 | GPIO22 | ADS1115 + MLX90640 SCL |
+| 30 | D23 | GPIO23 | DS18B20 DATA |
+
+**Abgleich:** Alle bislang vorgesehenen projektseitigen Sensor-GPIOs sind
+in diesem 30-Pin-Bild vorhanden. Die Zahl des Steckkontakts ist
+**nicht** gleichbedeutend mit der GPIO-Nummer (z. B. Kontakt 7 = GPIO33).
+
+### ADS1115-Breakout — Kontaktfolge aus dem Foto
+
+Fotoorientierung: **Beschriftung auf der Bauteilseite lesbar**,
+10-polige Leiste links, **oben nach unten**:
+
+| Position | Aufdruck | Netzfunktion im Projekt |
+| ---: | --- | --- |
+| 1 | VDD | 3V3 |
+| 2 | GND | GND |
+| 3 | SCL | ESP32 Kontakt 29 = GPIO22 |
+| 4 | SDA | ESP32 Kontakt 26 = GPIO21 |
+| 5 | ADDR | GND für ADS-Adresse 0x48 laut Planung, tatsächliche Modulbeschaltung prüfen |
+| 6 | ALRT | derzeit unbenutzt, keinen GPIO verbinden |
+| 7 | A0 | pH-Eingangskreis, ungeprüft |
+| 8 | A1 | EC/TDS-Eingangskreis, ungeprüft |
+| 9 | A2 | derzeit unbenutzt |
+| 10 | A3 | derzeit unbenutzt |
+
+**Mechanik:** eine 1×10-Buchsenleiste, nominelles Pinraster 2,54 mm;
+Kontaktachse erster–letzter Pin = 22,86 mm. Die physische
+Bestückungsrichtung/Buchsenposition auf der neuen Platine muss so gewählt
+werden, dass diese **fotografierte Reihenfolge** erhalten bleibt.
+
+**Noch offen vor Herstellungsfreigabe:** echte ESP32-Modulvariante,
+Reihenmittenmaß, Rückseite/Orientierung, ADS1115-Modulumriss,
+USB-C-Freiraum, Versorgungskapazität und geprüfte Analogpegel.
