@@ -42,11 +42,9 @@ ihre Pinabstände, Höhen und USB-Zugänglichkeit.
 - **R_DS18 = 4,7 kΩ** von DATA/GPIO23 nach 3,3 V.
 - **R_RGB_R/G/B** = drei separate Vorwiderstandspositionen;
   **3 × 220 Ω als gewünschte Einzelbestückung**, elektrische Eignung der vorhandenen RGB-LED noch zu prüfen.
-- **R_PH_OBEN und R_PH_UNTEN** = zwei Widerstands-Footprints
-  für bisher dokumentierten Eingangsspannungsteiler A0. Die alte,
-  ausdrücklich **veraltete** Verkabelungsdatei nennt 10 kΩ / 20 kΩ;
-  bestehender realer Teiler und Kalibrierung sind vor Bestückung
-  zu messen/verifizieren. Keine Änderung ohne Neukalibrierungsbewertung.
+- **pH-Eingang A0 = PH4502C PO direkt**, wie in der späteren
+  Nutzerkorrektur zum vorhandenen Aufbau festgelegt. Der veraltete
+  10-/20-kΩ-Teiler wurde aus dem PCB entfernt; keine R_PH-Positionen.
 - **ADS1115 A1**: bislang kein Spannungsteiler bestätigt; etwaigen
   Überspannungsschutz erst nach verifiziertem Modulausgang festlegen.
 - **I2C SDA/SCL-Pull-ups**: auf vorhandenen ADS1115-, MLX90640- und
@@ -185,12 +183,12 @@ Stand 15.11.2026: Ableitung aus dem bereits dokumentierten Sensor-Pinout;
 | R_DHT1–3 | 3 | 4,7 kΩ, bedrahteter Keramikwiderstand aus Nutzerbestand; Bauform/Belastbarkeit prüfen | bedingt, nach Kontrolle bereits vorhandener Pull-ups | DATA nach 3V3 |
 | R_DS18 | 1 | 4,7 kΩ, bedrahteter Keramikwiderstand aus Nutzerbestand; Bauform/Belastbarkeit prüfen | vorgesehen | DATA nach 3V3 |
 | R_RGB_R/G/B | 3 | **220 Ω pro Kanal bevorzugt, elektrisch noch zu verifizieren**, bedrahtete Positionen, Abmessungen offen | **DNP** bis LED-Typ und Sollstrom feststehen | je eine Strombegrenzung |
-| R_PH_OBEN/UNTEN | 2 | **offen**, passende Widerstandspositionen vorsehen | **DNP** bis reale Eingangsbeschaltung und Kalibrierbezug geprüft | ADS1115 A0 |
 | R_I2C_ADS_SDA/SCL | 2 | **offen**, optionale bedrahtete Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO21/22 |
 | R_I2C_BH_SDA/SCL | 2 | **offen**, optionale bedrahtete Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO13/14 |
 
-**Summe der aufgeführten Widerstandspositionen: 13**
-(4 × 4,7-kΩ-Datenpull-up; 3 × RGB; 2 × pH; 4 × optionale I²C).
+**Summe der aufgeführten Widerstandspositionen: 11**
+(4 × 4,7-kΩ-Datenpull-up; 3 × RGB; 4 × optionale I²C).
+Kein pH-Spannungsteiler im aktuellen PCB.
 **Keine SMD-Widerstände:** vorhandene bedrahtete Keramikwiderstände verwenden. Konkrete Baugröße, Raster/Bohrungen und Leistungsdaten sind noch zu prüfen. Die optionale I²C-Bestückung erst nach Vermessung der Breakouts.
 
 ### 7.2 Nachgerechnete statische Pull-up-Last
@@ -270,3 +268,16 @@ Vor Footprint-Freigabe sind Körperlänge/-durchmesser, Drahtdurchmesser, benöt
 ### RGB-Vorwiderstände: bevorzugt einzelne 220 Ω je Farbe
 
 **Aktuelle Nutzerfestlegung (15.11.2026):** Keine Widerstände in Reihe schalten. Wenn elektrisch zulässig, **je ein einzelner bedrahteter 220-Ω-Vorwiderstand** für Rot (GPIO33), Grün (GPIO4) und Blau (GPIO17). Insgesamt drei Widerstände, **keine SMD-Bestückung** und **keine zusätzliche LED**. Die 220-Ω-Werte sind ein **bevorzugter Bestückungsansatz**, keine verifizierte elektrische Freigabe: LED-Durchlassspannungen, gewünschte Ströme und GPIO-Toleranzen des tatsächlichen Moduls sind noch zu bestätigen. Beispiel bei 3,3 V: Rot mit Vf = 2,0 V ergibt ca. 5,9 mA; Grün/Blau mit Vf = 3,0 V ergeben ca. 1,4 mA. Diese Vf-Werte sind Rechenannahmen, keine Messungen.
+
+## 8. Gerouteter Sensor-PCB-Kandidat (15.11.2026)
+
+**Aktuelle Datei:** `hardware/cad/sensor_pcb_routed_candidate.kicad_pcb`.
+Geroutet: alle 22 Mehrfachnetze, 1213 Leiterbahnsegmente und
+64 Vias; 25 Footprints, 100 Pads. Die 12 externen Sensoranschlüsse
+einschließlich J_MLX für die Kamera sind vorhanden. pH-PO und
+EC-Signal gehen ohne angenommene Zusatz-Widerstände direkt zu
+ADS1115 A0 bzw. A1. **Statische** Prüfung: 0 erkannte
+Netzunterbrechungen und 0 Fremdnetzkollisionen unter 0,2 mm;
+**kein KiCad-DRC** durchgeführt. Endgültiges Modul-/Klemmen-CAD,
+Mounting-Positionen und Fertigungsprüfung fehlen.
+Siehe `hardware/cad/sensor_pcb_routed_review.md`.
