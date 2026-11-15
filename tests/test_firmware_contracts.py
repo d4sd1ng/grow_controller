@@ -66,6 +66,24 @@ class FirmwareContractTests(unittest.TestCase):
             with self.subTest(pin=name):
                 self.assertRegex(self.sensor, rf"\b{name}\s*=\s*{pin}\s*;")
 
+    def test_a02yyuw_tank_level_readonly(self):
+        self.assertIn("PIN_LEVEL_UART_RX = 18;", self.sensor)
+        self.assertIn("LEVEL_UART_BAUD = 9600;", self.sensor)
+        self.assertIn("levelUart.begin(LEVEL_UART_BAUD, SERIAL_8N1, PIN_LEVEL_UART_RX, -1)", self.sensor)
+        self.assertIn("static void pollLevelSensor()", self.sensor)
+        self.assertIn("if (sum != levelFrame[3]) continue;", self.sensor)
+        self.assertIn("LEVEL_MEDIAN_COUNT = 5;", self.sensor)
+        self.assertIn("LEVEL_TIMEOUT_MS = 3000UL;", self.sensor)
+        self.assertIn("loadLevelCalibration();", self.sensor)
+        self.assertIn('LEVEL_CAL_NVS[] = "levelcal_v1"', self.sensor)
+        self.assertIn('"/api/local/level/calibration"', self.sensor)
+        self.assertIn("writeLevelMeasurement(reading);", self.sensor)
+        self.assertIn("writeLevelMeasurement(root);", self.sensor)
+        self.assertIn('obj["level_liters"] = nullptr;', self.sensor)
+        self.assertIn('obj["level_percent"] = nullptr;', self.sensor)
+        self.assertIn("reading[\"extras\"][\"level_liters\"]", self.remote)
+        self.assertIn("Tank: Füllstandssensor nicht verfügbar", self.remote)
+
     def test_headless_sensor_and_visible_readings(self):
         # Sensor board has no OLED; I2C must still serve ADS1115 and BH1750.
         for removed in ("Adafruit_GFX.h", "Adafruit_SSD1306.h",
