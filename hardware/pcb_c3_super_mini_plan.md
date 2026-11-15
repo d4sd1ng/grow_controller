@@ -177,3 +177,72 @@ unabhängig gelöst werden. Die Firmware bleibt derzeit gesperrt.
 **Status:** Funktionsaufteilung und Anschlussgruppen dokumentiert;
 MOSFET-Schaltung, reale Bauteil-Footprints, Platinenmaße, DRC und
 Fertigungsdateien weiterhin offen.
+
+
+## 15.11.2026 — Steckverbinder: ausgewählte Baureihe und PCB-Stückzahlen
+
+**Vorgesehene Baureihe:** Phoenix Contact COMBICON MSTB 2,5,
+Raster **5,08 mm**, steckbare Schraubklemmen, Leiterplatten-Grundleisten.
+Nur **Kleinspannung** auf dieser Platine, keine 230-V-Lastanschlüsse.
+
+Datenblattbestätigte zusammenpassende Serien:
+- 2-polige PCB-Grundleiste `MSTBA 2,5/ 2-G-5,08`,
+  Hersteller-Nr. **1757242**, und 2-poliger Schraubstecker
+  `MSTB 2,5/ 2-ST-5,08`, Hersteller-Nr. **1757019**.
+- 3-polige PCB-Grundleiste `MSTBA 2,5/ 3-G-5,08`,
+  Hersteller-Nr. **1757255**, und 3-poliger Schraubstecker
+  `MSTB 2,5/ 3-ST-5,08`, Hersteller-Nr. **1757022**.
+
+### Anschlussbudget (Steckplätze)
+
+| Beschriftung | Anzahl | Pole je Platz | Verbinderklasse | Status |
+| --- | ---: | ---: | --- | --- |
+| PWR-12V | 1 | 2 | MSTB 5,08 | 12-V-Niederspannung, Auslegung offen |
+| SSR-01 … SSR-05 | 5 | 2 | MSTB 5,08 | Nur Steuersignale; individuelle SSR-Prüfung nötig |
+| FAN-01 … FAN-02 | 2 | 3 | MSTB 5,08 | Drei Anschlusspositionen reserviert, tatsächliche Belegung offen |
+| MOTOR-01 … MOTOR-06 | 6 | 2 | MSTB 5,08 | Mechanische Reservierung; aktive Ansteuerung nicht freigegeben |
+
+**Summe:** 12 zweipolige und 2 dreipolige Steckplätze
+(14 Grundleisten + 14 Gegenstecker). Davon sind sechs
+zweipolige Plätze für die Motor-Anschlussgruppe reserviert.
+Der Anschluss von Pumpe 1 für konzentriertes pH-Minus erhält
+aus dieser reinen Steckverbinderplanung **keine** elektrische
+Freigabe oder Ansteuerungsanleitung.
+
+Die 3-poligen Lüfter-Steckplätze sind **mechanische Reserven**
+für unterschiedliche Signalarten; eine konkrete
+Pinbelegung ist nicht entschieden.
+
+### PCB-Stückliste: Steckverbinder als Planungsbasis
+
+| Hersteller-Nr. | Typ | Anzahl |
+| --- | --- | ---: |
+| 1757242 | MSTBA 2,5/ 2-G-5,08, Grundleiste 2-polig | 12 |
+| 1757019 | MSTB 2,5/ 2-ST-5,08, Stecker 2-polig | 12 |
+| 1757255 | MSTBA 2,5/ 3-G-5,08, Grundleiste 3-polig | 2 |
+| 1757022 | MSTB 2,5/ 3-ST-5,08, Stecker 3-polig | 2 |
+
+Die Steckerserie wurde für Raster, dokumentierte Paarung und
+Lösbarkeit ausgewählt. Die Hersteller-Nennstromwerte bedeuten
+**keine Freigabe** des Gesamtsystems: Leiter, Leiterbahnen,
+Eingangskreise, Absicherung, Belastung und Temperatur müssen
+separat geprüft werden.
+
+### Noch zu verifizieren (vor Footprint-/Gehäusefreigabe)
+
+1. Exakte Körper- und Einbaumaße inklusive Einsteckraum sowie
+   Leitungsabgang aus **aktuellem** Hersteller-CAD-/Datenblatt.
+2. Schaltsignal- und Strombedarf der SSR-Eingänge.
+3. Typ und Schnittstelle der Lüfter.
+4. Physisches Netzteil-/Logikversorgungs-Konzept, einschließlich
+   separater LOGIC-PWR-Quelle. USB-C am C3 ist weiterhin
+   als Servicezugang vorgesehen.
+5. Passende Kabeleinführungen, Zugentlastung und mechanische
+   Verwechslungsgefahr gleichartiger Stecker; eindeutige
+   Beschriftungen, ggfs. codierte Alternativen.
+6. Eine separate mechanisch/elektrisch geprüfte Lösung
+   für die chemische Dosierpumpe, bevor diese betrieben wird.
+
+Quellen:
+- https://www.phoenixcontact.com/en-de/products/pcb-connector-mstb-25-3-st-508-1757022
+- https://assets.rs-online.com/image/upload/v1698744215/Datasheets/9a177187be001fcb7f378a85a8dbc040.pdf
