@@ -183,17 +183,16 @@ Stand 15.11.2026: Ableitung aus dem bereits dokumentierten Sensor-Pinout;
 
 | Referenz | Anzahl | Wert / Typ | Bestückungsstatus | Grund |
 | --- | ---: | --- | --- | --- |
-| R_DHT1–3 | 3 | 4,7 kΩ, beispielhaft 0805, >=0,125 W | bedingt, nach Kontrolle bereits vorhandener Pull-ups | DATA nach 3V3 |
-| R_DS18 | 1 | 4,7 kΩ, beispielhaft 0805, >=0,125 W | vorgesehen | DATA nach 3V3 |
-| R_RGB_R/G/B | 3 | **offen**, 0805-Positionen möglich | **DNP** bis LED-Typ und Sollstrom feststehen | je eine Strombegrenzung |
+| R_DHT1–3 | 3 | 4,7 kΩ, bedrahteter Keramikwiderstand aus Nutzerbestand; Bauform/Belastbarkeit prüfen | bedingt, nach Kontrolle bereits vorhandener Pull-ups | DATA nach 3V3 |
+| R_DS18 | 1 | 4,7 kΩ, bedrahteter Keramikwiderstand aus Nutzerbestand; Bauform/Belastbarkeit prüfen | vorgesehen | DATA nach 3V3 |
+| R_RGB_R/G/B | 3 | **offen**, bedrahtete Positionen, Abmessungen offen | **DNP** bis LED-Typ und Sollstrom feststehen | je eine Strombegrenzung |
 | R_PH_OBEN/UNTEN | 2 | **offen**, passende Widerstandspositionen vorsehen | **DNP** bis reale Eingangsbeschaltung und Kalibrierbezug geprüft | ADS1115 A0 |
-| R_I2C_ADS_SDA/SCL | 2 | **offen**, optionale 0805-Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO21/22 |
-| R_I2C_BH_SDA/SCL | 2 | **offen**, optionale 0805-Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO13/14 |
+| R_I2C_ADS_SDA/SCL | 2 | **offen**, optionale bedrahtete Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO21/22 |
+| R_I2C_BH_SDA/SCL | 2 | **offen**, optionale bedrahtete Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO13/14 |
 
 **Summe der aufgeführten Widerstandspositionen: 13**
 (4 × 4,7-kΩ-Datenpull-up; 3 × RGB; 2 × pH; 4 × optionale I²C).
-Die 0805-Bauform ist ein **vorläufiger Vorschlag**, kein Nutzer-beschlossener
-Gehäusetyp. Die optionale I²C-Bestückung erst nach Vermessung der Breakouts.
+**Keine SMD-Widerstände:** vorhandene bedrahtete Keramikwiderstände verwenden. Konkrete Baugröße, Raster/Bohrungen und Leistungsdaten sind noch zu prüfen. Die optionale I²C-Bestückung erst nach Vermessung der Breakouts.
 
 ### 7.2 Nachgerechnete statische Pull-up-Last
 
@@ -261,4 +260,10 @@ Leitungsabgang und Befestigungsbohrungen.
 
 ### LED-Bestückung: ausschließlich vorhandene externe RGB-LED
 
-**Verbindliche Nutzerfestlegung (15.11.2026):** Die einzige vorgesehene Status-LED ist die **bereits vorhandene externe RGB-LED mit gemeinsamer Kathode**. Sie wird über den dokumentierten vierpoligen Stecker `LED-RGB` (R=GPIO33, G=GPIO4, B=GPIO17, gemeinsame Kathode=GND) angeschlossen. Auf der Trägerplatine **keine zusätzlichen SMD-LEDs, keine Power-LEDs, keine separaten Status-LEDs** vorsehen. Die drei erforderlichen **Vorwiderstände** dürfen weiterhin als SMD-Widerstände (vorläufig 0805) auf der Platine liegen; das sind keine LEDs. Die Vorwiderstandswerte bleiben bis zur Spezifikation der vorhandenen RGB-LED offen. Diese Festlegung betrifft die Trägerplatine; integrierte LEDs auf fertig gekauften ESP32-Modulen sind keine zusätzlich zu bestückenden Leiterplatten-LEDs.
+**Verbindliche Nutzerfestlegung (15.11.2026):** Die einzige vorgesehene Status-LED ist die **bereits vorhandene externe RGB-LED mit gemeinsamer Kathode**. Sie wird über den dokumentierten vierpoligen Stecker `LED-RGB` (R=GPIO33, G=GPIO4, B=GPIO17, gemeinsame Kathode=GND) angeschlossen. Auf der Trägerplatine **keine zusätzlichen SMD-LEDs, keine Power-LEDs, keine separaten Status-LEDs** vorsehen. Die drei erforderlichen **Vorwiderstände** werden als vorhandene **bedrahtete Keramikwiderstände** auf der Platine vorgesehen; keine SMD-Widerstände und keine zusätzlichen LEDs. Die Vorwiderstandswerte sowie Körper- und Drahtmaße bleiben bis zur Prüfung der vorhandenen RGB-LED und Widerstände offen. Diese Festlegung betrifft die Trägerplatine; integrierte LEDs auf fertig gekauften ESP32-Modulen sind keine zusätzlich zu bestückenden Leiterplatten-LEDs.
+
+### Widerstands-Bauform: Nutzerbestand, keine SMD-Widerstände
+
+Verbindliche Nutzerfestlegung vom 15.11.2026: **Auf der Sensor-Trägerplatine keine SMD-Widerstände bestücken.** Sämtliche geplanten Widerstandspositionen sind für **vorhandene bedrahtete Keramikwiderstände** auszulegen. Das betrifft DHT22-/DS18B20-Pull-ups, RGB-Vorwiderstände, optional bestückbare I²C-Pull-ups sowie die beiden pH-Eingangswiderstände. **SMD-/0805-Vorschläge aus früheren Planungsständen sind hiermit überholt.**
+
+Vor Footprint-Freigabe sind Körperlänge/-durchmesser, Drahtdurchmesser, benötigtes Anschlussraster, Widerstandswerte und zulässige Verlustleistung der tatsächlich vorhandenen Widerstände zu prüfen. Die frühere elektrische Vorgabe **4,7 kΩ** für vier Daten-Pull-ups wird dadurch nicht geändert; für alle weiteren Positionen bleiben Werte unbestätigt. „Keramikwiderstand“ allein belegt weder Wert noch Bauform.
