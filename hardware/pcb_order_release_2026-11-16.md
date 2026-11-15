@@ -164,3 +164,7 @@ Nutzerbild vom 15.11.2026: zeigt einen **30-Pin-ESP32-Entwicklungsboard** mit se
 ### Präzisierung: ca. 26 mm Abstand laut Adapterabbildung (15.11.2026)
 
 Korrektur der bisherigen Bildinterpretation: Die Maßlinie zwischen den **inneren** Buchsenleisten ist in der Abbildung mit **„2.6 mm / 1.02 in“** bezeichnet. Der Millimetertext enthält ersichtlich einen Faktor-10-Fehler: **1,02 Zoll = 25,908 mm**, also **ca. 26 mm**. Dieses Bildmaß ist eine **Annäherung**, kein bestätigtes 25,4-mm- oder 26,0-mm-Nennmaß. **25,4 mm = 10 × 2,54 mm** wäre ein mögliches standardisiertes Reihenmaß, darf aber ohne Prüfung der realen Buchsenanordnung nicht als fertiger Footprint fixiert werden. Die früher genannten **35–36 mm** sind nicht der innere Reihenabstand.
+
+### Vorläufiges Konstruktionsmaß: Sensor-ESP32 25,40 mm
+
+Nutzer hält den aus der Produktabbildung abgeleiteten Standard-Reihenabstand von **25,40 mm** für wahrscheinlich. Für den 30-Pin-Sensor-ESP32 wird deshalb **2 × 15 Buchsenleisten mit 2,54 mm Längsraster und vorläufig 25,40 mm Reihenmittenabstand** als Konstruktionsansatz geführt. Modulaußenmaße laut Bild: 28 × 51 mm. **Status: vorläufig, nicht gemessen; keine Fertigungsfreigabe**, bis die reale Modulgeometrie bestätigt wurde. Die nominalen 25,40 mm dürfen nicht als bereits verifiziert ausgegeben werden.
