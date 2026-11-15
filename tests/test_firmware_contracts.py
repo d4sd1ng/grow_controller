@@ -145,7 +145,21 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertIn('grow_clock::evaluateCycle', self.sensor)
         self.assertIn('stopCompletedCycle()', self.sensor)
         self.assertIn('if (state.finished && !cycleStopped)', self.sensor)
-        self.assertIn('if (growPhase != desiredPhase)', self.sensor)
+        # Die Uhr zaehlt Wochen, aber sie darf eine manuelle Phase nie ueberschreiben.
+        self.assertNotIn('if (growPhase != desiredPhase)', self.sensor)
+        self.assertNotIn('const GrowPhase desiredPhase = state.bloom', self.sensor)
+        self.assertIn('loadGrowPhase();  // Vor der Uhr', self.sensor)
+        self.assertIn('loadPhaseProfile();', self.sensor)
+        self.assertIn('prefs.putBool("pending", true)', self.sensor)
+        self.assertIn('const bool pending = prefs.getBool("pending", false)', self.sensor)
+        self.assertIn('prefs.putBool("pending", false)', self.sensor)
+        self.assertIn('setGrowWeek(next == GrowPhase::Bluete ? 3 : 1)', self.sensor)
+        self.assertIn('if (!beginPhaseClock(next))', self.sensor)
+        self.assertNotIn('if (cycleStopped || (!phaseStartEpoch && !phaseClockPending)) next = GrowPhase::Wuchs;', self.sensor)
+        setup = self.sensor.split('void setup() {', 1)[1].split('void loop() {', 1)[0]
+        self.assertLess(setup.find('loadGrowPhase();'), setup.find('loadPhaseClock();'))
+        self.assertEqual(setup.count('loadGrowPhase();'), 1)
+
         self.assertIn('prefs.putBool("stopped", stopped)', self.sensor)
         self.assertIn('d["cycle_stopped"]', self.c3)
         self.assertIn('doc["cycle_stopped"]', self.sensor)
