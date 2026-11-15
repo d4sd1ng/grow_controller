@@ -359,3 +359,9 @@ ausschließlich über USB-C am Modul oder von einer separaten
 Strombelastung des Modulreglers und Rückspeisepfade.
 Diese Fragen müssen vor einem elektrischen PCB-Schaltplan
 geklärt werden. Keine parallelen Einspeisungen ohne Prüfung.
+
+### C3-Versorgung: 5 V (Nutzervorgabe 15.11.2026)
+
+**Festgelegt:** Auch das steckbare ESP32-C3-Super-Mini-Modul wird mit **5 V** versorgt, analog zum Sensor-ESP32. Die 5-V-Zuführung ist an den vorgesehenen 5-V-Eingang des konkreten Super-Mini-Boards zu führen; **keine 5 V an 3V3 oder GPIOs**. Die 12-V-Pumpenlastversorgung bleibt davon getrennt. Der PCA9685 ist mit kompatibler 3,3-V-Logikversorgung zu planen.
+
+**Weiterhin offen:** Ob die 5 V aus einer separaten USB-C-Zuführung oder einer verifizierten 5-V-Schiene auf der Trägerplatine kommen, die Stromreserve und der Rückspeiseschutz bei angeschlossenem USB-C. Keine zweite gleichzeitige Einspeisung ohne Prüfung der Board-Schaltung vorsehen.
