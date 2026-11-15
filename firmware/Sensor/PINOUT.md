@@ -158,6 +158,47 @@ Adresskonfiguration separat zu prüfen.
 vorgesehen (3 DHT22 und 1 DS18B20); die I²C-Pull-ups sind
 noch abhängig vom realen Modul zu verifizieren.
 
+### Steckanschlüsse und Eingangsbeschaltung für pH und EC/TDS
+
+Auf der **Sensor-ESP32-Platine** zwei separate, abziehbare
+**3-polige** Anschlüsse in der bisher vorgesehenen Baureihe
+Phoenix Contact MSTB 2,5 / 5,08 mm vorsehen:
+
+| Anschluss | Kontakt 1 | Kontakt 2 | Kontakt 3 | ADS1115 |
+| --- | --- | --- | --- | --- |
+| PH-4502C | 5 V | GND | PO (Analogsignal) | A0 |
+| EC-TDS | 5 V | GND | Analogsignal | A1 |
+
+Dies ist die **Belegung der Platinenstecker**, nicht die unbestätigte
+Reihenfolge am Sensormodul. Vom Modul müssen nur die tatsächlich
+benötigten analogen Signale geführt werden; PH4502C DO/TO werden
+von der aktuellen Firmware nicht ausgewertet.
+
+**ADS1115 A0:** Im ausdrücklich als **veraltet** gekennzeichneten
+`wiring_plan_v2.md` ist ein Spannungsteiler **10 kΩ vom
+PH4502C-PO-Signal zum A0-Knoten und 20 kΩ von A0 nach GND**
+dokumentiert. Für die neue Platine werden deshalb **zwei
+Widerstandspositionen R_PH_OBEN/R_PH_UNTEN** reserviert. Ihre
+Bestückungswerte werden erst nach Abgleich des tatsächlich
+betriebenen Aufbaus freigegeben. **Änderungen des Teilungsverhältnisses
+beeinflussen die gespeicherte pH-Kalibrierung.**
+
+**ADS1115 A1:** Das bisher dokumentierte CQRobot-TDS-Analogsignal
+wurde **ohne Spannungsteiler** an A1 geführt; ein fester
+Widerstandswert für A1 ist aktuell **nicht bestätigt**.
+Signalpegel und gegebenenfalls benötigter Eingangsschutz müssen
+elektrisch geprüft werden. Der ADS1115 wird mit 3,3 V betrieben;
+ein eingestellter Messbereich von ±4,096 V macht seine Eingänge
+nicht 5-V-tolerant.
+
+**Steckverbinder-Budget dieser Erweiterung:** zwei zusätzliche
+3-polige Grundleisten `1757255` und zwei Gegenstecker `1757022`.
+Damit sind bei den hier dokumentierten Sensoren insgesamt
+**7 × 3-polig** (3 × DHT22, 1 × DS18B20, 1 × A02YYUW, pH, EC)
+plus **1 × 4-polig** (BH1750) vorgesehen. Hinzu kommen vier
+bisher festgelegte 4,7-kΩ-Pull-ups (DHT22 und DS18B20); die
+pH-Teilerwerte und die I²C-Pull-ups sind separat zu verifizieren.
+
 Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
 
 Versorgung und Masse sowie physische Pinpositionen sind anhand des tatsächlich verbauten Pro-Boards zu verifizieren. Keine Netzspannungs-/SSR-Lastverkabelung am Sensorcontroller.
