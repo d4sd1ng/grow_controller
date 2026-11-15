@@ -270,6 +270,7 @@ static bool setGrowWeekManually(int week);
 static void loadPhaseClock();
 static void pollPhaseClock();
 static bool setPhaseClockEpoch(uint32_t startEpoch);
+static time_t validatedUtcNow();
 static PhaseProfile blueteProfile = {NAN, NAN, false};
 static constexpr char PHASE_PROFILE_NVS[] = "phaseprof_v1";
 static constexpr char PHASE_NVS[] = "growphase_v1";
@@ -341,30 +342,38 @@ static void loadGrowPhase() {
       phaseName(growPhase), phaseProfile().configured ? "bereit" : "FEHLT");
 }
 static void setGrowPhase(GrowPhase next) {
-  // Ohne gestarteten Durchlauf oder nach STOP beginnt der physische Taster
-  // einen kompletten NEUEN Durchlauf in Wachstum.
-  if (cycleStopped || (!phaseStartEpoch && !phaseClockPending)) next = GrowPhase::Wuchs;
-  if (next == growPhase && phaseStartEpoch && !cycleStopped) return;
-  growPhase = next;
-  refreshPhaseRgb();
+  // Der physische Taster und die API sind verbindlich: eine explizite
+  // Phasenwahl darf von der Wochenuhr NICHT rueckgaengig gemacht werden.
+  if (next == growPhase && phaseStartEpoch && !cycleStopped && !phaseClockPending)
+    return;
   Preferences prefs;
-  bool saved = false;
-  if (prefs.begin(PHASE_NVS, false)) {
-    saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) == sizeof(uint8_t);
-    prefs.end();
+  if (!prefs.begin(PHASE_NVS, false)) {
+    Serial.println(F("PHASENWECHSEL ABGELEHNT: NVS nicht verfuegbar."));
+    return;
   }
-  // Phasenwechsel startet W1 (Wuchs) oder W3 (Blueteeinleitung).
-  // Die 7-Tage-Fortschaltung benoetigt eine gueltige UTC-Zeit.
+  const bool saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) ==
+                     sizeof(uint8_t);
+  prefs.end();
+  if (!saved) {
+    Serial.println(F("PHASENWECHSEL ABGELEHNT: NVS-Schreibfehler."));
+    return;
+  }
+  growPhase = next;
+  // Nur ein ausdruecklicher manueller Wechsel richtet die Phasenuhr neu
+  // aus: Wuchs startet W1, Bluete startet W3. Kein automatischer Reset.
+  if (!beginPhaseClock(next))
+    Serial.println(F("PHASEN-UHR: UTC noch nicht verfuegbar; Auswahl gespeichert, Zeitstart ausstehend."));
   if (!setGrowWeek(next == GrowPhase::Bluete ? 3 : 1))
     Serial.println(F("WARNUNG: Phasenwoche konnte nicht gespeichert werden."));
-  if (!beginPhaseClock(next))
-    Serial.println(F("PHASEN-UHR: Startzeit ausstehend; NTP wird benoetigt."));
   targets = ActuatorState{};
   ++commandSeq;
-  Serial.printf("PHASE -> %s | Profil %s | Speicher %s\n",
-      phaseName(growPhase), phaseProfile().configured ? "OK" : "NICHT KONFIGURIERT",
-      saved ? "OK" : "FEHLER");
+  refreshPhaseRgb();
+  Serial.printf("PHASE MANUELL -> %s | Profil %s | NVS OK | Uhr %s\n",
+      phaseName(growPhase),
+      phaseProfile().configured ? "OK" : "NICHT KONFIGURIERT",
+      phaseClockPending ? "wartet auf NTP" : "gespeichert");
 }
+
 static void pollGrowPhaseButtons(unsigned long nowMs) {
   (void)nowMs;
   uint32_t pressedCount;
@@ -475,7 +484,8 @@ static bool persistPhaseClock(uint32_t startEpoch, bool stopped = false) {
   if (!prefs.begin(PHASE_CLOCK_NVS, false)) return false;
   const bool saved =
       prefs.putUInt("start", startEpoch) == sizeof(uint32_t) &&
-      prefs.putBool("stopped", stopped) == 1;
+      prefs.putBool("stopped", stopped) == sizeof(bool) &&
+      prefs.putBool("pending", false) == sizeof(bool);
   prefs.end();
   return saved;
 }
@@ -492,17 +502,40 @@ static bool setPhaseClockEpoch(uint32_t startEpoch) {
   return true;
 }
 static bool beginPhaseClock(GrowPhase next) {
-  // Manueller Phasenwechsel setzt den Start einer neuen 13-Wochen-Runde.
-  // Bei ausdruecklich vorgezogener Bluete wird W3 als Startpunkt verwendet.
+  // Nur eine explizite Phasenwahl setzt die zeitliche Referenz:
+  // Wuchs beginnt in W1; Bluete beginnt in W3.
+  const bool bloom = next == GrowPhase::Bluete;
+  const time_t now = validatedUtcNow();
+  if (now) {
+    const uint32_t offset = bloom ? 2U * PHASE_WEEK_SECONDS : 0U;
+    if (setPhaseClockEpoch(static_cast<uint32_t>(now) - offset)) {
+      phaseClockPendingBloom = bloom;
+      return true;
+    }
+    Serial.println(F("FEHLER: Phasenuhr konnte nicht in NVS gespeichert werden."));
+  }
+  // Bei noch fehlender UTC keinen alten Zeitstempel als neue Phase
+  // weiterbenutzen. Den ausstehenden Start ueber Neustarts erhalten.
+  Preferences prefs;
+  bool saved = false;
+  if (prefs.begin(PHASE_CLOCK_NVS, false)) {
+    saved = prefs.putUInt("start", 0U) == sizeof(uint32_t) &&
+            prefs.putBool("stopped", false) == sizeof(bool) &&
+            prefs.putBool("pending_bloom", bloom) == sizeof(bool) &&
+            prefs.putBool("pending", true) == sizeof(bool);
+    prefs.end();
+  }
+  if (!saved) {
+    Serial.println(F("FEHLER: ausstehender Phasenstart nicht in NVS gespeichert."));
+    // Zeit bleibt absichtlich gesperrt statt einen falschen Start zu erfinden.
+  }
   phaseStartEpoch = 0;
   phaseDurationElapsed = false;
   cycleStopped = false;
   phaseClockPending = true;
-  phaseClockPendingBloom = next == GrowPhase::Bluete;
-  const time_t now = validatedUtcNow();
-  if (!now) return false;
-  const uint32_t offset = phaseClockPendingBloom ? 2U * PHASE_WEEK_SECONDS : 0U;
-  return setPhaseClockEpoch(static_cast<uint32_t>(now) - offset);
+  phaseClockPendingBloom = bloom;
+  lastPhaseClockPollMs = 0;
+  return false;
 }
 static void loadPhaseClock() {
   Preferences prefs;
@@ -512,7 +545,18 @@ static void loadPhaseClock() {
   }
   const uint32_t saved = prefs.getUInt("start", 0);
   const bool stopped = prefs.getBool("stopped", false);
+  const bool pending = prefs.getBool("pending", false);
+  const bool pendingBloom = prefs.getBool("pending_bloom", false);
   prefs.end();
+  if (pending) {
+    phaseStartEpoch = 0;
+    cycleStopped = false;
+    phaseClockPending = true;
+    phaseClockPendingBloom = pendingBloom;
+    Serial.printf("DURCHLAUF: manuelle Phase %s gespeichert; Uhrstart wartet auf NTP.\n",
+                  phaseName(growPhase));
+    return;
+  }
   if (saved >= static_cast<uint32_t>(PHASE_MIN_VALID_UNIX)) {
     phaseStartEpoch = saved;
     cycleStopped = stopped;
@@ -571,22 +615,8 @@ static void pollPhaseClock() {
   const grow_clock::CycleState state =
       grow_clock::evaluateCycle(phaseStartEpoch, static_cast<uint32_t>(now));
   if (!state.valid) return;
-  // Nach zwei Wochen AUTOMATISCH in die Blueteeinleitung wechseln.
-  const GrowPhase desiredPhase = state.bloom ? GrowPhase::Bluete : GrowPhase::Wuchs;
-  if (growPhase != desiredPhase) {
-    growPhase = desiredPhase;
-    Preferences prefs;
-    bool saved = false;
-    if (prefs.begin(PHASE_NVS, false)) {
-      saved = prefs.putUChar("phase", static_cast<uint8_t>(growPhase)) == sizeof(uint8_t);
-      prefs.end();
-    }
-    targets = ActuatorState{};
-    ++commandSeq;
-    Serial.printf("AUTOMATISCHER PHASENWECHSEL: %s | NVS: %s\n",
-                  phaseName(growPhase), saved ? "OK" : "FEHLER");
-    refreshPhaseRgb();
-  }
+  // Keine zeitbasierte Phasenumstellung: manuell gewaehlte Phase bleibt
+  // ueber Wochenwechsel und Stromausfall bestehen, bis der Nutzer sie aendert.
   if (state.totalWeek != growWeek && !setGrowWeek(state.totalWeek))
     Serial.println(F("DURCHLAUF: Wochenstand konnte nicht gespeichert werden."));
   if (state.finished && !cycleStopped) stopCompletedCycle();
@@ -2298,8 +2328,10 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   setupGrowPhaseButtons();
+  loadPhaseProfile();
+  loadGrowPhase();  // Vor der Uhr den verbindlichen NVS-Phasenstatus laden.
   loadGrowWeek();
-  loadPhaseClock();
+  loadPhaseClock(); // Gespeicherten Start wiederherstellen, NICHT neu starten.
   setupPhBuzzer();
   Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
   loadPhCalibration();
