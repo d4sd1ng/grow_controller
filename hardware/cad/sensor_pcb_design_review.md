@@ -23,10 +23,11 @@
 ### Steckverbinder-Geometrie
 
 Phoenix Contact **MSTBA 2,5/..-G-5,08**, Raster 5,08 mm.
-Für die ausgewählten zwei- und vierpoligen Grundleisten gibt der
-Hersteller einen **PCB-Bohrlochdurchmesser von 1,4 mm** an; bei der
-dreipoligen Ausführung aus derselben Modellfamilie ist der Lochwert
-noch gegen genau deren Datenblatt zu kontrollieren.
+Der Hersteller gibt für **alle drei exakt ausgewählten Grundleisten**
+(1757242 = 2-polig, 1757255 = 3-polig, 1757268 = 4-polig)
+einen **PCB-Bohrlochdurchmesser von 1,4 mm** bei 5,08-mm-Pinraster an.
+Dieser zuvor offene Punkt ist somit anhand der Originalproduktseiten
+**geschlossen**.
 
 Im CAD sind nun **38 Kontaktbohrungen mit 1,4 mm Durchmesser** und
 provisorisch **2,5-mm-Rundpads** hinterlegt. **Pad-Außendurchmesser
@@ -37,6 +38,7 @@ CAD-Konturen ersetzt werden.
 
 Hersteller:
 - https://www.phoenixcontact.com/de-de/produkte/leiterplattengrundleiste-mstba-25-2-g-508-1757242
+- https://www.phoenixcontact.com/de-de/produkte/leiterplattengrundleiste-mstba-25-3-g-508-1757255
 - https://www.phoenixcontact.com/de-de/produkte/leiterplattengrundleiste-mstba-25-4-g-508-1757268
 
 ## 2. Kritische, aktuell nicht geschlossene Netze
@@ -90,3 +92,63 @@ herstellerseitige Komplett-Footprint-Verifikation,
 Gerber- und Excellon-Ausgabe.
 
 **Nicht zur Herstellung einreichen.**
+
+## 5. Neue Fertigungsprüfung: Kontaktgehäuse und Netzgrenzen (15.11.2026)
+
+- Die 12 Phoenix-Stecker im KiCad-Vorentwurf haben jetzt **vorläufige
+  12-mm-tiefe F.Fab-Konturen**; die **herstellerbestätigten** Gehäusebreiten
+  sind je nach Polzahl 12,16 mm (2-polig), 17,24 mm (3-polig) und
+  22,32 mm (4-polig). 5,08-mm-Raster und 1,4-mm-Bohrung sind bestätigt.
+- Die Connector-Platzhalter wurden um 4 mm nach rechts verschoben,
+  die sechs unteren Stecker in einen vorläufigen Innenbereich bei Y=114 mm.
+  **PCB-Außenmaß bleibt ein Entwurf von 179 × 115 mm**; es wurde nicht
+  vom Nutzer als Gehäusemaß freigegeben.
+- Das mechanische Rechteck ist weiterhin **kein vollständiges Phoenix-
+  Hersteller-Footprint**: Steckrichtung, Einsteckbereich und die tatsächliche
+  Lage des Kunststoffgehäuses gegenüber der Lochreihe müssen mit
+  Hersteller-CAD abgeglichen werden. DRC/3D-Kollisionsprüfung fehlt.
+
+### Herstellerbelegte Sensorversorgung
+
+Der echte **DFRobot A02YYUW (SEN0311)** ist laut Hersteller für
+**3,3–5,0 V** mit typischen maximal **8 mA Durchschnittsstrom** vorgesehen.
+Ausgang UART 9600 Baud mit vier Sensorkontakten VCC, GND, RX, TX;
+**RX darf offen bleiben** (herstellerseitiger Modus für
+verarbeitete, stabilisierte Werte). Die von uns geplante
+3-polige Verbindung VCC/TX/GND ist damit auf **diesen
+Herstellersensor** bezogen technisch plausibel. Bei baugleichen
+Nachbauten ist die elektrische Identität noch zu prüfen.
+Quelle: https://wiki.dfrobot.com/sen0311/
+
+Die **MLX90640 ist nicht vergessen**: Stecker J_MLX vierpolig,
+SDA GPIO21/SCL GPIO22, Sensoradresse 0x33. Für konkret untersuchte
+Breakouts von Adafruit oder Pimoroni sind 3,3 V zulässig; die
+tatsächliche Breakout-Variante des Nutzers bleibt zu identifizieren.
+Quellen:
+- https://learn.adafruit.com/adafruit-mlx90640-ir-thermal-camera/pinouts
+- https://shop.pimoroni.com/products/mlx90640-thermal-camera-breakout
+
+### Relevante ADS1115-Grenzwerte (TI-Datenblatt SBAS444E)
+
+- **Empfohlener analoger Arbeitsbereich:** GND bis VDD.
+- **Absolute Grenzwerte:** GND−0,3 V bis VDD+0,3 V.
+- Bei ADS1115-VDD = 3,3 V sind also **0 bis 3,3 V im zulässigen
+  Arbeitsbereich**, **3,6 V lediglich absolute Obergrenze**,
+  ausdrücklich keine normale Zielspannung.
+- Ein angezeigter PGA-Messbereich von ±4,096 V oder ±6,144 V ist **kein**
+  Nachweis einer 5-V-toleranten Analogeingangsstufe.
+- Der tatsächliche PH4502C-PO-Pegel und die Ausgangspegel des EC-Moduls
+  unter allen Betriebsbedingungen müssen vor dem Anschluss nachgewiesen
+  werden; **keine erdachte Spannungsteilerbestückung und kein
+  Direktanschluss unbewiesener 5-V-Signale**.
+
+TI-Quelle: https://www.ti.com/lit/ds/symlink/ads1115.pdf
+
+### Status der elektrischen Verbindungen
+
+**Noch nicht freigegeben:** 3,3-V-Gesamtstrom (ESP32-Boardregler
+unbekannt), PH4502C-GND-Topologie, A0-Spannungsteiler,
+EC-A1-Eingangsbeschaltung, Kamera-Breakout-Variante,
+I²C-Pull-ups und die **routbaren** finalen Netze.
+Die Einzelmodule und die provisorische Platinenkontur wurden
+noch nicht am realen Aufbau gemessen.
