@@ -177,8 +177,12 @@ verwendet werden (`GROW_MLX_LEAF_VERIFIED`).
 
 Die zeitbasierte Steuerung umfasst **einen vollstaendigen 13-Wochen-Durchlauf**:
 W1-2 Wachstum = 0,4-0,8 kPa, W3-4 Blueteeinleitung = 0,8-1,2 kPa,
-W5-13 Bluete = 1,2-1,6 kPa. Nach **14 Tagen (W3)** erfolgt der
-**automatische Phasenwechsel** von Wuchs auf Bluete, auch ohne Tastendruck.
+W5-13 Bluete = 1,2-1,6 kPa. **Die Phase wird ausschliesslich
+manuell gewaehlt**, ueber den Taster D16 oder die Phasen-API.
+Die Uhr darf die manuell ausgewaehlte Phase niemals ueberschreiben.
+Der Tastendruck setzt unmittelbar die ausgewaehlte Phase und richtet
+die Wochenreferenz passend aus (Wuchs W1, Bluete W3). Danach werden
+die Wochen mit dem gespeicherten UTC-Startpunkt weitergezaehlt.
 Nach **91 Tagen** wird der gesamte Durchlauf mit `cycle_stopped=true`
 dauerhaft auf STOPP gesetzt. Klimasollwerte und Pumpenanforderungen
 werden dabei deaktiviert. Das C3 wertet diesen STOPP aus, sperrt
@@ -187,6 +191,15 @@ Sensor, Telemetrie und LVGL-Remote bleiben erreichbar.
 
 Die Zeitberechnung verwendet UTC ueber NTP und einen **einzigen im NVS
 gespeicherten Durchlaufstart**, der einen ESP32-Neustart uebersteht.
+Die Phase wird getrennt im NVS gespeichert und **beim Booten geladen**.
+Nach Stromausfall wird weder automatisch die Phase umgestellt noch die
+Wochen-Uhr neu gestartet. Die vergangene Realzeit (auch waehrend des
+Stromausfalls) zaehlt nach erfolgreicher UTC/NTP-Synchronisation weiter.
+Bis eine gueltige Uhrzeit vorliegt, bleibt die automatische Anforderung
+gesperrt. Wurde eine manuelle Auswahl ohne gueltige Uhr vorgenommen,
+bleibt die Auswahl nach Neustart gespeichert; der neue Uhrstart wird
+erst bei NTP-Synchronisation gesetzt. Die waehrend fehlender UTC
+vergangene Zeit ist ohne RTC nicht rekonstruierbar.
 Die abgeschlossene Runde bleibt ebenfalls im NVS gespeichert; es gibt
 **keinen automatischen Neustart nach W13**. Ein neuer Durchlauf startet
 nur nach expliziter Bedienung (z.B. Phasentaster D16 nach STOPP oder
