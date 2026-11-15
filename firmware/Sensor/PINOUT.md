@@ -49,6 +49,42 @@ reale Sensor zu prüfen; ein früher verwendeter 20-kΩ-Widerstand ist
 Die Aufnahme dieses Anschlusses ist eine Dokumentations-/PCB-Anforderung;
 sie ändert weder die Firmware noch die bestehenden Kalibrierungen.
 
+### Steckverbindungen DHT22 (Raumklima)
+
+Auf der **Sensor-ESP32-Platine** werden drei **separate 3-polige,
+abziehbare Steckanschlüsse** vorgesehen. Alle drei Anschlüsse haben
+dieselbe Kontaktfolge, aber unterschiedliche DATA-GPIOs:
+
+| Anschluss | Kontakt 1 | Kontakt 2 | Kontakt 3 |
+| --- | --- | --- | --- |
+| DHT-1 | 3,3 V | DATA → GPIO25 | GND |
+| DHT-2 | 3,3 V | DATA → GPIO26 | GND |
+| DHT-3 | 3,3 V | DATA → GPIO27 | GND |
+
+Mechanisches Stecksystem wie beim Wassertemperatursensor:
+**Phoenix Contact MSTB 2,5, 3-polig, Raster 5,08 mm**.
+Für die DHT22 zusätzlich vorzusehen:
+
+| Bauteil | Hersteller-Nr. | Menge |
+| --- | --- | ---: |
+| PCB-Grundleiste MSTBA 2,5/3-G-5,08 | 1757255 | 3 |
+| Abziehbarer Gegenstecker MSTB 2,5/3-ST-5,08 | 1757022 | 3 |
+| DATA-Pull-up 4,7 kΩ nach 3,3 V | Wert festgelegt, Bauform offen | 3 |
+
+Die Pull-ups liegen jeweils **zwischen dem zugehörigen DATA-Pin und
+3,3 V**, nicht in Reihe. Es sind drei eigenständige Datenleitungen.
+Falls ein eingesetztes DHT22-Modul bereits einen Pull-up enthält, ist
+die Bestückung vorab zu prüfen und gegebenenfalls anzupassen.
+Die Pin-/Aderreihenfolge am realen Sensor ist vor dem Anschluss zu
+verifizieren; die Tabelle ist die **Steckerbelegung auf der Platine**,
+keine Behauptung über die Reihenfolge am jeweiligen Sensorgehäuse.
+
+**Anschlussbudget Sensorplatine (nur die hier festgelegten
+Temperatur-/Feuchtesensoren):** 1 × TEMP-WASSER + 3 × DHT22 =
+**4 dreipolige Steckplätze** mit vier PCB-Grundleisten und
+vier Gegensteckern. Die DHT22-Ergänzung ändert die vorhandene
+Firmware-GPIO-Zuordnung nicht.
+
 **BH1750:** Separater I²C-Bus mit GPIO13/14.
 
 Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
