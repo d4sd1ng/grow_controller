@@ -142,3 +142,7 @@ Vom Nutzer am 15.11.2026 bestätigt:
 ### Steckkontakt-Raster
 
 Nutzer bestätigt: Die Steckkontakte des **30-Pin-Sensor-ESP32** und des **10-Pin-ADS1115-Moduls** passen auf eine gewöhnliche Lochrasterplatine. **Daraus folgt nominal 2,54 mm Kontaktabstand entlang der Pinreihe** (vor Fertigung am tatsächlichen Modul nachprüfen). **Reihenmittenabstände** der Module bleiben unbekannt; außerdem sind die Modulaußenmaße noch zu ermitteln. Ein kompletter Footprint kann deshalb noch nicht freigegeben werden.
+
+### Sensor-ESP32 Reihenabstand: unbestätigte Angabe
+
+Nutzerangabe: **vermutlich 36 mm** Abstand der beiden Pinreihen beim 30-Pin-Sensor-ESP32. Die Angabe ist eine **Schätzung**, nicht nachgemessen; zudem noch nicht bestätigt, ob Pinmitte-zu-Pinmitte gemeint ist. **Keinesfalls als freigegebenen Footprint verwenden.** Vor Layout-Freigabe exaktes Reihenmittenmaß am realen Modul ermitteln.
