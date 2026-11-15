@@ -191,7 +191,7 @@
 (pad "4" thru_hole circle (at 7.62 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 15 "I2C_MAIN_SDA"))
 (pad "5" thru_hole circle (at 10.16 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 1 "GND"))
 (pad "6" thru_hole circle (at 12.7 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 40 "ALRT_NC"))
-(pad "7" thru_hole circle (at 15.24 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") )
+(pad "7" thru_hole circle (at 15.24 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 10 "PH_PO_UNVERIFIED"))
 (pad "8" thru_hole circle (at 17.78 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 9 "EC_ANALOG_UNVERIFIED"))
 (pad "9" thru_hole circle (at 20.32 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 41 "A2_NC"))
 (pad "10" thru_hole circle (at 22.86 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask") (net 42 "A3_NC"))
