@@ -23,6 +23,29 @@
 
 **DS18B20:** 1-Wire auf GPIO23. Für die Wassertemperatur ist ein wasserdichter Sensor vorgesehen. Der Pull-up liegt zwischen DATA und 3,3 V.
 
+### Steckverbindung DS18B20-Wassertemperatur
+
+Auf der **Sensor-ESP32-Platine** wird ein eigener **3-poliger, abziehbarer
+Anschluss TEMP-WASSER** für den wasserdichten DS18B20 vorgesehen:
+
+| Kontakt | Signal | Verbindung |
+| --- | --- | --- |
+| 1 | 3V3 | DS18B20 VDD (rot, sofern Sensorleitung entsprechend beschriftet) |
+| 2 | DATA | ESP32 GPIO23 (gelb, sofern entsprechend beschriftet) |
+| 3 | GND | Gemeinsame Sensormasse (schwarz, sofern entsprechend beschriftet) |
+
+Als steckbares System wird die auf der C3-Platine geplante
+**Phoenix Contact MSTB 2,5 / 3-polig / 5,08 mm** Baureihe vorgemerkt
+(Grundleiste 1757255, Gegenstecker 1757022).
+Die Steckerkontakte werden auf der Platine eindeutig als 3V3 / DATA / GND
+beschriftet; die tatsächlichen Aderfarben müssen vor Anschluss verifiziert
+werden. Der erforderliche 1-Wire-Pull-up liegt auf der Sensorplatine
+zwischen DATA und 3,3 V; sein endgültiger Wert wird mit der Leitungslänge
+und dem realen Sensor geprüft. **Nicht** an die C3-SSR-/Pumpenplatine anschließen.
+
+Die Aufnahme dieses Anschlusses ist eine Dokumentations-/PCB-Anforderung;
+sie ändert weder die Firmware noch die bestehenden Kalibrierungen.
+
 **BH1750:** Separater I²C-Bus mit GPIO13/14.
 
 Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
