@@ -131,3 +131,10 @@ vorliegen. Falls ein Termin nicht verschiebbar ist, kommt nur
 ein klar als **unbestückter, elektrisch nicht freigegebener
 mechanischer Prototyp** in Betracht; das ist keine
 Fertigungsfreigabe für den Live-Controller.
+
+## 6. Neue Modul-Pinzahl-Angaben
+
+Vom Nutzer am 15.11.2026 bestätigt:
+- **ADS1115-Breakout: insgesamt 10 Pins.** Anzahl Pins pro Seite, Pinreihen und Raster sind **noch nicht bestätigt**.
+- **Sensor-ESP32: 30-Pin-Ausführung.** Konkrete Anzahl je Reihe, Reihenmittenabstand und Raster sind **noch zu messen**.
+- Beide Module sind **steckbar** auszuführen; kein Footprint ohne verifizierte Kontaktabmessungen freigeben.
