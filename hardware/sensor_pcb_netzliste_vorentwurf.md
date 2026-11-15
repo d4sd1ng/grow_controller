@@ -23,8 +23,8 @@ Aderreihenfolge des jeweiligen Sensormoduls.
 | J_DHT3 | 3-polig | 3V3 | DHT3_DATA / GPIO27 | GND | – |
 | J_DS18 | 3-polig | 3V3 | DS18_DATA / GPIO23 | GND | – |
 | J_LEVEL | 3-polig | 3V3* | LEVEL_TX / GPIO18 (UART RX) | GND | – |
-| J_EC | 3-polig | 5V* | GND | EC_ANALOG / ADS1115 A1* | – |
-| J_PH | 4-polig | 5V* | PH_GND1* | PH_GND2* | PH_PO → A0-Eingangskreis* |
+| J_EC | 3-polig | 5V | GND | EC_ANALOG → ADS1115 A1 direkt | – |
+| J_PH | 4-polig | 5V | GND | GND | PH_PO → ADS1115 A0 direkt |
 | J_BH1750 | 4-polig | 3V3 | GND | BH_SDA / GPIO13 | BH_SCL / GPIO14 |
 | J_MLX | 4-polig | 3V3* | GND | I2C_SDA / GPIO21 | I2C_SCL / GPIO22 |
 | J_RGB | 4-polig | RGB_R über R_RGB_R / GPIO33 | RGB_G über R_RGB_G / GPIO4 | RGB_B über R_RGB_B / GPIO17 | GND (gemeinsame Kathode) |
@@ -79,16 +79,14 @@ Anschlüsse**; zusammen **38 externe Kontaktpositionen**
 | R_RGB_R | GPIO33 | J_RGB.1 | 220 Ω bevorzugt, vorbehaltlich LED-Nachweis |
 | R_RGB_G | GPIO4 | J_RGB.2 | 220 Ω bevorzugt, vorbehaltlich LED-Nachweis |
 | R_RGB_B | GPIO17 | J_RGB.3 | 220 Ω bevorzugt, vorbehaltlich LED-Nachweis |
-| R_PH_TOP | J_PH.4 (PO) | A0_KNOTEN | Wert/Topologie des echten Aufbaus offen |
-| R_PH_BOTTOM | A0_KNOTEN | GND (nach Verifizierung) | Wert/Topologie offen |
 | R_I2C0_SDA | 3V3 | GPIO21 / SDA | optional, DNP bis Pull-up-Prüfung |
 | R_I2C0_SCL | 3V3 | GPIO22 / SCL | optional, DNP bis Pull-up-Prüfung |
 | R_I2C1_SDA | 3V3 | GPIO13 / SDA | optional, DNP bis Pull-up-Prüfung |
 | R_I2C1_SCL | 3V3 | GPIO14 / SCL | optional, DNP bis Pull-up-Prüfung |
 
-Insgesamt **13 bedrahtete Widerstandspositionen**;
+Insgesamt **11 bedrahtete Widerstandspositionen**;
 4 × 4,7 kΩ vorgesehen, 3 × 220 Ω als bevorzugte Einzelwerte und
-6 noch unbestimmte/optionale Positionen. Kein Wert oder Footprint wird
+4 optionale I²C-Pull-up-Positionen. Kein pH-Spannungsteiler. Kein Wert oder Footprint wird
 aus dem Wort „Keramikwiderstand“ abgeleitet. Der tatsächliche
 Drahtdurchmesser, Körperabmessungen und der Lochabstand fehlen noch.
 
@@ -200,3 +198,15 @@ USB-C-Freiraum, Versorgungskapazität und geprüfte Analogpegel.
 Die vorhandenen pH- und EC/TDS-Sensoren funktionieren laut Nutzer **bereits am Sensor-ESP32 über den ADS1115**; die bestehende Versorgung reicht aus. Die neue Platine soll **die tatsächlich funktionierende Verdrahtung 1:1 ersetzen**, ohne Änderungen der Analogsignalaufbereitung oder Kalibrierung. `PH_A0_CONDITIONED_UNVERIFIED` und `EC_A1_CONDITIONED_UNVERIFIED` bedeuten lediglich, dass die **konkreten Ist-Verbindungen im CAD noch nicht abgebildet** sind, nicht dass die Sensoren aktuell nicht funktionieren. Der ältere Kabelplan ist als veraltet markiert und darf nicht unbesehen als aktuelle Schaltung gelten.
 
 **Nächste CAD-Arbeit:** Existierende Anschluss-/Widerstandsreihenfolge des funktionierenden Aufbaus anhand einer aktuellen, belastbaren Verdrahtungsquelle übernehmen, dann Schaltplan/Netzliste konsistent aktualisieren. Keine eigenmächtigen neuen Teilerwerte.
+
+## Geroutete PCB (15.11.2026): Ist-Stand ersetzt Vorentwurfsannahmen
+
+Maßgeblich ist jetzt `hardware/cad/sensor_pcb_routed_candidate.kicad_pcb`.
+`R_PH_TOP` und `R_PH_BOTTOM` wurden **entfernt**, da der
+historische 10-kΩ/20-kΩ-Spannungsteiler nicht als eingebaut bestätigt
+war. **PH4502C PO → ADS1115 A0 direkt; EC/TDS → ADS1115 A1
+direkt.** Alle in der PCB verwendeten Mehrfachnetze sind
+statisch als verbunden nachgewiesen. Unverändert zu prüfen:
+Modul-Footprints, endgültiges Befestigungslochbild und echter KiCad-DRC.
+Die alte Überschrift „Vorentwurf“ bezeichnet die Entstehung dieses
+Dokuments, nicht den neuesten Routingstand.
