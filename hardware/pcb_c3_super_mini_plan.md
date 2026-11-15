@@ -311,3 +311,19 @@ herstellerseitig freigegebene Steuerschnittstelle vorliegt.
 Keine Änderung an Netzspannungsverdrahtung, Schalter, Motor
 oder interner Gerätesteuerung aus dieser Planungsdatei ableiten.
 SSR-Typ und Eignung für Motorlast sind noch zu prüfen.
+
+
+### Betriebszuordnung der manuellen Abluftstufen (15.11.2026)
+
+Nutzervorgabe für Prima Klima PK125-2:
+
+| Controllerphase | Am Lüfter manuell eingestellte Stufe | Hersteller-Luftleistung |
+| --- | --- | --- |
+| Wachstum (`wuchs`) | Stufe 1 | 220 m³/h |
+| Blüte (`bluete`) | Stufe 2 | 400 m³/h |
+
+**Keine automatische elektrische Stufenumschaltung** durch den Controller:
+Die bestehende SSR-Schnittstelle schaltet den Ventilator ausschließlich
+EIN/AUS. Der Phasenwechsel des Controllers verändert **nicht** die
+Schalterstellung am PK125-2. Für eine spätere Benachrichtigung kann
+die manuell einzustellende Stufe aus der Phase abgeleitet werden.
