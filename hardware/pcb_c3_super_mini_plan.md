@@ -365,3 +365,17 @@ geklärt werden. Keine parallelen Einspeisungen ohne Prüfung.
 **Festgelegt:** Auch das steckbare ESP32-C3-Super-Mini-Modul wird mit **5 V** versorgt, analog zum Sensor-ESP32. Die 5-V-Zuführung ist an den vorgesehenen 5-V-Eingang des konkreten Super-Mini-Boards zu führen; **keine 5 V an 3V3 oder GPIOs**. Die 12-V-Pumpenlastversorgung bleibt davon getrennt. Der PCA9685 ist mit kompatibler 3,3-V-Logikversorgung zu planen.
 
 **Verbindlich festgelegt:** Die 5-V-Versorgung des ESP32-C3 Super Mini erfolgt **ausschließlich über dessen USB-C-Anschluss**. Keine parallele 5-V-Einspeisung über die Trägerplatine und keine 12 V am C3. **Noch zu prüfen:** Ob die verfügbare 3,3-V-Versorgung des Moduls die geplante Logiklast zuverlässig deckt und welche Stromversorgung die übrige C3-Trägerplatine benötigt.
+
+### Maßangaben ESP32-C3 Super Mini aus Produktabbildung (15.11.2026)
+
+Aus der vom Nutzer gelieferten bemaßten Produktabbildung:
+
+- Leiterplattenbreite: **18,00 mm**.
+- Leiterplattenlänge: **22,52 mm** (Körpermaß laut Abbildung, USB-C-Steckerüberstand beachten).
+- Reihenmittenabstand der seitlichen Kontakte: **15,24 mm** (6 × 2,54 mm).
+- **8 Kontaktpositionen je Seite**, insgesamt 16.
+- Längsraster: **2,54 mm nominal**, aus dem erkennbaren Lochbild und der 15,24-mm-Bemaßung abgeleitet, nicht als separate Bildbemaßung ausgewiesen.
+- Das Bild zeigt an den Kanten castellated Kontakte mit Löchern; vor Auswahl steckbarer Buchsenleisten prüfen, ob das gelieferte Modul angelötete Stiftleisten trägt bzw. nachgerüstet werden kann. **Bloße Kantenkontakte sind nicht direkt in normale Buchsenleisten steckbar.**
+- Diese Maße beziehen sich **nur auf den C3**, nicht auf den 30-Pin-Sensor-ESP32.
+
+Stand: vom Bild abgelesene Geometriedaten, tatsächliches Modul und USB-C-/Antennenfreiraum vor Bestellfreigabe prüfen.
