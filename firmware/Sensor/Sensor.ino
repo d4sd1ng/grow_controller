@@ -766,11 +766,16 @@ static void scanI2CAndBind(bool forceFullScan = false); // ADS fest D21/D22; BH 
 
 static void handleCalibrationSerial(char command);
 static void pollCalibrationCapture();
+static bool calibrationActive(); // vor dem seriellen Handler deklariert
 static void handlePhTestSerial() {
   while (Serial.available()) {
     const char c = static_cast<char>(Serial.read());
     if (c >= '0' && c <= '3') setPhTestMode(c);
-    else if (c == 'i' || c == 'I') scanI2CAndBind(true);
+    else if (c == 'i' || c == 'I') {
+      if (calibrationActive())
+        Serial.println(F("I2C-Scan waehrend Kalibrierung gesperrt."));
+      else scanI2CAndBind(true);
+    }
     else if (c == '7' || c == '4' || c == 'e' || c == 'E' ||
              c == 's' || c == 'S' || c == 'x' || c == 'X')
       handleCalibrationSerial(c);
@@ -1402,6 +1407,22 @@ struct CalibrationCapture {
   uint32_t startedMs = 0;
 };
 static CalibrationCapture calibration;
+
+// Einziger ADS1115-Lesepfad waehrend der Kalibrierung.
+static bool calibrationActive() {
+  return calibration.mode != CalibrationMode::None;
+}
+static void resetEcFilterAfterCalibration() {
+  ecRingIndex = 0;
+  ecRingCount = 0;
+  lastEcSampleMs = 0;
+}
+static void endCalibrationCapture() {
+  calibration = CalibrationCapture{};
+  resetEcFilterAfterCalibration();
+  Serial.println(F("KALIBRIERMODUS ENDE: normale Messungen wieder freigegeben."));
+}
+
 // Explizite Arduino-Prototypen erst NACH Enum/Struct-Deklaration.
 static const char *calibrationName(CalibrationMode mode);
 static void printCalibrationStatus();
@@ -1501,13 +1522,21 @@ static bool storeEcCalibration(float voltage, float temperatureC, float factor) 
 }
 static void finishCalibration() {
   const CalibrationMode mode = calibration.mode;
-  if (!validDsTempC(sensors.waterTempC) ||
-      fabsf(sensors.waterTempC - calibration.waterTempStartC) > 3.0f) {
+  // Temperatur erst NACH dem letzten ADC-Sample erneut pruefen.
+  ds18b20.requestTemperatures();
+  float waterC = NAN;
+  if (sensors.dsCount == 1) {
+    waterC = ds18b20.getTempCByIndex(0);
+  } else if (sensors.dsCount > 1 && waterSensorRomSelected) {
+    waterC = ds18b20.getTempC(waterSensorRom);
+  }
+  if (!validDsTempC(waterC) ||
+      fabsf(waterC - calibration.waterTempStartC) > 3.0f) {
     Serial.println(F("ABGELEHNT: DS18B20 fehlt oder Temperaturdifferenz >3C."));
-    calibration = CalibrationCapture{};
+    endCalibrationCapture();
     return;
   }
-  const float waterC = sensors.waterTempC;
+  sensors.waterTempC = waterC;
   bool saved = false;
   if (mode == CalibrationMode::Ph7 || mode == CalibrationMode::Ph4) {
     const float v = calibration.window.mean();
@@ -1532,13 +1561,10 @@ static void finishCalibration() {
       else Serial.println(F("ABGELEHNT: Referenzspannung/EC-Faktor unplausibel."));
     } else Serial.println(F("ABGELEHNT: EC-Mediane instabil (>10mV Std oder >30mV Spanne)."));
   }
-  calibration = CalibrationCapture{};
+  endCalibrationCapture();
   if (saved) {
     Serial.println(F("OK: NVS-Kalibrierung gespeichert und zurueckgelesen."));
-    sensors.ph = phFromVoltage(sensors.phInputV, sensors.waterTempC);
-    sensors.ec = cqrobotEcMs(sensors.tdsInputV, sensors.waterTempC);
-    sensors.tdsPpm = isfinite(sensors.ec) ? sensors.ec * 500.0f : NAN;
-    updatePhAlarm();
+    // Neue pH-/EC-Werte erst mit frischen ADC-Messungen nach Kalibrierende.
   } else Serial.println(F("NICHT GESPEICHERT: Kalibrierung abgelehnt oder NVS-Fehler."));
   printCalibrationStatus();
 }
@@ -1549,7 +1575,7 @@ static void handleCalibrationSerial(char command) {
   }
   if (command == 'x' || command == 'X') {
     if (calibration.mode != CalibrationMode::None) {
-      calibration = CalibrationCapture{};
+      endCalibrationCapture();
       Serial.println(F("ABGEBROCHEN: kein neuer Kalibrierwert gespeichert."));
     }
     return;
@@ -1572,12 +1598,14 @@ static void handleCalibrationSerial(char command) {
   else if (command == 'e' || command == 'E') mode = CalibrationMode::Ec1413;
   if (mode == CalibrationMode::None) return;
   calibration = CalibrationCapture{};
+  resetEcFilterAfterCalibration(); // keine alten EC-Medianwerte verwenden
   calibration.mode = mode;
   calibration.waterTempStartC = sensors.waterTempC;
   calibration.startedMs = millis();
   calibration.nextSampleMs = millis();
   Serial.printf("KALIBRIERUNG START: %s | DS %.2f C | mit x abbrechen.\n",
                 calibrationName(mode), calibration.waterTempStartC);
+  Serial.println(F("KALIBRIERMODUS: normale Sensorwerte, Hintergrund-ADC, I2C-Scan und Telemetrie PAUSIERT."));
 }
 static void pollCalibrationCapture() {
   if (calibration.mode == CalibrationMode::None) return;
@@ -1586,14 +1614,14 @@ static void pollCalibrationCapture() {
   if (!sensors.adsOk || !validDsTempC(sensors.waterTempC) ||
       now - calibration.startedMs > 60000UL) {
     Serial.println(F("KALIBRIERUNG ABBRUCH: ADS/DS18B20 fehlt oder Timeout."));
-    calibration = CalibrationCapture{};
+    endCalibrationCapture();
     return;
   }
   const bool ec = calibration.mode == CalibrationMode::Ec1413;
   const float v = adsCountsToVolts(ads.readADC_SingleEnded(ec ? 1 : 0));
   if (!calibration.window.add(v, ec ? 2.3f : 3.3f)) {
     Serial.println(F("KALIBRIERUNG ABBRUCH: ADS-Messung ungueltig."));
-    calibration = CalibrationCapture{};
+    endCalibrationCapture();
     return;
   }
   if (!ec) {
@@ -1608,7 +1636,7 @@ static void pollCalibrationCapture() {
   const float medianV = grow_cal::median30(calibration.ecSamples);
   const float rawStd = calibration.window.stdDev();
   if (!calibration.medians.add(medianV, 2.3f)) {
-    calibration = CalibrationCapture{};
+    endCalibrationCapture();
     Serial.println(F("EC ABBRUCH: ungueltiger Fenster-Median."));
     return;
   }
@@ -2328,7 +2356,7 @@ void setup() {
 void loop() {
   const unsigned long now = millis();
   static unsigned long lastI2cRetryMs = millis();
-  if (!sensors.adsOk && now - lastI2cRetryMs >= 30000UL) {
+  if (!calibrationActive() && !sensors.adsOk && now - lastI2cRetryMs >= 30000UL) {
     lastI2cRetryMs = now;
     scanI2CAndBind();
   }
@@ -2339,10 +2367,12 @@ void loop() {
   pollPumpServiceButton(now);
   pollPhaseClock();
   handlePhTestSerial();
-  pollCalibrationCapture(); // ein ADC-Wert je Durchlauf, API/C3 bleibt erreichbar
+  pollCalibrationCapture(); // exklusiver ADC-Leser; lokale API/C3 bleibt erreichbar
   updatePhBuzzer(now);
-  sampleTdsBackground(now);
-  pollMlx90640(now);
+  if (!calibrationActive()) {
+    sampleTdsBackground(now);
+    pollMlx90640(now);
+  }
 
   if (WiFi.status() != WL_CONNECTED && now - lastWifiReconnect >= WIFI_RECONNECT_MS) {
     lastWifiReconnect = now;
@@ -2355,7 +2385,7 @@ void loop() {
     }
   }
 
-  if (now - lastSensorRead >= SENSOR_READ_MS) {
+  if (!calibrationActive() && now - lastSensorRead >= SENSOR_READ_MS) {
     lastSensorRead = now;
     readSensors();
     printLiveSensorValues();
@@ -2365,7 +2395,7 @@ void loop() {
   autoControl();
   applyActuators();
 
-  if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
+  if (!calibrationActive() && now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
     lastTelemetry = now;
     sendTelemetry();
   }
