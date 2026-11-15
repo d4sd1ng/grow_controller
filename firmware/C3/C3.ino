@@ -38,6 +38,14 @@ const char *TELEMETRY_API_KEY = "";
 static constexpr bool HARDWARE_OUTPUTS_ARMED = false;
 // Keine Dosierdauer ohne pumpenspezifische Kalibrierung festlegen.
 static constexpr uint32_t MAX_DOSE_MS[5] = {0, 0, 0, 0, 0};
+/* Dosierkanal 1 fest: Plagron pH Min (Phosphorsaeure).
+ * Reine Kanal-Metadaten; keine Freigabe fuer Saeurefoerderung.
+ * Kanal 6 und dessen Hardware sind noch NICHT implementiert. */
+static constexpr const char *DOSE_CHANNEL_NAME[5] = {
+  "Plagron pH Min", "nicht_zugeordnet", "nicht_zugeordnet",
+  "nicht_zugeordnet", "nicht_zugeordnet"
+};
+static constexpr bool DOSE_CHANNEL_ENABLED[5] = {false, false, false, false, false};
 static constexpr int8_t PIN_SSR[5] = {0, 1, 3, 4, 5};
 static constexpr const char *SSR_KEY[5] = {
   "light", "exhaust_vent", "circulation_vent", "heater", "water_pump"
@@ -233,6 +241,13 @@ void stateApi() {
   JsonObject p = d.createNestedObject("dosing");
   p["active_pump"] = activeDose < 0 ? 0 : activeDose + 1;
   p["channel_count"] = 5;
+  JsonArray channels = p.createNestedArray("channels");
+  for (int i = 0; i < 5; ++i) {
+    JsonObject channel = channels.createNestedObject();
+    channel["pump"] = i + 1;
+    channel["product"] = DOSE_CHANNEL_NAME[i];
+    channel["enabled"] = DOSE_CHANNEL_ENABLED[i];
+  }
   JsonArray limits = p.createNestedArray("max_duration_ms");
   for (uint32_t v : MAX_DOSE_MS) limits.add(v);
   String out;
