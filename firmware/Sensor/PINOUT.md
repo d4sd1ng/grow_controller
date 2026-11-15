@@ -333,3 +333,16 @@ Versorgung und Masse sowie physische Pinpositionen sind anhand des tatsächlich 
 - [ ] Reale Pinpositionen des Pro-Boards geprüft
 - [ ] Arduino-Kompilierung erfolgreich
 - [ ] Serieller Messwerttest und LVGL-Remote-Test an realer Hardware erfolgreich
+
+
+## Steckbare ESP32-Modulaufnahme
+
+**Verbindliche Konstruktionsanforderung:** Der Sensor-ESP32 wird **nicht direkt auf die Trägerplatine eingelötet**, sondern erhält eine passende steckbare Buchsenleisten-/Modulaufnahme. Der Ausbau soll ohne Entlöten möglich sein.
+
+- Buchsenleisten müssen zur tatsächlichen Pinzahl, Reihenanordnung und Rastergeometrie des eingesetzten Sensor-ESP32 passen.
+- USB-/Programmieranschluss muss auch bei gestecktem Modul zugänglich bleiben.
+- Die Versorgung über den vorhandenen USB-C-Anschluss bleibt vorgesehen; keine zweite 5-V-Einspeisung ohne Rückspeiseprüfung.
+- Antennenfreiraum und Bauhöhe über der Trägerplatine sind zu berücksichtigen.
+- **Der exakte Footprint ist noch nicht freigegeben:** Die tatsächliche Modellrevision und Kontaktabstände des Sensor-ESP32 sind vor der PCB-Fertigung zu verifizieren.
+
+Die steckbare ESP32-Aufnahme ist **keiner der 12 externen Sensor-/Bedienstecker** und wird separat in der Bauteilliste geführt. Keine Änderung der Firmware oder GPIO-Zuordnung.
