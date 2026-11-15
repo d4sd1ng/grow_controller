@@ -160,3 +160,7 @@ Nutzerbild vom 15.11.2026: zeigt einen **30-Pin-ESP32-Entwicklungsboard** mit se
 - ESP32-Aufnahme: zwei Reihen mit **je 15 Steckkontakten**, nominell 2,54-mm-Längsraster.
 - Bildbeschriftungen sind teilweise fehlerhaft/uneinheitlich: Zwischenmaße 5.1mm/2in, 4mm/1.57in, 2.6mm/1.02in sind nicht wörtlich als Millimeter verwendbar.
 - **Pinreihen-Mittenabstand aus Bild nicht eindeutig belegt.** Bisherige Schätzung 35–36 mm bezieht sich offenbar nicht auf den reinen 28-mm-breiten ESP32; nicht in Footprint übernehmen. Noch messen oder originalen Adapter/Modul-Footprint verifizieren.
+
+### Präzisierung: ca. 26 mm Abstand laut Adapterabbildung (15.11.2026)
+
+Korrektur der bisherigen Bildinterpretation: Die Maßlinie zwischen den **inneren** Buchsenleisten ist in der Abbildung mit **„2.6 mm / 1.02 in“** bezeichnet. Der Millimetertext enthält ersichtlich einen Faktor-10-Fehler: **1,02 Zoll = 25,908 mm**, also **ca. 26 mm**. Dieses Bildmaß ist eine **Annäherung**, kein bestätigtes 25,4-mm- oder 26,0-mm-Nennmaß. **25,4 mm = 10 × 2,54 mm** wäre ein mögliches standardisiertes Reihenmaß, darf aber ohne Prüfung der realen Buchsenanordnung nicht als fertiger Footprint fixiert werden. Die früher genannten **35–36 mm** sind nicht der innere Reihenabstand.
