@@ -1,209 +1,47 @@
-# Sensorplatine — KiCad-Entwurfsprüfung (15.11.2026)
+# Sensor-PCB — Designprüfung und Fertigungsstatus (15.11.2026)
 
-**Referenz:** `sensor_pcb_unrouted_prototype.kicad_pcb` und
-`hardware/sensor_pcb_external_pins.csv`,
-`hardware/sensor_pcb_module_pins.csv`.
+**Aktuelle PCB:** `sensor_pcb_routed_candidate.kicad_pcb`
+**Aktuelle ausführliche Prüfung:** `sensor_pcb_routed_review.md`
 
-**Status: Entwicklungsstand, nicht bestell-/fertigungsfähig.**
+Die früheren Teile dieses Dokuments enthielten einen alten
+Prototypenstand (81 Segmente), offene ADC-Netznamen und einen
+**nicht bestätigten pH-Spannungsteiler**. Diese Zwischenstände sind
+durch den jetzigen PCB-Entwurf **ersetzt**. Historische Änderungen
+bleiben im Git-Verlauf nachvollziehbar.
 
-## 1. Rechnerischer CAD-Inventurcheck
+### Elektroplanung
 
-| Prüfgröße | Stand |
-| --- | --- |
-| Externe Phoenix-Steckplätze | 12 (2 × 2-polig, 6 × 3-polig, 4 × 4-polig) |
-| Externe Kontakte | 38 |
-| Steckmodul-Kontakte | 40 (ESP32 30, ADS1115 10) |
-| Bedrahtete Widerstandspositionen | 13, je 2 Pins = 26 |
-| Gesamtpads | 104 |
-| CAD-Bauteilpositionen | 27 |
-| KiCad-Netznamen | 46 |
-| Leiterbahnen und Vias | **81 Leiterbahnsegmente + 1 Via**, ausschließlich Teilrouting pH/EC/ADS1115 |
-| Mechanische Außenkontur | **vorläufig** 179 × 115 mm |
+- Sensor-ESP32 DevKit 30 Pins steckbar, 5 V nur per USB-C.
+- ADS1115 (1 × 10) steckbar, 3,3 V, SDA=GPIO21, SCL=GPIO22,
+  ADDR=GND (I²C 0x48).
+- pH PH4502C: 5-V-Versorgung, zwei GND-Anschlüsse,
+  **PO direkt an ADS1115 A0**.
+- EC/TDS: 5-V-Versorgung, GND, Signal direkt an ADS1115 A1.
+- BH1750 SDA/SCL an GPIO13/14, separater I²C-Bus.
+- MLX90640 mit eigenem vierpoligen Stecker an GPIO21/22.
+- Drei DHT22, DS18B20, A02YYUW, RGB-LED mit gemeinsamer
+  Kathode, zwei Taster; jeweils eigener Steckplatz.
+- Widerstände ausschließlich bedrahtet: 4 × 4,7 kΩ,
+  3 × 220 Ω bevorzugt, 4 × optionale I²C-Pull-ups.
+  Keine zusätzliche SMD-LED und keine SMD-Widerstände.
 
-### Steckverbinder-Geometrie
+### Elektrischer PCB-Status
 
-Phoenix Contact **MSTBA 2,5/..-G-5,08**, Raster 5,08 mm.
-Der Hersteller gibt für **alle drei exakt ausgewählten Grundleisten**
-(1757242 = 2-polig, 1757255 = 3-polig, 1757268 = 4-polig)
-einen **PCB-Bohrlochdurchmesser von 1,4 mm** bei 5,08-mm-Pinraster an.
-Dieser zuvor offene Punkt ist somit anhand der Originalproduktseiten
-**geschlossen**.
+25 Footprints, 100 Pads, 1213 Segmente, 64 Vias,
+alle 22 Mehrfachnetze im eigenen geometrischen Test verbunden,
+keine erkannten Fremdnetzkollisionen unter 0,2 mm.
+Der verwendete Platzhalter-Pinabstand des ESP32 beträgt
+25,40 mm Reihenmitte bei 2,54 mm Pinraster,
+ADS1115 1 × 10 bei 2,54 mm.
 
-Im CAD sind nun **38 Kontaktbohrungen mit 1,4 mm Durchmesser** und
-provisorisch **2,5-mm-Rundpads** hinterlegt. **Pad-Außendurchmesser
-und Kupferring sind eigene Entwurfswerte**, keine Herstellerangabe.
-Das Körperumriss-/Steckraumprofil im CAD bleibt ein **Platzhalter**.
-Es muss durch passende Hersteller-Footprints bzw. kontrollierte
-CAD-Konturen ersetzt werden.
+### Fertigungsstatus
 
-Hersteller:
-- https://www.phoenixcontact.com/de-de/produkte/leiterplattengrundleiste-mstba-25-2-g-508-1757242
-- https://www.phoenixcontact.com/de-de/produkte/leiterplattengrundleiste-mstba-25-3-g-508-1757255
-- https://www.phoenixcontact.com/de-de/produkte/leiterplattengrundleiste-mstba-25-4-g-508-1757268
+**Nicht freigegeben:** Modul- und Klemmen-CAD-Footprints
+sind noch nicht durch reale Bauteile/3D geprüft;
+Gehäuse und Montagelöcher sind nicht festgelegt.
+KiCad-CLI ist in dieser Bearbeitungsumgebung nicht vorhanden,
+daher **kein echter DRC, kein ERC, keine Gerber/Excellon-Dateien**.
 
-## 2. Kritische, aktuell nicht geschlossene Netze
-
-**Der CAD-Vorentwurf besitzt inzwischen Teilrouting für pH/EC/ADS1115.** Nicht alle gleichnamigen Netze sind bereits physisch verbunden; der Rest der Sensorplatine ist noch ungeroutet. Darüber hinaus sind
-einige Signale bewusst nicht vollständig spezifiziert:
-
-| Punkt | Ist-Stand / offene Entscheidung |
-| --- | --- |
-| ADS1115 ADDR / 0x48 | ADS-Modul-Pin 5 liegt am Prüfnetz `ADS_ADDR_GND_UNVERIFIED`, nicht an verifiziertem GND; erst echte Modulkonfiguration prüfen |
-| ADS1115 A0 | R_PH_TOP.2, R_PH_BOTTOM.1 und U_ADS1115.7 auf `PH_A0_MID` als Kupfernetz verbunden; Widerstandswerte und tatsächliche Altbeschaltung nicht bestätigt |
-| ADS1115 A1 | J_EC.3 ist **direkt als Kupferleitung** mit U_ADS1115.8 verbunden; das entspricht der früher dokumentierten Direktverdrahtung |
-| PH4502C GND1 und GND2 | Beide ausdrücklich GND-beschrifteten Kontakte J_PH.2/J_PH.3 sind jetzt auf das gemeinsame GND-Netz geroutet |
-| 5-V-Versorgung Analogmodule | J_PH.1 und J_EC.1 sind via F.Cu auf U_ESP32.15 (`5V_USB_BOARD`) geroutet |
-| A02YYUW und MLX90640 | Vorläufig separate `3V3_UNVERIFIED`-Netze bis Modulversorgung geprüft |
-| I²C-Pull-ups | Vier optionale Widerstandspositionen; Modulbestückung vorab klären |
-| 3,3-V-Strombudget | Leistungsfähigkeit des ESP32-Modulreglers für alle Sensoren ungeprüft |
-| Montage | Endgültige Modulaußenmaße, Steckerabgang, Bauhöhen, Bohrlöcher und Gehäuse nicht erfasst |
-| Firmware | MLX90640 ist im aktuellen Sensor-Sketch noch deaktiviert |
-
-**Wichtig:** Keines der unbestätigten Sensorversorgungs- oder
-Analogprüfnetze darf durch automatische, willkürliche
-Netzzusammenführung geschlossen werden.
-
-## 3. Benutzervorgaben, die nicht erneut offen sind
-
-- ESP32 30-pin 2×15, Raster 2,54 mm, Konstruktions-Reihenabstand
-  **25,40 mm**, Modulnennmaß 28 × 51 mm.
-- ADS1115 1×10, Raster 2,54 mm.
-- C3 (separate Platine) 2×8, 2,54 mm, 15,24 mm Reihenabstand.
-- Beide ESP32 steckbar; jeweils 5 V ausschließlich über ihr USB-C.
-- Externe vorhandene RGB-LED mit gemeinsamer Kathode,
-  **keine zusätzlichen LEDs** auf Sensorträger.
-- **Keine SMD-Widerstände**: nur bedrahtete Nutzerbauteile.
-- Für RGB bevorzugt drei **einzelne** 220-Ω-Widerstände,
-  nach Prüfung der vorhandenen LED.
-- MLX90640 erhält den **eigenen vierpoligen Stecker `J_MLX`**.
-
-## 4. Abgrenzung der Prüfungen
-
-**Durchgeführt:** Anschlusszählung (38 + 40 + 26 = 104),
-Ersetzen der 38 provisorischen 1,2-mm-Steckerbohrungen durch
-1,4-mm-Bohrungen; Dokumentation der Netz-Lücken.
-
-**Nicht durchgeführt:** KiCad-Parser-/ERC-/DRC-Lauf,
-vollständiger funktionsfähiger Schaltplan,
-Leiterbahnrouting, Versorgungslastmessung,
-herstellerseitige Komplett-Footprint-Verifikation,
-Gerber- und Excellon-Ausgabe.
-
-**Nicht zur Herstellung einreichen.**
-
-## 5. Neue Fertigungsprüfung: Kontaktgehäuse und Netzgrenzen (15.11.2026)
-
-- Die 12 Phoenix-Stecker im KiCad-Vorentwurf haben jetzt **vorläufige
-  12-mm-tiefe F.Fab-Konturen**; die **herstellerbestätigten** Gehäusebreiten
-  sind je nach Polzahl 12,16 mm (2-polig), 17,24 mm (3-polig) und
-  22,32 mm (4-polig). 5,08-mm-Raster und 1,4-mm-Bohrung sind bestätigt.
-- Die Connector-Platzhalter wurden um 4 mm nach rechts verschoben,
-  die sechs unteren Stecker in einen vorläufigen Innenbereich bei Y=114 mm.
-  **PCB-Außenmaß bleibt ein Entwurf von 179 × 115 mm**; es wurde nicht
-  vom Nutzer als Gehäusemaß freigegeben.
-- Das mechanische Rechteck ist weiterhin **kein vollständiges Phoenix-
-  Hersteller-Footprint**: Steckrichtung, Einsteckbereich und die tatsächliche
-  Lage des Kunststoffgehäuses gegenüber der Lochreihe müssen mit
-  Hersteller-CAD abgeglichen werden. DRC/3D-Kollisionsprüfung fehlt.
-
-### Herstellerbelegte Sensorversorgung
-
-Der echte **DFRobot A02YYUW (SEN0311)** ist laut Hersteller für
-**3,3–5,0 V** mit typischen maximal **8 mA Durchschnittsstrom** vorgesehen.
-Ausgang UART 9600 Baud mit vier Sensorkontakten VCC, GND, RX, TX;
-**RX darf offen bleiben** (herstellerseitiger Modus für
-verarbeitete, stabilisierte Werte). Die von uns geplante
-3-polige Verbindung VCC/TX/GND ist damit auf **diesen
-Herstellersensor** bezogen technisch plausibel. Bei baugleichen
-Nachbauten ist die elektrische Identität noch zu prüfen.
-Quelle: https://wiki.dfrobot.com/sen0311/
-
-Die **MLX90640 ist nicht vergessen**: Stecker J_MLX vierpolig,
-SDA GPIO21/SCL GPIO22, Sensoradresse 0x33. Für konkret untersuchte
-Breakouts von Adafruit oder Pimoroni sind 3,3 V zulässig; die
-tatsächliche Breakout-Variante des Nutzers bleibt zu identifizieren.
-Quellen:
-- https://learn.adafruit.com/adafruit-mlx90640-ir-thermal-camera/pinouts
-- https://shop.pimoroni.com/products/mlx90640-thermal-camera-breakout
-
-### Relevante ADS1115-Grenzwerte (TI-Datenblatt SBAS444E)
-
-- **Empfohlener analoger Arbeitsbereich:** GND bis VDD.
-- **Absolute Grenzwerte:** GND−0,3 V bis VDD+0,3 V.
-- Bei ADS1115-VDD = 3,3 V sind also **0 bis 3,3 V im zulässigen
-  Arbeitsbereich**, **3,6 V lediglich absolute Obergrenze**,
-  ausdrücklich keine normale Zielspannung.
-- Ein angezeigter PGA-Messbereich von ±4,096 V oder ±6,144 V ist **kein**
-  Nachweis einer 5-V-toleranten Analogeingangsstufe.
-- Der tatsächliche PH4502C-PO-Pegel und die Ausgangspegel des EC-Moduls
-  unter allen Betriebsbedingungen müssen vor dem Anschluss nachgewiesen
-  werden; **keine erdachte Spannungsteilerbestückung und kein
-  Direktanschluss unbewiesener 5-V-Signale**.
-
-TI-Quelle: https://www.ti.com/lit/ds/symlink/ads1115.pdf
-
-### Status der elektrischen Verbindungen
-
-**Noch nicht freigegeben:** 3,3-V-Gesamtstrom (ESP32-Boardregler
-unbekannt), PH4502C-GND-Topologie, A0-Spannungsteiler,
-EC-A1-Eingangsbeschaltung, Kamera-Breakout-Variante,
-I²C-Pull-ups und die **routbaren** finalen Netze.
-Die Einzelmodule und die provisorische Platinenkontur wurden
-noch nicht am realen Aufbau gemessen.
-
-## 6. Versorgungsfestlegung pH und EC
-
-Nutzerangabe 15.11.2026: **pH- und EC-Module werden aus der Versorgung des Sensor-ESP32-Boards gespeist**, nicht durch separate externe Netzteile. Planungsabsicht: Sensor-ESP32 erhält 5 V ausschließlich über USB-C; PH4502C und EC/TDS-Module erhalten die für sie spezifizierte Betriebsspannung aus diesem Board-Versorgungszweig. Für bisherige Modulplanung sind 5-V-Versorgungsanschlüsse vorgesehen; deren tatsächliche elektrische Eignung und Stromreserve sind noch zu prüfen. **Die Datenmessung erfolgt weiterhin über den steckbaren ADS1115 (A0 pH, A1 EC/TDS)**, nicht über direkte ESP32-ADC-Pins.
-
-**Fertigungskriterium offen:** Schaltungsprüfung des konkreten 30-Pin-DevKit: Ist sein 5-V/VIN-Pin bei Einspeisung über USB-C als belastbarer Spannungsausgang ausgeführt? Ist eine Diode/Schutzschaltung vorhanden? Wie groß ist die verfügbare Stromreserve, und ist keine unzulässige Rückspeisung möglich? Die Antwort ist aus der bisherigen Pinout-Zeichnung **nicht** ableitbar. Die beiden Analogeingangspegel bleiben unabhängig davon zu prüfen (ADS1115 3,3 V).
-
-## 7. Nutzerbestätigung: Versorgung pH und EC ausreichend (15.11.2026)
-
-Der Nutzer bestätigt ausdrücklich, dass die über USB-C gespeiste 5-V-Versorgung des Sensor-ESP32 für pH- und EC-Modul **ausreichend** ist. Diese Kapazität wird als **Nutzervorgabe** übernommen, nicht als von uns durch Strommessung oder Board-Schaltplan verifizierter Wert. Der Versorgungsweg ist keine offene *Planungsentscheidung* mehr: Im CAD-Vorentwurf nutzen **J_PH Kontakt 1**, **J_EC Kontakt 1** und **U_ESP32 Kontakt 15** das gemeinsame Netz `5V_USB_BOARD`. Ein zusätzliches Netzteil oder ein zweiter 5-V-Einspeisepunkt ist nicht vorgesehen.
-
-**Unverändert offen:** Das PCB ist **nur teilweise geroutet**; die ausreichende Stromreserve wurde vom Nutzer bestätigt, aber nicht unabhängig gemessen. Die pH- und EC-Analogeingangsspannungen sowie ihre Beschaltung zum mit 3,3 V versorgten ADS1115 müssen unabhängig von der ausreichenden Versorgung geprüft werden.
-
-
-## 8. Korrektur: pH und EC funktionieren bereits im bestehenden Aufbau
-
-**Nutzerbestätigung vom 15.11.2026:** Beide Sensoren, pH und EC/TDS, haben am bisherigen Sensor-ESP32/ADS1115-Aufbau bereits funktioniert; die 5-V-Versorgung ist laut Nutzer ausreichend. Deshalb darf die PCB-Planung die analogen Messpfade **nicht als neu zu entwickelnde oder grundsätzlich fragliche Funktion** behandeln.
-
-**Verbindliches Konstruktionsprinzip:** **Ist-Verdrahtung unverändert ins PCB übertragen.** pH über ADS1115 A0, EC/TDS über ADS1115 A1; vorhandene Signalaufbereitung/Spannungsteilung und bestehende Kalibrierskalierung erhalten. Keine pauschalen Neuwerte, keine neuen Signalteiler, keine Änderungen nur aufgrund theoretischer Grenzwertdiskussion.
-
-Die offene Aufgabe besteht ausschließlich darin, die **exakte, aktuell funktionierende Hardwareverbindung** in den KiCad-Schaltplan zu übertragen; die als *veraltet* gekennzeichnete Datei `wiring_plan_v2.md` ist dafür allein keine hinreichende Quelle. Die unfertigen A0/A1-Prüfnetze des bisherigen CAD-Prototyps sind **ein Dokumentations-/CAD-Mangel**, kein Nachweis eines Problems im funktionierenden Aufbau. Die erfolgreiche Funktion ersetzt jedoch keine Fertigungs-DRC/Netzlistenprüfung der neuen Platine.
-
-**Status:** Sensorfunktion laut Nutzer **bestätigt**; exakte Reproduktion im PCB **noch nicht umgesetzt**.
-
-
-## 9. Umsetzung der pH-/EC-/ADS1115-Verbindungen im KiCad-Board
-
-**Bisheriger Zustand:** nur Pad-Netzpläne und nicht geroutete ADC-Prüfnetze.
-**Neuer Zustand:** Physische `segment`-Objekte auf F.Cu/B.Cu mit
-`via`-Lagenwechsel sind in der vorhandenen `.kicad_pcb`-Datei
-gespeichert.
-
-**Konkret geroutet:**
-
-- pH PO / J_PH.4 → R_PH_TOP.1; über den vorgesehenen
-  Widerstand R_PH_TOP.2 → ADS1115 A0 und R_PH_BOTTOM.1;
-  R_PH_BOTTOM.2 → GND. **Werte beider Widerstände offen**, bis
-  die tatsächlich funktionierende Bestückung bekannt ist.
-- EC J_EC.3 → ADS1115 A1 direkt, wie in der historischen
-  Verdrahtungsdokumentation angegeben.
-- pH und EC VCC → ESP32-5V/VIN-Kontakt 15; pH GND1 und GND2
-  → ESP32-GND; EC GND → ADS1115-GND; ADS1115-GND → ESP32-GND.
-- ADS1115 VDD → ESP32-3V3-Kontakt 16;
-  ADDR → GND für die bestehende I²C-Adresse `0x48`.
-- ADS1115 SDA → GPIO21 / ESP32-Kontakt 26;
-  ADS1115 SCL → GPIO22 / ESP32-Kontakt 29.
-
-**Statisch verifiziert:** 15 von 15 exemplarisch geprüfte
-Endpunktverbindungen waren durchgängig; keine geometrisch
-erkannten Fremdnetzkollisionen innerhalb 81 Segmenten
-und eines Vias. Vergleich mit den beiden CSV-Pinlisten
-ergab 0 Abweichungen bei 78 Steckkontakten.
-
-**Weiterhin nicht erledigt:** Restliche Sensornetze und optionale
-Pull-ups routen, tatsächliche pH-Widerstandsbestückung aus dem
-funktionierenden Aufbau abgleichen, vollständigen KiCad-Schaltplan
-sowie echten ERC/DRC-Lauf erstellen. **Keine Fertigungsfreigabe.**
+Der Source-Code und die vollständige Bestell-/Prüfliste liegen
+in `sensor_pcb_routed_candidate.kicad_pcb` und
+`sensor_pcb_routed_review.md`.
