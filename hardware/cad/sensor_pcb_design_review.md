@@ -152,3 +152,9 @@ EC-A1-Eingangsbeschaltung, Kamera-Breakout-Variante,
 I²C-Pull-ups und die **routbaren** finalen Netze.
 Die Einzelmodule und die provisorische Platinenkontur wurden
 noch nicht am realen Aufbau gemessen.
+
+## 6. Versorgungsfestlegung pH und EC
+
+Nutzerangabe 15.11.2026: **pH- und EC-Module werden aus der Versorgung des Sensor-ESP32-Boards gespeist**, nicht durch separate externe Netzteile. Planungsabsicht: Sensor-ESP32 erhält 5 V ausschließlich über USB-C; PH4502C und EC/TDS-Module erhalten die für sie spezifizierte Betriebsspannung aus diesem Board-Versorgungszweig. Für bisherige Modulplanung sind 5-V-Versorgungsanschlüsse vorgesehen; deren tatsächliche elektrische Eignung und Stromreserve sind noch zu prüfen. **Die Datenmessung erfolgt weiterhin über den steckbaren ADS1115 (A0 pH, A1 EC/TDS)**, nicht über direkte ESP32-ADC-Pins.
+
+**Fertigungskriterium offen:** Schaltungsprüfung des konkreten 30-Pin-DevKit: Ist sein 5-V/VIN-Pin bei Einspeisung über USB-C als belastbarer Spannungsausgang ausgeführt? Ist eine Diode/Schutzschaltung vorhanden? Wie groß ist die verfügbare Stromreserve, und ist keine unzulässige Rückspeisung möglich? Die Antwort ist aus der bisherigen Pinout-Zeichnung **nicht** ableitbar. Die beiden Analogeingangspegel bleiben unabhängig davon zu prüfen (ADS1115 3,3 V).
