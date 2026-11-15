@@ -85,6 +85,13 @@ static constexpr uint8_t PIN_RGB_BLUE = 17; // TX2: Pumpen-Filterwechsel, nur be
 static constexpr uint8_t PIN_PH_BUZZER = 5; // Buzzer an D5; deaktiviert bis Typ/Treiber geklaert
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 static constexpr uint8_t PIN_ONEWIRE = 23; // DS18B20 auf D23; PH4502C DO wird nicht genutzt
+// A02YYUW on UART1: Sensor-TX -> GPIO18 (ESP32 RX), Sensor-RX offen.
+// Bei 3.3-V-Versorgung liegen UART-Ausgangspegel im ESP32-Bereich.
+static constexpr uint8_t PIN_LEVEL_UART_RX = 18;
+static constexpr uint32_t LEVEL_UART_BAUD = 9600;
+static constexpr uint16_t LEVEL_MIN_DISTANCE_MM = 30;
+static constexpr uint16_t LEVEL_MAX_DISTANCE_MM = 4500;
+static constexpr unsigned long LEVEL_TIMEOUT_MS = 3000UL;
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
 static constexpr bool PH_TO_WIRED = false;
 static constexpr bool PH_DO_WIRED = false; // PH4502C DO bleibt ungenutzt
@@ -206,9 +213,68 @@ struct SensorData {
   float vpdLeafCandidate = NAN; // vorlaeufiger Blatt-VPD: ROI + fusionierte DHT22-Werte
   bool mlx90640Ok = false;
   uint32_t lux = 0;
+  float levelDistanceMm = NAN; // Distanz, keine Liter ohne Kalibrierung
 
   bool adsOk = false;
 } sensors;
+
+/* ---------- A02YYUW: UART-Distanz, ohne automatische Dosierung ---------- */
+HardwareSerial levelUart(1); // UART0 bleibt USB-Serial
+static uint8_t levelFrame[4] = {};
+static uint8_t levelFramePos = 0;
+static unsigned long lastValidLevelMs = 0;
+static constexpr uint8_t LEVEL_MEDIAN_COUNT = 5;
+static uint16_t recentLevelMm[LEVEL_MEDIAN_COUNT] = {};
+static uint8_t recentLevelCount = 0;
+static uint8_t recentLevelIndex = 0;
+
+static bool levelSensorOk() {
+  return lastValidLevelMs != 0 &&
+         millis() - lastValidLevelMs <= LEVEL_TIMEOUT_MS;
+}
+static void pollLevelSensor() {
+  // Nicht blockierender 4-Byte-Rahmen: FF, High, Low, Checksum.
+  while (levelUart.available()) {
+    const uint8_t b = static_cast<uint8_t>(levelUart.read());
+    if (levelFramePos == 0 && b != 0xFF) continue;
+    levelFrame[levelFramePos++] = b;
+    if (levelFramePos < 4) continue;
+    levelFramePos = 0;
+    const uint8_t sum = static_cast<uint8_t>(
+        levelFrame[0] + levelFrame[1] + levelFrame[2]);
+    if (sum != levelFrame[3]) continue;
+    const uint16_t mm = (static_cast<uint16_t>(levelFrame[1]) << 8) |
+                        levelFrame[2];
+    if (mm < LEVEL_MIN_DISTANCE_MM || mm > LEVEL_MAX_DISTANCE_MM) continue;
+    recentLevelMm[recentLevelIndex] = mm;
+    recentLevelIndex = (recentLevelIndex + 1) % LEVEL_MEDIAN_COUNT;
+    if (recentLevelCount < LEVEL_MEDIAN_COUNT) ++recentLevelCount;
+    uint16_t sorted[LEVEL_MEDIAN_COUNT];
+    for (uint8_t i = 0; i < recentLevelCount; ++i)
+      sorted[i] = recentLevelMm[i];
+    for (uint8_t i = 1; i < recentLevelCount; ++i) {
+      const uint16_t key = sorted[i];
+      int j = static_cast<int>(i) - 1;
+      while (j >= 0 && sorted[j] > key) {
+        sorted[j + 1] = sorted[j];
+        --j;
+      }
+      sorted[j + 1] = key;
+    }
+    sensors.levelDistanceMm = sorted[recentLevelCount / 2];
+    lastValidLevelMs = millis();
+  }
+  if (!levelSensorOk()) sensors.levelDistanceMm = NAN;
+}
+static void writeLevelMeasurement(JsonObject obj) {
+  obj["level_sensor"] = "a02yyuw";
+  obj["level_sensor_ok"] = levelSensorOk();
+  if (levelSensorOk()) obj["level_distance_mm"] = sensors.levelDistanceMm;
+  else obj["level_distance_mm"] = nullptr;
+  // Konischer/rechteckiger Behaelter: Liter-/Prozentwerte erst nach Kalibrierung.
+  obj["level_liters"] = nullptr;
+  obj["level_percent"] = nullptr;
+}
 
 /* ---------- Aktor-Soll / Ist ---------- */
 struct ActuatorState {
@@ -1778,6 +1844,7 @@ static void handleSummary() {
 
   JsonObject reading = doc.createNestedObject("reading");
   writeNutrientTargets(reading);
+  writeLevelMeasurement(reading);
   if (sensors.air.ok) {
     reading["air_temperature"] = sensors.air.tempC;
     reading["humidity"] = sensors.air.rh;
@@ -2173,6 +2240,7 @@ static bool sendTelemetry() {
   root["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
   root["phase"] = phaseName(growPhase);
   writeNutrientTargets(root);
+  writeLevelMeasurement(root);
   root["phase_profile_configured"] = phaseProfile().configured;
   const VpdControlBand vpdBand = activeVpdControlBand();
   root["phase_clock_status"] = phaseClockStatus();
@@ -2327,6 +2395,7 @@ void setup() {
   actual = ActuatorState{};
   Serial.begin(115200);
   delay(300);
+  levelUart.begin(LEVEL_UART_BAUD, SERIAL_8N1, PIN_LEVEL_UART_RX, -1);
   setupGrowPhaseButtons();
   loadPhaseProfile();
   loadGrowPhase();  // Vor der Uhr den verbindlichen NVS-Phasenstatus laden.
@@ -2394,6 +2463,7 @@ void loop() {
   }
 
   localServer.handleClient();
+  pollLevelSensor();
   refreshPhaseRgb();  // Verbindungstimeout: blau sofort wieder aus.
   pollGrowPhaseButtons(now);
   pollPumpServiceButton(now);
