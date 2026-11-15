@@ -242,6 +242,86 @@ bildet nur eine **softwareseitige** Sperre, keine galvanische Trennung.
   externe Komponenten; Anschlüsse anderer Boardbaugruppen
   sind nicht mitgezählt.
 
+## Verbindliche Ergänzungen: MLX90640, ADS1115, RGB, USB-C
+
+### Wärmebildkamera MLX90640 — vorgesehen
+
+Die Kamera erhält **einen eigenen vierpoligen, abziehbaren Steckanschluss**
+`CAM-MLX90640` auf der Sensorplatine. Sie teilt den bereits
+zugeordneten I²C-Bus mit dem ADS1115 (GPIO21/22, Kamera-Adresse 0x33):
+
+| Kontakt | Signal | Verbindung |
+| --- | --- | --- |
+| 1 | 3V3 | Modulversorgung, sofern die konkrete Kameraplatine 3,3 V unterstützt |
+| 2 | GND | gemeinsame Sensormasse |
+| 3 | SDA | GPIO21 |
+| 4 | SCL | GPIO22 |
+
+Baureihe: wie BH1750, **Phoenix Contact MSTB 2,5, vierpolig,
+5,08 mm**; vollständige Artikelnummern und Footprint noch
+zu prüfen. Versorgung und mögliche I²C-Pull-ups anhand des
+tatsächlichen MLX90640-Breakouts verifizieren. Die Firmware
+besitzt bereits MLX90640-Code, aber `GROW_ENABLE_MLX90640` steht
+aktuell auf **0**; physische Montage heißt noch nicht,
+dass Kameramessungen aktiviert oder validiert sind.
+
+### ADS1115 — steckbares Modul direkt auf der Sensorplatine
+
+Kein externer Kabelanschluss für das ADS1115-Modul: Es bekommt
+**eine passende steckbare Stiftleisten-/Buchsenleisten-Aufnahme**
+direkt auf der Sensorplatine. Elektrische Signale:
+`3V3`, `GND`, `SDA=GPIO21`, `SCL=GPIO22`,
+`ADDR=GND` für I²C-Adresse 0x48 sowie `A0` (pH)
+und `A1` (EC/TDS). Weitere Modulanschlüsse sind nur
+entsprechend dem tatsächlich verwendeten Breakout vorzusehen.
+**Pinzahl, Kontaktreihenfolge, Raster und Befestigung sind noch
+nicht anhand der konkreten ADS1115-Platine verifiziert.**
+Vorhandene I²C-Pull-ups und ADDR-Beschaltung prüfen.
+
+### RGB-Status-LED — Gehäusestecker
+
+Ein eigener **vierpoliger, abziehbarer Anschluss** `LED-RGB`
+für die vorhandene LED mit **gemeinsamer Kathode**:
+
+| Kontakt | Bezeichnung | Firmware-Signal |
+| --- | --- | --- |
+| 1 | R | GPIO33 (über Vorwiderstand R_RGB_R) |
+| 2 | G | GPIO4 (über Vorwiderstand R_RGB_G) |
+| 3 | B | GPIO17 (über Vorwiderstand R_RGB_B) |
+| 4 | COM | GND, gemeinsame Kathode |
+
+**Drei getrennte Vorwiderstandspositionen** auf der
+Sensorplatine vorsehen. Exakte Widerstandswerte erst nach
+LED-Datenblatt (Vorwärtsspannung/Nennstrom) und
+GPIO-Stromgrenzen bestimmen. Steckfamilie: vierpoliger
+MSTB 2,5, Artikel/Footprint noch zu prüfen.
+
+### Versorgung
+
+Die **Sensor-ESP32-Baugruppe wird mit 5 V über USB-C**
+versorgt. Bei der geplanten Trägerplatine ist die vorhandene
+USB-C-Versorgung des tatsächlichen ESP32-Moduls einschließlich
+USB-Zugänglichkeit und der 3,3-V-Versorgungskapazität zu prüfen.
+**Keinen zusätzlichen eigenmächtigen 5-V-Einspeisepunkt**
+parallel zu USB-C festlegen, bevor Rückspeisung und
+Versorgungstopologie überprüft sind.
+
+### Aktualisierte Anschlusszählung der Sensorplatine
+
+| Klasse | Anzahl | Enthalten |
+| --- | ---: | --- |
+| 2-polig | 2 | Phasen-/Wartungstaster |
+| 3-polig | 6 | 3 DHT22, DS18B20, A02YYUW, EC/TDS |
+| 4-polig | 4 | BH1750, PH4502C, MLX90640, RGB-LED |
+| **Abziehbare externe Steckplätze** | **12** | ohne ADS1115-Steckaufnahme |
+
+Hinzu kommt **eine steckbare ADS1115-Modulaufnahme**.
+Vier 4,7-kΩ-Datenpull-ups (3 DHT22, 1 DS18B20)
+und drei RGB-Vorwiderstandspositionen sind vorgesehen.
+ADS1115-A0-Spannungsteiler und I²C-Pull-ups bleiben
+gesondert zu verifizieren; die Sensorplatine ist nicht
+fertigungsfreigegeben.
+
 Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
 
 Versorgung und Masse sowie physische Pinpositionen sind anhand des tatsächlich verbauten Pro-Boards zu verifizieren. Keine Netzspannungs-/SSR-Lastverkabelung am Sensorcontroller.
