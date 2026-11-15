@@ -151,6 +151,30 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertNotIn('if (!sensors.dht[0].ok || !isfinite(sensors.vpd)', self.sensor)
         self.assertNotIn('const float airC = sensors.dht[0].tempC;', self.sensor)
 
+    def test_calibration_exclusive_sensor_acquisition(self):
+        # Only the calibration sampler may read ADS1115 during a capture.
+        loop = self.sensor.split("void loop() {", 1)[1]
+        self.assertIn("pollCalibrationCapture();", loop)
+        self.assertIn(
+            "if (!calibrationActive()) {\n"
+            "    sampleTdsBackground(now);\n"
+            "    pollMlx90640(now);\n"
+            "  }", loop)
+        self.assertIn(
+            "if (!calibrationActive() && now - lastSensorRead >= SENSOR_READ_MS)",
+            loop)
+        self.assertIn(
+            "if (!calibrationActive() && now - lastTelemetry >= TELEMETRY_INTERVAL_MS)",
+            loop)
+        self.assertIn("if (!calibrationActive() && !sensors.adsOk", loop)
+        self.assertIn("I2C-Scan waehrend Kalibrierung gesperrt.", self.sensor)
+        self.assertIn("static void endCalibrationCapture()", self.sensor)
+        self.assertIn("resetEcFilterAfterCalibration();", self.sensor)
+        self.assertIn("ds18b20.requestTemperatures();\n  float waterC = NAN;", self.sensor)
+        self.assertIn("localServer.handleClient();", loop)
+        self.assertIn("applyActuators();", loop)
+        self.assertIn("KALIBRIERMODUS ENDE: normale Messungen wieder freigegeben.", self.sensor)
+
     def test_integrated_ph_ec_calibration(self):
         self.assertIn('#include "calibration_capture.h"', self.sensor)
         for command in ("c == '7'", "c == '4'", "c == 'e'", "c == 's'", "c == 'x'"):
