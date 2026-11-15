@@ -272,3 +272,18 @@ Offene Treiberdaten: Modell/Typenschild, Versorgung,
 zwei Lastabgänge, Steuereingang samt Pegel-/Strombedarf
 und Eingangsbezugspotential. **12-V-Versorgung allein
 belegt keinen geeigneten PWM- oder Enable-Eingang.**
+
+
+### Klarstellung: zweistufige Abluft
+
+Der vorhandene Abluftlüfter hat einen **manuellen Kippschalter**
+für Stufe 1 und Stufe 2. Die Stufenauswahl verbleibt am Gerät.
+Der Grow-Controller schaltet die Abluft **ausschließlich EIN/AUS**
+über den bereits vorgesehenen SSR-Steuerkanal `exhaust_vent`
+(C3 GPIO1). Für die Stufenwahl wird weder ein zusätzlicher
+GPIO noch ein zusätzlicher PCA9685-Ausgang oder Steckanschluss vorgesehen.
+
+Die tatsächlichen elektrischen Anschluss-/SSR-Anforderungen des
+Abluftlüfters sind weiterhin vor Inbetriebnahme zu prüfen.
+Dies ist von der getrennten Funktion der zwei anderen Lüfter am
+gemeinsamen 12-V-Treiber zu unterscheiden.
