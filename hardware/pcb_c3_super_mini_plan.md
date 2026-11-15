@@ -364,4 +364,4 @@ geklärt werden. Keine parallelen Einspeisungen ohne Prüfung.
 
 **Festgelegt:** Auch das steckbare ESP32-C3-Super-Mini-Modul wird mit **5 V** versorgt, analog zum Sensor-ESP32. Die 5-V-Zuführung ist an den vorgesehenen 5-V-Eingang des konkreten Super-Mini-Boards zu führen; **keine 5 V an 3V3 oder GPIOs**. Die 12-V-Pumpenlastversorgung bleibt davon getrennt. Der PCA9685 ist mit kompatibler 3,3-V-Logikversorgung zu planen.
 
-**Weiterhin offen:** Ob die 5 V aus einer separaten USB-C-Zuführung oder einer verifizierten 5-V-Schiene auf der Trägerplatine kommen, die Stromreserve und der Rückspeiseschutz bei angeschlossenem USB-C. Keine zweite gleichzeitige Einspeisung ohne Prüfung der Board-Schaltung vorsehen.
+**Verbindlich festgelegt:** Die 5-V-Versorgung des ESP32-C3 Super Mini erfolgt **ausschließlich über dessen USB-C-Anschluss**. Keine parallele 5-V-Einspeisung über die Trägerplatine und keine 12 V am C3. **Noch zu prüfen:** Ob die verfügbare 3,3-V-Versorgung des Moduls die geplante Logiklast zuverlässig deckt und welche Stromversorgung die übrige C3-Trägerplatine benötigt.
