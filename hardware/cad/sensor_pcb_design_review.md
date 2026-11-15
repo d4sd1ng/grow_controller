@@ -17,7 +17,7 @@
 | Gesamtpads | 104 |
 | CAD-Bauteilpositionen | 27 |
 | KiCad-Netznamen | 46 |
-| Leiterbahnen und Vias | **0** |
+| Leiterbahnen und Vias | **81 Leiterbahnsegmente + 1 Via**, ausschließlich Teilrouting pH/EC/ADS1115 |
 | Mechanische Außenkontur | **vorläufig** 179 × 115 mm |
 
 ### Steckverbinder-Geometrie
@@ -43,18 +43,16 @@ Hersteller:
 
 ## 2. Kritische, aktuell nicht geschlossene Netze
 
-**Der CAD-Vorentwurf enthält Pad-Netz-Zuordnungen,
-aber noch keinerlei Leiterbahnen; auch gleich benannte Netze
-sind physisch nicht verbunden.** Darüber hinaus sind
+**Der CAD-Vorentwurf besitzt inzwischen Teilrouting für pH/EC/ADS1115.** Nicht alle gleichnamigen Netze sind bereits physisch verbunden; der Rest der Sensorplatine ist noch ungeroutet. Darüber hinaus sind
 einige Signale bewusst nicht vollständig spezifiziert:
 
 | Punkt | Ist-Stand / offene Entscheidung |
 | --- | --- |
 | ADS1115 ADDR / 0x48 | ADS-Modul-Pin 5 liegt am Prüfnetz `ADS_ADDR_GND_UNVERIFIED`, nicht an verifiziertem GND; erst echte Modulkonfiguration prüfen |
-| ADS1115 A0 | `PH_A0_CONDITIONED_UNVERIFIED` und `PH_A0_MID` sind derzeit **verschiedene** Netze; Eingangskreis absichtlich noch nicht fertig |
-| ADS1115 A1 | `EC_A1_CONDITIONED_UNVERIFIED` und `EC_ANALOG_UNVERIFIED` sind noch nicht verbunden; elektrische Pegelprüfung erforderlich |
-| PH4502C GND1 und GND2 | Zwei getrennte Prüfnetze; gemeinsame Beschaltung nicht ohne Prüfung annehmen |
-| 5-V-Versorgung Analogmodule | pH und EC laut Nutzerangabe aus dem Sensor-ESP32-5-V-Pin versorgt; CAD-Padnetze sind jetzt dem Netz `5V_USB_BOARD` zugeordnet; physische Leiterbahnen fehlen weiterhin |
+| ADS1115 A0 | R_PH_TOP.2, R_PH_BOTTOM.1 und U_ADS1115.7 auf `PH_A0_MID` als Kupfernetz verbunden; Widerstandswerte und tatsächliche Altbeschaltung nicht bestätigt |
+| ADS1115 A1 | J_EC.3 ist **direkt als Kupferleitung** mit U_ADS1115.8 verbunden; das entspricht der früher dokumentierten Direktverdrahtung |
+| PH4502C GND1 und GND2 | Beide ausdrücklich GND-beschrifteten Kontakte J_PH.2/J_PH.3 sind jetzt auf das gemeinsame GND-Netz geroutet |
+| 5-V-Versorgung Analogmodule | J_PH.1 und J_EC.1 sind via F.Cu auf U_ESP32.15 (`5V_USB_BOARD`) geroutet |
 | A02YYUW und MLX90640 | Vorläufig separate `3V3_UNVERIFIED`-Netze bis Modulversorgung geprüft |
 | I²C-Pull-ups | Vier optionale Widerstandspositionen; Modulbestückung vorab klären |
 | 3,3-V-Strombudget | Leistungsfähigkeit des ESP32-Modulreglers für alle Sensoren ungeprüft |
@@ -163,7 +161,7 @@ Nutzerangabe 15.11.2026: **pH- und EC-Module werden aus der Versorgung des Senso
 
 Der Nutzer bestätigt ausdrücklich, dass die über USB-C gespeiste 5-V-Versorgung des Sensor-ESP32 für pH- und EC-Modul **ausreichend** ist. Diese Kapazität wird als **Nutzervorgabe** übernommen, nicht als von uns durch Strommessung oder Board-Schaltplan verifizierter Wert. Der Versorgungsweg ist keine offene *Planungsentscheidung* mehr: Im CAD-Vorentwurf nutzen **J_PH Kontakt 1**, **J_EC Kontakt 1** und **U_ESP32 Kontakt 15** das gemeinsame Netz `5V_USB_BOARD`. Ein zusätzliches Netzteil oder ein zweiter 5-V-Einspeisepunkt ist nicht vorgesehen.
 
-**Unverändert offen:** Das PCB besitzt bislang **keine gerouteten Leiterbahnen**, und die tatsächliche Stromreserve wurde nicht unabhängig gemessen. Die pH- und EC-Analogeingangsspannungen sowie ihre Beschaltung zum mit 3,3 V versorgten ADS1115 müssen unabhängig von der ausreichenden Versorgung geprüft werden.
+**Unverändert offen:** Das PCB ist **nur teilweise geroutet**; die ausreichende Stromreserve wurde vom Nutzer bestätigt, aber nicht unabhängig gemessen. Die pH- und EC-Analogeingangsspannungen sowie ihre Beschaltung zum mit 3,3 V versorgten ADS1115 müssen unabhängig von der ausreichenden Versorgung geprüft werden.
 
 
 ## 8. Korrektur: pH und EC funktionieren bereits im bestehenden Aufbau
@@ -175,3 +173,37 @@ Der Nutzer bestätigt ausdrücklich, dass die über USB-C gespeiste 5-V-Versorgu
 Die offene Aufgabe besteht ausschließlich darin, die **exakte, aktuell funktionierende Hardwareverbindung** in den KiCad-Schaltplan zu übertragen; die als *veraltet* gekennzeichnete Datei `wiring_plan_v2.md` ist dafür allein keine hinreichende Quelle. Die unfertigen A0/A1-Prüfnetze des bisherigen CAD-Prototyps sind **ein Dokumentations-/CAD-Mangel**, kein Nachweis eines Problems im funktionierenden Aufbau. Die erfolgreiche Funktion ersetzt jedoch keine Fertigungs-DRC/Netzlistenprüfung der neuen Platine.
 
 **Status:** Sensorfunktion laut Nutzer **bestätigt**; exakte Reproduktion im PCB **noch nicht umgesetzt**.
+
+
+## 9. Umsetzung der pH-/EC-/ADS1115-Verbindungen im KiCad-Board
+
+**Bisheriger Zustand:** nur Pad-Netzpläne und nicht geroutete ADC-Prüfnetze.
+**Neuer Zustand:** Physische `segment`-Objekte auf F.Cu/B.Cu mit
+`via`-Lagenwechsel sind in der vorhandenen `.kicad_pcb`-Datei
+gespeichert.
+
+**Konkret geroutet:**
+
+- pH PO / J_PH.4 → R_PH_TOP.1; über den vorgesehenen
+  Widerstand R_PH_TOP.2 → ADS1115 A0 und R_PH_BOTTOM.1;
+  R_PH_BOTTOM.2 → GND. **Werte beider Widerstände offen**, bis
+  die tatsächlich funktionierende Bestückung bekannt ist.
+- EC J_EC.3 → ADS1115 A1 direkt, wie in der historischen
+  Verdrahtungsdokumentation angegeben.
+- pH und EC VCC → ESP32-5V/VIN-Kontakt 15; pH GND1 und GND2
+  → ESP32-GND; EC GND → ADS1115-GND; ADS1115-GND → ESP32-GND.
+- ADS1115 VDD → ESP32-3V3-Kontakt 16;
+  ADDR → GND für die bestehende I²C-Adresse `0x48`.
+- ADS1115 SDA → GPIO21 / ESP32-Kontakt 26;
+  ADS1115 SCL → GPIO22 / ESP32-Kontakt 29.
+
+**Statisch verifiziert:** 15 von 15 exemplarisch geprüfte
+Endpunktverbindungen waren durchgängig; keine geometrisch
+erkannten Fremdnetzkollisionen innerhalb 81 Segmenten
+und eines Vias. Vergleich mit den beiden CSV-Pinlisten
+ergab 0 Abweichungen bei 78 Steckkontakten.
+
+**Weiterhin nicht erledigt:** Restliche Sensornetze und optionale
+Pull-ups routen, tatsächliche pH-Widerstandsbestückung aus dem
+funktionierenden Aufbau abgleichen, vollständigen KiCad-Schaltplan
+sowie echten ERC/DRC-Lauf erstellen. **Keine Fertigungsfreigabe.**
