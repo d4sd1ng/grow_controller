@@ -39,9 +39,12 @@ Als steckbares System wird die auf der C3-Platine geplante
 (Grundleiste 1757255, Gegenstecker 1757022).
 Die Steckerkontakte werden auf der Platine eindeutig als 3V3 / DATA / GND
 beschriftet; die tatsächlichen Aderfarben müssen vor Anschluss verifiziert
-werden. Der erforderliche 1-Wire-Pull-up liegt auf der Sensorplatine
-zwischen DATA und 3,3 V; sein endgültiger Wert wird mit der Leitungslänge
-und dem realen Sensor geprüft. **Nicht** an die C3-SSR-/Pumpenplatine anschließen.
+werden. Der 1-Wire-Pull-up **R_TEMP_WASSER = 4,7 kΩ** wird auf der Sensorplatine
+**zwischen DATA (GPIO23) und 3,3 V** vorgesehen (nicht in Reihe zur
+Datenleitung). Der Widerstand sitzt in der Nähe von `TEMP-WASSER`.
+Bei der Inbetriebnahme sind Leitungslänge, Signalqualität und der
+reale Sensor zu prüfen; ein früher verwendeter 20-kΩ-Widerstand ist
+**nicht** der vorgesehene Bestückungswert. **Nicht** an die C3-SSR-/Pumpenplatine anschließen.
 
 Die Aufnahme dieses Anschlusses ist eine Dokumentations-/PCB-Anforderung;
 sie ändert weder die Firmware noch die bestehenden Kalibrierungen.
