@@ -341,3 +341,21 @@ die manuell einzustellende Stufe aus der Phase abgeleitet werden.
 - Fehlende mechanische Daten (insbesondere Reihenmittenabstand, Pad-/Pin-Geometrie und Steckerfreiraum) werden vor Fertigungsfreigabe vermessen oder per verifiziertem Hersteller-CAD geklärt.
 
 Die Firmware-Pinbelegung bleibt unverändert.
+
+
+### Versorgung verbindlich präzisiert: 5 V für die Steuerplatine
+
+**Nutzerfestlegung:** Auch die ESP32-C3-Steuerplatine erhält eine
+**5-V-Versorgung**. Das steckbare ESP32-C3-Super-Mini-Modul bleibt
+mechanisch entnehmbar. Die sechs Dosierpumpen sind davon getrennte
+**12-V-Lasten**. Der PCA9685 verwendet **3,3-V-Logik**.
+
+Die Angaben zu 12 V für Pumpen und 5 V für die Steuerung sind
+unterschiedliche Versorgungsbereiche, kein Widerspruch.
+
+**Noch nicht festgelegt:** Ob die 5 V für die C3-Trägerplatine
+ausschließlich über USB-C am Modul oder von einer separaten
+5-V-Einspeisung bereitgestellt werden; ebenso die zulässige
+Strombelastung des Modulreglers und Rückspeisepfade.
+Diese Fragen müssen vor einem elektrischen PCB-Schaltplan
+geklärt werden. Keine parallelen Einspeisungen ohne Prüfung.
