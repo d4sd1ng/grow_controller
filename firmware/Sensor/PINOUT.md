@@ -85,6 +85,41 @@ Temperatur-/Feuchtesensoren):** 1 × TEMP-WASSER + 3 × DHT22 =
 vier Gegensteckern. Die DHT22-Ergänzung ändert die vorhandene
 Firmware-GPIO-Zuordnung nicht.
 
+### Steckverbindung A02YYUW (Ultraschall-Füllstand)
+
+Auf der **Sensor-ESP32-Platine** wird ein eigener **3-poliger,
+abziehbarer Steckanschluss `LEVEL-A02`** vorgesehen. Die vorhandene
+Firmware verwendet den Ultraschallsensor als **UART-Empfänger**:
+
+| Platinenkontakt | Bezeichnung | Verbindung |
+| --- | --- | --- |
+| 1 | 3V3 | Versorgung A02YYUW, sofern das konkrete Sensormodul 3,3 V unterstützt |
+| 2 | SENSOR-TX | A02YYUW TX → Sensor-ESP32 GPIO18 (UART1 RX) |
+| 3 | GND | Gemeinsame Sensormasse |
+
+Der **RX-Pin des A02YYUW wird in dieser Firmware nicht verwendet**;
+er wird daher **nicht** auf den 3-poligen Stecker geführt. Vor Fertigung
+sind Versorgungsspannung, UART-Ausgangspegel und der gewünschte
+Betriebsmodus anhand des tatsächlich gelieferten A02YYUW zu verifizieren.
+Insbesondere bei 5-V-Betrieb darf ein eventuell 5-V-führendes
+TX-Signal **nicht ungeprüft** direkt an GPIO18 angeschlossen werden.
+
+Für die Steckverbindung ist ebenfalls **Phoenix Contact MSTB 2,5,
+3-polig, Raster 5,08 mm** vorgesehen:
+- 1 × PCB-Grundleiste `1757255`
+- 1 × abziehbarer Gegenstecker `1757022`
+
+Die Kontaktfolge 3V3 / SENSOR-TX / GND ist die **Platinenbelegung**,
+nicht die unbestätigte Kontaktreihenfolge am A02YYUW-Sensorkabel.
+Für diesen UART-Anschluss ist **kein zusätzlicher Pull-up-Widerstand
+vorgesehen**; die 4,7-kΩ-Pull-ups gelten für die drei DHT22-Datenleitungen
+und den DS18B20-1-Wire-Bus.
+
+**Sensor-Steckverbinder-Zwischenstand:** drei DHT22 + ein DS18B20
+Wassertemperatur + ein A02YYUW = **fünf 3-polige Steckanschlüsse**.
+Zusammen sind **vier Pull-up-Widerstände mit 4,7 kΩ** vorgesehen,
+vorbehaltlich der Prüfung bereits vorhandener Modul-Pull-ups.
+
 **BH1750:** Separater I²C-Bus mit GPIO13/14.
 
 Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
