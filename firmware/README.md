@@ -83,6 +83,28 @@ Sketch-Update ohne Flash-Erase bestehen.
 (vom Repositoryroot). Der Hosttest prueft den Berechnungskern,
 nicht den ESP32/ADS1115-Hardwarepfad.
 
+## Exklusiver pH-/EC-Kalibriermodus (Korrektur-Branch)
+
+Beim Start mit `7`, `4` oder `e` stoppt die Firmware die regulaeren
+Sensor-Messzyklen (DHT22, DS18B20, BH1750, pH/EC), die EC-Ringpufferabtastung,
+den optionalen Kamera-I2C-Zugriff, aktive I2C-Diagnose und den Telemetrieversand.
+**Nur der Kalibriersampler liest den ADS1115** (A0 bei pH bzw. A1 bei EC).
+Der serielle Monitor meldet Start, EC-Fenster und Ergebnisse; die gewohnte
+2-Sekunden-Live-Ausgabe pausiert absichtlich.
+
+Die Wassertemperatur wird vor dem Start vorausgesetzt und **nach dem letzten
+ADC-Sample** mit dem DS18B20 erneut kontrolliert; ungueltige oder um mehr als
+3 C abweichende Temperatur verhindert die Speicherung. Der EC-Ringpuffer wird
+beim Eintritt und Verlassen des Modus geleert. Bei Abschluss, Ablehnung,
+Timeout, ADC-Fehler oder manueller Eingabe `x` wird die normale Messung
+automatisch wieder freigegeben. Bestehende Kalibrierdaten werden bei einem
+Abbruch nicht durch neue Messpunkte ueberschrieben.
+
+Lokaler HTTP-Server, C3-Kommunikation, Phasenuhr und Sicherheitslogik laufen
+weiter. **Während der Pausierung zeigt eine verbundene Fernanzeige gegebenenfalls
+den letzten gespeicherten Messwert, keinen neuen Live-Wert.**
+Der Kalibriermodus ist auf dem realen ESP32 noch nicht hardwaregetestet.
+
 ## Drei DHT22: gemeinsame Klima- und VPD-Messung
 
 Die Sensor-Firmware liest unveraendert DHT22 #1 (GPIO25), #2 (GPIO26)
