@@ -327,3 +327,17 @@ Die bestehende SSR-Schnittstelle schaltet den Ventilator ausschließlich
 EIN/AUS. Der Phasenwechsel des Controllers verändert **nicht** die
 Schalterstellung am PK125-2. Für eine spätere Benachrichtigung kann
 die manuell einzustellende Stufe aus der Phase abgeleitet werden.
+
+
+### Steckbare ESP32-C3-Super-Mini-Aufnahme
+
+**Verbindliche Konstruktionsanforderung:** Der ESP32-C3 Super Mini wird **steckbar in Buchsenleisten auf der C3-Trägerplatine** montiert, nicht fest verlötet. Damit bleibt das Modul ohne Entlöten austauschbar.
+
+- Modul: ESP32-C3 Super Mini, vom Nutzer angegebene Boardabmessung **23 × 18 mm**.
+- Das vorgelegte Pinout zeigt **2 × 8 Anschlusskontakte**. Die passenden Buchsenleisten und der endgültige PCB-Footprint sind anhand des tatsächlich gelieferten Moduls zu prüfen.
+- USB-C muss in eingebautem Zustand zum Programmieren und zur Wartung zugänglich bleiben.
+- Antennenfreiraum, Bauhöhe, Stecksicherheit und mechanische Toleranzen berücksichtigen.
+- Eine steckbare Modulaufnahme ist **kein** weiterer externer Schraubklemmenanschluss; die separat dokumentierten C3-Anschlusszahlen bleiben unverändert.
+- Fehlende mechanische Daten (insbesondere Reihenmittenabstand, Pad-/Pin-Geometrie und Steckerfreiraum) werden vor Fertigungsfreigabe vermessen oder per verifiziertem Hersteller-CAD geklärt.
+
+Die Firmware-Pinbelegung bleibt unverändert.
