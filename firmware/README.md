@@ -1,14 +1,15 @@
 # Grow Controller – Firmwarestruktur
 
-Stand: 13.11.2026. **Drei getrennte Arduino-Sketches, eindeutige Namen.**
+Stand: 15.11.2026. **Drei Betriebs-Firmwares plus ein eigenstaendiger Kalibrier-Sketch.**
 
 | Rolle | Firmware | Board | Status |
 | --- | --- | --- | --- |
 | Sensor | `firmware/Sensor/Sensor.ino` | ESP32-Pro-Controller ohne lokales Display, mit ADS1115, DHT22 und DS18B20 | Serielle Live-Messwerte im Korrektur-Branch; Hardwaretest offen |
 | Remote | `firmware/Remote/Remote.ino` | CYD ESP32-2432S028R mit LVGL 8.4 / TFT_eSPI | Neu strukturierte 320×240-Querformatoberfläche, Hardwaretest offen |
 | C3 | `firmware/C3/C3.ino` | ESP32-C3 SuperMini + PCA9685 | Hardwareausgänge gesperrt, fünf Dosierkanäle, Hardwaretest offen |
+| Kalibrierung (temporär) | `firmware/ph_calibration_tool/ph_calibration_tool.ino` | Das gleiche Sensor-ESP32 mit ADS1115 und DS18B20 | Ursprünglicher Sketch aus `hardware-v2-firmware` angepasst; Kompilierung/Hardwaretest offen |
 
-**Keine der drei Rollen darf eine Firmwaredatei einer anderen Rolle ersetzen.** Es gibt kein Installationsskript, das Dateien anderer Geräte überschreibt. Der Arduino-Sketchname entspricht immer dem jeweiligen Ordnernamen.
+**Nur der separate Kalibrier-Sketch ersetzt auf dem Sensor-ESP32 voruebergehend `Sensor.ino`; nach Kalibrierung kommt `Sensor.ino` zurueck.** Andere Rollen/Firmwares bleiben unangetastet. Es gibt kein Installationsskript, das Dateien anderer Geräte überschreibt. Der Arduino-Sketchname entspricht immer dem jeweiligen Ordnernamen.
 
 **Verbindlicher Sensor-GPIO-Abgleich:** [Sensor/PINOUT.md](Sensor/PINOUT.md). Die früher dokumentierten physischen Kontaktpositionen beziehen sich auf das ältere Board. Beim Pro-Controller sind diese Positionen noch nicht verifiziert; ältere Verdrahtungsanleitungen dürfen nicht als aktive Anschlusspläne verwendet werden.
 
@@ -35,6 +36,41 @@ Fünf 12-V-Dosierpumpen an PCA9685-Ausgängen 0–4 vorgesehen; PCA-Kanal 5 ist 
 
 **Teststatus:** Git-Dateikonsistenz und Schnittstellen sind textuell überprüft. Ein vollständiger Arduino-Compile, reale Touch-Kalibrierung, Sensor-Kalibrierung und integrierter Hardwaretest sind **nicht** nachgewiesen. Keine automatische Dosierung freigeben.
 
+
+## Eigenstaendige Kalibrier-Firmware (bevorzugter Ablauf)
+
+Der vorhandene `ph_calibration_tool.ino` wurde aus `hardware-v2-firmware`
+wiederhergestellt und angepasst. Er verwendet ausschliesslich ADS1115 (0x48,
+SDA GPIO21, SCL GPIO22; pH A0, EC A1) und einen DS18B20 an GPIO23,
+**ohne OLED, WLAN, Hintergrund-EC-Abtastung oder Steuerfunktionen**.
+Bisherige pH-Mittelwertmessung mit 160 Samples ist erhalten, EC mit
+1413 uS/cm Referenz wurde ergaenzt. Die Rechenlogik liegt neben dem Sketch
+in `ph_calibration_tool/calibration_capture.h` und verwendet die identische
+Vorlage wie `Sensor/calibration_capture.h`.
+
+**Ablauf auf dem gleichen Sensor-ESP32:**
+1. `ph_calibration_tool/ph_calibration_tool.ino` mit passendem ESP32-Board
+   kompilieren und flashen. **Weder "Erase All Flash" noch ein anderes
+   Partitionsschema verwenden.**
+2. Serial Monitor **115200 Baud**: `s` zeigt gespeicherte NVS-Daten,
+   `m` fuehrt einmalige Spannungsdiagnose aus.
+3. pH-Elektrode und DS18B20 in pH-7-Loesung: `7`. Danach abspuelen,
+   in pH-4-Loesung: `4`. Nur stabile Werte werden gespeichert.
+4. EC-Sonde und DS18B20 in **1413-uS/cm-Referenzloesung**: `e`.
+   Acht Messfenster; nach dem letzten wird der Wert geprueft und gespeichert.
+5. `s` kontrolliert beide pH-Punkte sowie EC-Faktor, Referenzspannung
+   und Temperatur. Danach `Sensor/Sensor.ino` wieder flashen,
+   **ohne Flash-Erase, mit demselben Partitionsschema**.
+6. Im normalen seriellen Monitor mit `s` kontrollieren, ob pH und EC
+   geladen sind. Falls nicht, keine Werte erfinden und nicht blind nachkalibrieren.
+
+Die Sensor-Firmware liest identische NVS-Namensraeume:
+`phads_v1` (`have7`, `have4`, `volt7`, `volt4`, `temp7`, `temp4`)
+sowie `ecads_v1` (`valid`, `factor`, `ref_v`, `temp_c`).
+Die Kalibrier-Firmware bietet **keine Loeschfunktion**.
+Ein Messfehler schreibt keine neuen Referenzpunkte.
+Ein erfolgreicher Arduino-Build und ein realer NVS-Roundtrip auf der
+Zielhardware sind noch nicht nachgewiesen.
 
 ## pH- und EC-Kalibrierung direkt in der Sensor-Firmware
 
