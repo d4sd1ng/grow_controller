@@ -172,3 +172,89 @@ Nutzer hält den aus der Produktabbildung abgeleiteten Standard-Reihenabstand vo
 ### ADS1115: eine 10-polige Kontaktreihe
 
 Nutzer bestätigt: Das vorhandene ADS1115-Breakout hat **eine einzige Reihe mit 10 Pins**, nicht zwei Pinreihen. Steckbar über **eine 1×10-Buchsenleiste**, Pinraster nach vorheriger Angabe nominal **2,54 mm**; Achsabstand erster–letzter Kontakt rechnerisch **9 × 2,54 = 22,86 mm**. Kein Reihenabstand erforderlich. Vor der Fertigungsfreigabe Außenkontur, USB-/Nachbarbauteilfreiraum (falls relevant), Orientierung und Lage des Pin-Headers auf dem realen Modul abgleichen. Die früheren Formulierungen »Pinreihen«/»Reihenabstand« für ADS1115 sind damit überholt.
+
+
+## 7. Sensorplatine — passive Bauteile und Versorgungsbilanz
+
+Stand 15.11.2026: Ableitung aus dem bereits dokumentierten Sensor-Pinout;
+**nur eine passiv-elektrische Designvorbereitung**, keine fertige Schaltung.
+
+### 7.1 Passiv-BOM mit bestückbaren und unbestückten Positionen
+
+| Referenz | Anzahl | Wert / Typ | Bestückungsstatus | Grund |
+| --- | ---: | --- | --- | --- |
+| R_DHT1–3 | 3 | 4,7 kΩ, beispielhaft 0805, >=0,125 W | bedingt, nach Kontrolle bereits vorhandener Pull-ups | DATA nach 3V3 |
+| R_DS18 | 1 | 4,7 kΩ, beispielhaft 0805, >=0,125 W | vorgesehen | DATA nach 3V3 |
+| R_RGB_R/G/B | 3 | **offen**, 0805-Positionen möglich | **DNP** bis LED-Typ und Sollstrom feststehen | je eine Strombegrenzung |
+| R_PH_OBEN/UNTEN | 2 | **offen**, passende Widerstandspositionen vorsehen | **DNP** bis reale Eingangsbeschaltung und Kalibrierbezug geprüft | ADS1115 A0 |
+| R_I2C_ADS_SDA/SCL | 2 | **offen**, optionale 0805-Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO21/22 |
+| R_I2C_BH_SDA/SCL | 2 | **offen**, optionale 0805-Positionen | DNP bis Modul-Pull-ups geprüft | I²C GPIO13/14 |
+
+**Summe der aufgeführten Widerstandspositionen: 13**
+(4 × 4,7-kΩ-Datenpull-up; 3 × RGB; 2 × pH; 4 × optionale I²C).
+Die 0805-Bauform ist ein **vorläufiger Vorschlag**, kein Nutzer-beschlossener
+Gehäusetyp. Die optionale I²C-Bestückung erst nach Vermessung der Breakouts.
+
+### 7.2 Nachgerechnete statische Pull-up-Last
+
+Für den ungünstigen statischen Fall „DATA dauerhaft auf LOW“ und
+3,3 V an 4,7 kΩ:
+
+- Strom je Pull-up: **3,3 V / 4700 Ω ≈ 0,702 mA**.
+- Verlustleistung je Widerstand: **3,3² / 4700 ≈ 2,32 mW**.
+- Vier Pull-ups zusammen maximal: **≈ 2,81 mA**, bei gleichzeitig LOW
+  liegenden Datenleitungen.
+
+Die Rechnung bestimmt **nicht** die Last der Sensormodule, Kamera,
+ESP32 oder optionalen I²C-Pull-ups. DHT22 und DS18B20 haben eigene
+versorgungstechnische Anforderungen. Der GPIO-Ausgangsstrom der RGB-LED
+bleibt mangels LED-Daten unbekannt.
+
+### 7.3 Versorgungskonzept: bekannte Netze, offene Messgrößen
+
+| Netz | Verbraucher / Funktion | Dimensionierungsstand |
+| --- | --- | --- |
+| USB-C 5V am Sensor-ESP32 | ESP32-Modul selbst | festgelegt; USB-Netzteil-Nennstrom unbekannt |
+| 3V3 am ESP32-Modul | DHT22 ×3, DS18B20, ADS1115, BH1750, MLX90640*, Pull-ups, LED über Widerstände | Reglerreserve des realen 30-Pin-Boards unbekannt |
+| 5V für analoge Module | PH4502C und EC/TDS, falls laut jeweiliger realer Modulbeschaltung erforderlich | **5-V-Abgriff und Belastbarkeit am ESP32-Board ungeprüft** |
+| GND | gemeinsamer Signalrückleiter, stern-/rückstrombewusstes Layout | finale Masseführung erst mit Schaltplan |
+| ADS1115 A0/A1 | analoge Eingangskreise | Eingangsspannung bei jeder Versorgungslage prüfen |
+
+* MLX90640: im Layout vorgesehen, Firmwarefunktion aktuell ausgeschaltet.
+
+**Keine verbindliche Strombudgetsumme möglich**, solange Board-Revision,
+Regler-Daten, Sensormodultypen und tatsächlicher LED-Strom fehlen. Ein
+5-V-Pin auf dem Board darf nicht ohne Schaltungsprüfung als
+rückspeisefreier, belastbarer USB-Verteilausgang vorausgesetzt werden.
+Die Spannung der 5-V-Analogmodule ist vor ADC-Eingang zu bewerten.
+USB-C selbst liefert nicht automatisch beliebig viel Leistung.
+
+### 7.4 Entwurfsregeln für den Sensor-Schaltplan
+
+1. Anschlussnamen an allen 12 Klemmen gemäß `firmware/Sensor/PINOUT.md`
+   fest zuordnen und eindeutig am Board beschriften.
+2. Pull-up-Widerstände als **Verbindung DATA nach 3V3**, nie in Serie.
+3. RGB common cathode: jede Farbe benötigt **ihren eigenen** Widerstand;
+   ohne LED-Daten keinen Strom- oder Vorwiderstandswert erfinden.
+4. ESP32 30 Pin: 2 × 15 Buchsen, 2,54 mm entlang, **25,40 mm
+   Reihenmitte vorläufig**, Außenmaß 28 × 51 mm aus Bild.
+5. ADS1115: **1 × 10 Buchsen**, 2,54 mm; Achsabstand erster–letzter
+   Kontakt = **22,86 mm**. Pinreihenfolge vor Verbindung prüfen.
+6. C3 Super Mini: 2 × 8 Buchsen, Reihenmitte **15,24 mm** laut Bild,
+   Modul 18 × 22,52 mm; USB-C- und Antennenfreiraum.
+7. Sensor-Signalpegel A02YYUW, ADS1115 A0/A1 und beiden I²C-Bussen
+   nach konkreten Breakouts und realer Verdrahtung abgleichen.
+8. **Kein PCB-Layout ohne Schaltplan/ERC, Footprint-Abgleich und DRC
+   als bestellfertig bezeichnen.**
+
+### 7.5 Noch fehlende Angaben, nach Priorität
+
+**P1 vor Fertigung:** reale ESP32-Header-Mitten, ADS1115-Pinreihenfolge,
+genaue GPIO-Beschriftung am 30-Pin-Board, realer 5-V-/3V3-Reglerpfad,
+A0/A1-Pegel und Spannungsteiler.
+
+**P2 für Bestückung:** LED-Daten, Modul-Pull-ups, tatsächlicher
+5-V-Sensorstrom und Temperaturreserve, A02YYUW-Pegel.
+
+**P3 Mechanik:** Gehäuse, Einbauhöhe der Steckmodule, Klemmenausrichtung,
+Leitungsabgang und Befestigungsbohrungen.
