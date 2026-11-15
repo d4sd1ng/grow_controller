@@ -150,3 +150,13 @@ Nutzerangabe: **vermutlich 36 mm** Abstand der beiden Pinreihen beim 30-Pin-Sens
 ### Recherche zum 30-Pin-ESP32-Reihenabstand
 
 15.11.2026: Nutzer schätzt 35–36 mm, ohne Messung. Recherchierte **verschiedene** 30-Pin-ESP32-DevKit-V1-Bauformen geben stattdessen beispielsweise 22,86 mm (0,9 Zoll) oder 25,40 mm (1 Zoll) Reihenmittenabstand an. Die Angabe 36 mm darf **nicht** für den Footprint übernommen werden. Die exakte Boardvariante muss an den realen Steckleisten oder anhand eines passenden, maßhaltigen Hersteller-Footprints geklärt werden. Quellen: https://mokxi.com/docs/boards/esp32-devkit und https://electronics360.org/parts/esp32-devkit-v1
+
+### Sensor-ESP32 Produktbild: Außenmaße und Adapter
+
+Nutzerbild vom 15.11.2026: zeigt einen **30-Pin-ESP32-Entwicklungsboard** mit separater **Terminal-Adapterplatine**.
+
+- ESP32-Außenmaß laut bemaßter Abbildung: **28 mm Breite × 51 mm Länge** (Länge der dargestellten Boardkontur; USB-C-Überstand berücksichtigen).
+- Terminal-Adapterplatine: **66 mm × 63 mm**. Diese große Adapterplatine ist **nicht** Teil unserer Sensorplatine; unsere eigene Trägerplatine bekommt eine passende Buchsenleistenaufnahme.
+- ESP32-Aufnahme: zwei Reihen mit **je 15 Steckkontakten**, nominell 2,54-mm-Längsraster.
+- Bildbeschriftungen sind teilweise fehlerhaft/uneinheitlich: Zwischenmaße 5.1mm/2in, 4mm/1.57in, 2.6mm/1.02in sind nicht wörtlich als Millimeter verwendbar.
+- **Pinreihen-Mittenabstand aus Bild nicht eindeutig belegt.** Bisherige Schätzung 35–36 mm bezieht sich offenbar nicht auf den reinen 28-mm-breiten ESP32; nicht in Footprint übernehmen. Noch messen oder originalen Adapter/Modul-Footprint verifizieren.
