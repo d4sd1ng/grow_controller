@@ -368,7 +368,8 @@ void buildUi() {
     const int x = 7 + (i % 3) * 104;
     const int y = 7 + (i / 3) * 49;
     char name[24];
-    snprintf(name, sizeof(name), "P%d  GESPERRT", i + 1);
+    if (i == 0) snprintf(name, sizeof(name), "P1 pH MIN");
+    else snprintf(name, sizeof(name), "P%d  GESPERRT", i + 1);
     pumpButtons[i] = makeButton(pages[3], x, y, 98, 42, name, PANEL,
                                 &lv_font_montserrat_12);
     setButtonEnabled(pumpButtons[i], false);
