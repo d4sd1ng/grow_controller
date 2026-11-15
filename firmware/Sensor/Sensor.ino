@@ -365,11 +365,11 @@ static bool sameState(const ActuatorState &a, const ActuatorState &b);
 ActuatorState targets;
 ActuatorState actual;
 uint32_t commandSeq = 0;
-static constexpr uint8_t DOSING_PUMP_COUNT = 5; // exakt 5, gemeinsam mit C3/Remote
+static constexpr uint8_t DOSING_PUMP_COUNT = 6; // sechs Kanäle, gemeinsam mit C3/Remote
 static constexpr const char *DOSING_CHANNEL_1_PRODUCT = "Plagron pH Min";
 static constexpr bool DOSING_CHANNEL_1_ENABLED = false; // chemische Dosierung gesperrt
 // Die noch nicht zugeordneten Kanäle 2-5 werden nicht automatisch belegt.
-// Physischer Kanal 6 ist bisher auf dem C3 nicht vorhanden.
+// Kanal 6 ist auf PCA9685 OUT5 reserviert und bleibt gesperrt.
 static constexpr uint16_t PUMP_PULSE_MAX_MS = 2000;
 static constexpr unsigned long C3_HEARTBEAT_TIMEOUT_MS = 8000UL;
 unsigned long lastC3StatusMs = 0;
