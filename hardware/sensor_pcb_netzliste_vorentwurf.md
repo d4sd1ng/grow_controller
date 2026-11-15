@@ -57,8 +57,7 @@ Anschlüsse**; zusammen **38 externe Kontaktpositionen**
 - **2 × 15-polige Buchsenleiste**, 2,54-mm-Raster längs, vorläufig
   25,40-mm-Reihenmittenabstand.
 - Firmwarebelegung: GPIO4,13,14,16,17,18,19,21,22,23,25,26,27,33.
-- Board-seitige **physische Pinpositionen und Versorgungsausgänge**
-  sind noch nicht im konkreten Produkt-Pinout verifiziert.
+- **Physische Kontaktzuordnung ist aus dem vom Nutzer gelieferten 30-Pin-ESP32-Pinout-Bild abgelesen** (siehe Tabelle am Ende dieser Datei). Das reale Modul ist vor Fertigungsfreigabe gegen das Bild zu prüfen.
 - Keine zusätzliche Power-/Status-LED auf der Trägerplatine.
 
 ### U_ADS — ADS1115-Modul, 10 Kontakte
@@ -67,9 +66,7 @@ Anschlüsse**; zusammen **38 externe Kontaktpositionen**
   Pinmitten 1–10 = 22,86 mm.
 - Funktionsnetze: 3V3, GND, SDA/GPIO21, SCL/GPIO22,
   ADDR nach GND (I²C 0x48), A0=pH, A1=EC/TDS.
-- Modul hat 10 tatsächliche Pins, **deren Reihenfolge ist noch
-  nicht verifiziert**. Übrige Pins dürfen nicht beliebig belegt werden;
-  tatsächliche Beschriftung und Modul-Outlines prüfen.
+- Die **10-polige Kontaktfolge ist anhand des Nutzerfotos abgelesen** (Tabelle am Dateiende); die Einbaulage, Außenkontur und mechanische Pinanordnung sind am realen Modul zu prüfen. Übrige Pins nicht beliebig belegen.
 
 ## 3. Passivteile (ausschließlich bedrahtet, keine SMD-Widerstände)
 
@@ -109,10 +106,8 @@ zuzüglich 2 × 15-poliger und 1 × 10-poliger Modulbuchsenleiste
 
 ## 5. Harte Freigabesperren
 
-- Exaktes Hersteller-/Lieferantenpinout des 30-Pin-ESP32 samt
-  tatsächlichen physischen Pinpositionen fehlt.
-- Exakte 10-polige ADS1115-Pinreihenfolge, Modulbreite und
-  Orientierung fehlen.
+- **Pinbelegungen der beiden Module sind durch Nutzerbilder dokumentiert**, aber die Übereinstimmung mit den real vorliegenden Boards ist noch zu prüfen.
+- Mechanische ADS1115-Modulbreite/-orientierung und ESP32-Reihenmittenabstand erfordern noch eine Messung.
 - Reglerstromreserve 3,3 V und 5-V-Ausgangspfad sind unbewiesen.
 - Analogpegel/Schutz an ADS1115 A0/A1, A02YYUW UART-Spannung
   und I²C-Pull-up-Bestückung nicht geprüft.
@@ -122,3 +117,79 @@ zuzüglich 2 × 15-poliger und 1 × 10-poliger Modulbuchsenleiste
 
 **Die Liste ist ein prüfbarer PCB-Vorentwurf, keine Bestellungsvorlage
 für eine vollständig funktionsfähige Platine.**
+
+
+## Bildgestützter physischer Pinout-Abgleich (15.11.2026)
+
+**Quelle:** Die zwei vom Nutzer am 15.11.2026 hochgeladenen Produktbilder.
+Nicht mit elektrischer Durchgangsmessung verifiziert.
+
+### 30-Pin ESP32 DevKit — Kontaktpositionen aus dem Pinoutbild
+
+Zählweise der Abbildung: **linke Reihe von oben nach unten 1–15**,
+**rechte Reihe von unten nach oben 16–30**; Draufsicht mit
+Antennenende oben und USB unten.
+
+| Kontakt | Platinenbeschriftung | GPIO/Netz | Projektverwendung |
+| ---: | --- | --- | --- |
+| 1 | EN | EN | Reset/Enable, keine Sensorleitung |
+| 2 | VP | GPIO36 | derzeit frei |
+| 3 | VN | GPIO39 | derzeit frei |
+| 4 | D34 | GPIO34 | derzeit frei |
+| 5 | D35 | GPIO35 | derzeit frei |
+| 6 | D32 | GPIO32 | derzeit frei |
+| 7 | D33 | GPIO33 | RGB Rot |
+| 8 | D25 | GPIO25 | DHT22 #1 |
+| 9 | D26 | GPIO26 | DHT22 #2 |
+| 10 | D27 | GPIO27 | DHT22 #3 |
+| 11 | D14 | GPIO14 | BH1750 SCL |
+| 12 | D12 | GPIO12 | derzeit frei |
+| 13 | D13 | GPIO13 | BH1750 SDA |
+| 14 | GND | GND | Masse |
+| 15 | VIN / 5V | 5 V | 5-V-Pin; keine separate Einspeisung, USB-C-Versorgung |
+| 16 | 3V3 | 3,3 V | Sensor-Versorgung nach Reglerprüfung |
+| 17 | GND | GND | Masse |
+| 18 | D15 | GPIO15 | derzeit frei |
+| 19 | D2 | GPIO2 | derzeit frei |
+| 20 | D4 | GPIO4 | RGB Grün |
+| 21 | D16 | GPIO16 | Phasentaster |
+| 22 | D17 | GPIO17 | RGB Blau |
+| 23 | D5 | GPIO5 | Buzzer reserviert, deaktiviert |
+| 24 | D18 | GPIO18 | A02YYUW TX → UART RX |
+| 25 | D19 | GPIO19 | Wartungstaster |
+| 26 | D21 | GPIO21 | ADS1115 + MLX90640 SDA |
+| 27 | RX0 | GPIO3 | UART0 RX, derzeit frei |
+| 28 | TX0 | GPIO1 | UART0 TX, derzeit frei |
+| 29 | D22 | GPIO22 | ADS1115 + MLX90640 SCL |
+| 30 | D23 | GPIO23 | DS18B20 DATA |
+
+**Abgleich:** Alle bislang vorgesehenen projektseitigen Sensor-GPIOs sind
+in diesem 30-Pin-Bild vorhanden. Die Zahl des Steckkontakts ist
+**nicht** gleichbedeutend mit der GPIO-Nummer (z. B. Kontakt 7 = GPIO33).
+
+### ADS1115-Breakout — Kontaktfolge aus dem Foto
+
+Fotoorientierung: **Beschriftung auf der Bauteilseite lesbar**,
+10-polige Leiste links, **oben nach unten**:
+
+| Position | Aufdruck | Netzfunktion im Projekt |
+| ---: | --- | --- |
+| 1 | VDD | 3V3 |
+| 2 | GND | GND |
+| 3 | SCL | ESP32 Kontakt 29 = GPIO22 |
+| 4 | SDA | ESP32 Kontakt 26 = GPIO21 |
+| 5 | ADDR | GND für ADS-Adresse 0x48 laut Planung, tatsächliche Modulbeschaltung prüfen |
+| 6 | ALRT | derzeit unbenutzt, keinen GPIO verbinden |
+| 7 | A0 | pH-Eingangskreis, ungeprüft |
+| 8 | A1 | EC/TDS-Eingangskreis, ungeprüft |
+| 9 | A2 | derzeit unbenutzt |
+| 10 | A3 | derzeit unbenutzt |
+
+**Mechanik:** eine 1×10-Buchsenleiste, nominelles Pinraster 2,54 mm;
+Kontaktachse erster–letzter Pin = 22,86 mm. Die physische
+Bestückungsrichtung/Buchsenposition auf der neuen Platine muss so gewählt
+werden, dass diese **fotografierte Reihenfolge** erhalten bleibt.
+
+**Noch offen vor Herstellungsfreigabe:** echte ESP32-Modulvariante,
+Reihenmittenmaß, Rückseite/Orientierung, ADS1115-Modulumriss,
+USB-C-Freiraum, Versorgungskapazität und geprüfte Analogpegel.
