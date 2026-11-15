@@ -120,7 +120,43 @@ Wassertemperatur + ein A02YYUW = **fünf 3-polige Steckanschlüsse**.
 Zusammen sind **vier Pull-up-Widerstände mit 4,7 kΩ** vorgesehen,
 vorbehaltlich der Prüfung bereits vorhandener Modul-Pull-ups.
 
-**BH1750:** Separater I²C-Bus mit GPIO13/14.
+### Steckverbindung BH1750 (Lichtsensor)
+
+Auf der **Sensor-ESP32-Platine** wird ein eigener **4-poliger, abziehbarer
+Anschluss `LIGHT-BH1750`** vorgesehen. Der Sensor bleibt am separaten
+I²C-Bus der bereits vorhandenen Firmware:
+
+| Platinenkontakt | Signal | Verbindung |
+| --- | --- | --- |
+| 1 | 3V3 | Sensorversorgung, 3,3 V |
+| 2 | GND | Gemeinsame Sensormasse |
+| 3 | SDA | Sensor-ESP32 GPIO13 |
+| 4 | SCL | Sensor-ESP32 GPIO14 |
+
+Steckverbinder: **Phoenix Contact MSTB 2,5, 4-polig, Raster 5,08 mm**
+(gleiche Steckerfamilie wie die anderen Sensoranschlüsse).
+Die **exakte Artikelnummer für die vierpolige Grundleiste und den
+Gegenstecker ist noch nicht anhand des Herstellerkatalogs verifiziert**
+und wird deshalb nicht erfunden. Für das PCB wird ein 4-poliger
+Steckplatz reserviert; sein Footprint ist erst nach Artikelbestätigung
+verbindlich.
+
+Für den I²C-Bus sind Pull-ups an SDA und SCL erforderlich. Ob diese
+bereits auf dem tatsächlich verwendeten BH1750-Modul bestückt sind,
+ist noch zu prüfen. **Keine zusätzlichen festen Pull-ups blind
+parallel bestücken**; je nach vorhandener Beschaltung und Leitungslänge
+müssen sie gezielt ausgelegt werden.
+
+Die tatsächliche Kontaktreihenfolge am BH1750-Modul ist vor dem Anschluss
+mit der oben genannten **Platinenbelegung** abzugleichen. Ein eventuell
+vorhandener ADDR-Pin des Moduls bleibt mit der bestehenden
+Adresskonfiguration separat zu prüfen.
+
+**Aktualisiertes Anschlussbudget der hier dokumentierten Sensoren:**
+5 × 3-polig (3 DHT22, 1 DS18B20-Wasser, 1 A02YYUW) sowie
+1 × 4-polig (BH1750). Weiterhin 4 × 4,7-kΩ-Pull-up fest
+vorgesehen (3 DHT22 und 1 DS18B20); die I²C-Pull-ups sind
+noch abhängig vom realen Modul zu verifizieren.
 
 Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
 
