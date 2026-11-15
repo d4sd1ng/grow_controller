@@ -266,14 +266,85 @@ static void pollLevelSensor() {
   }
   if (!levelSensorOk()) sensors.levelDistanceMm = NAN;
 }
+// Bis zu acht per Hand erfasste Volumenpunkte: groesserer Abstand = weniger Liter.
+// Absichtlich getrennt von pH-/EC-NVS; kein Default-Tankvolumen wird geraten.
+static constexpr uint8_t LEVEL_CAL_MAX = 8;
+static constexpr char LEVEL_CAL_NVS[] = "levelcal_v1";
+struct LevelPoint {
+  uint16_t distanceMm;
+  float liters;
+};
+static LevelPoint levelPoints[LEVEL_CAL_MAX] = {};
+static uint8_t levelPointCount = 0;
+static void loadLevelCalibration() {
+  Preferences prefs;
+  if (!prefs.begin(LEVEL_CAL_NVS, true)) return;
+  uint8_t count = prefs.getUChar("count", 0);
+  if (count >= 2 && count <= LEVEL_CAL_MAX &&
+      prefs.getBytesLength("points") == count * sizeof(LevelPoint)) {
+    LevelPoint candidate[LEVEL_CAL_MAX] = {};
+    if (prefs.getBytes("points", candidate, count * sizeof(LevelPoint)) ==
+        count * sizeof(LevelPoint)) {
+      bool valid = true;
+      for (uint8_t i = 0; i < count; ++i) {
+        if (candidate[i].distanceMm < LEVEL_MIN_DISTANCE_MM ||
+            candidate[i].distanceMm > LEVEL_MAX_DISTANCE_MM ||
+            !isfinite(candidate[i].liters) || candidate[i].liters < 0.0f ||
+            candidate[i].liters > 90.0f ||
+            (i > 0 && (candidate[i - 1].distanceMm <= candidate[i].distanceMm ||
+                       candidate[i - 1].liters >= candidate[i].liters)))
+          valid = false;
+      }
+      if (valid) {
+        memcpy(levelPoints, candidate, count * sizeof(LevelPoint));
+        levelPointCount = count;
+      }
+    }
+  }
+  prefs.end();
+}
+static bool saveLevelCalibration() {
+  Preferences prefs;
+  if (!prefs.begin(LEVEL_CAL_NVS, false)) return false;
+  const size_t bytes = levelPointCount * sizeof(LevelPoint);
+  const bool ok = prefs.putBytes("points", levelPoints, bytes) == bytes &&
+                  prefs.putUChar("count", levelPointCount) == sizeof(uint8_t);
+  prefs.end();
+  return ok;
+}
+static float calibratedLevelLiters() {
+  if (!levelSensorOk() || levelPointCount < 2) return NAN;
+  const float d = sensors.levelDistanceMm;
+  if (d > levelPoints[0].distanceMm ||
+      d < levelPoints[levelPointCount - 1].distanceMm) return NAN;
+  for (uint8_t i = 1; i < levelPointCount; ++i) {
+    if (d >= levelPoints[i].distanceMm) {
+      const float lowD = levelPoints[i - 1].distanceMm;
+      const float highD = levelPoints[i].distanceMm;
+      const float t = (lowD - d) / (lowD - highD);
+      return levelPoints[i - 1].liters +
+             t * (levelPoints[i].liters - levelPoints[i - 1].liters);
+    }
+  }
+  return NAN;
+}
 static void writeLevelMeasurement(JsonObject obj) {
   obj["level_sensor"] = "a02yyuw";
   obj["level_sensor_ok"] = levelSensorOk();
+  obj["level_calibrated"] = levelPointCount >= 2;
+  obj["level_calibration_points"] = levelPointCount;
   if (levelSensorOk()) obj["level_distance_mm"] = sensors.levelDistanceMm;
   else obj["level_distance_mm"] = nullptr;
-  // Konischer/rechteckiger Behaelter: Liter-/Prozentwerte erst nach Kalibrierung.
-  obj["level_liters"] = nullptr;
-  obj["level_percent"] = nullptr;
+  const float liters = calibratedLevelLiters();
+  if (isfinite(liters)) {
+    obj["level_liters"] = liters;
+    obj["level_percent"] = 100.0f * liters /
+                           levelPoints[levelPointCount - 1].liters;
+  } else {
+    obj["level_liters"] = nullptr;
+    obj["level_percent"] = nullptr;
+  }
+  obj["level_percent_reference"] = "highest_calibrated_volume";
 }
 
 /* ---------- Aktor-Soll / Ist ---------- */
@@ -2207,9 +2278,70 @@ static void handlePhaseClock() {
   pollPhaseClock();
   localServer.send(200, "application/json", "{\"ok\":true}");
 }
+static void handleLevelCalibration() {
+  if (!localAuthorized()) return sendUnauthorized();
+  // Eine bekannte Wassermenge zum aktuellen, frischen Distanzwert erfassen.
+  // Keine Aenderung an Aktoren oder Dosiervorgaengen.
+  if (!levelSensorOk()) return localServer.send(
+      503, "application/json", "{\"ok\":false,\"error\":\"level_sensor_unavailable\"}");
+  StaticJsonDocument<128> body;
+  if (deserializeJson(body, localServer.arg("plain")) ||
+      !body["liters"].is<float>() && !body["liters"].is<int>()) {
+    return localServer.send(
+        400, "application/json", "{\"ok\":false,\"error\":\"liters_required\"}");
+  }
+  const float liters = body["liters"].as<float>();
+  if (!isfinite(liters) || liters < 0.0f || liters > 90.0f)
+    return localServer.send(
+        422, "application/json", "{\"ok\":false,\"error\":\"liters_out_of_range\"}");
+  const uint16_t mm = static_cast<uint16_t>(roundf(sensors.levelDistanceMm));
+  if (levelPointCount >= LEVEL_CAL_MAX)
+    return localServer.send(
+        409, "application/json", "{\"ok\":false,\"error\":\"calibration_full\"}");
+  LevelPoint candidate[LEVEL_CAL_MAX];
+  memcpy(candidate, levelPoints, sizeof(levelPoints));
+  uint8_t newCount = levelPointCount + 1;
+  candidate[levelPointCount] = {mm, liters};
+  // Sortiere nach Distanz absteigend; Liter muss entsprechend ansteigen.
+  for (uint8_t i = 1; i < newCount; ++i) {
+    const LevelPoint key = candidate[i];
+    int j = static_cast<int>(i) - 1;
+    while (j >= 0 && candidate[j].distanceMm < key.distanceMm) {
+      candidate[j + 1] = candidate[j];
+      --j;
+    }
+    candidate[j + 1] = key;
+  }
+  for (uint8_t i = 1; i < newCount; ++i) {
+    if (candidate[i - 1].distanceMm <= candidate[i].distanceMm ||
+        candidate[i - 1].liters >= candidate[i].liters)
+      return localServer.send(422, "application/json",
+          "{\"ok\":false,\"error\":\"non_monotonic_calibration\"}");
+  }
+  const uint8_t oldCount = levelPointCount;
+  LevelPoint oldPoints[LEVEL_CAL_MAX];
+  memcpy(oldPoints, levelPoints, sizeof(levelPoints));
+  memcpy(levelPoints, candidate, sizeof(levelPoints));
+  levelPointCount = newCount;
+  if (!saveLevelCalibration()) {
+    memcpy(levelPoints, oldPoints, sizeof(levelPoints));
+    levelPointCount = oldCount;
+    return localServer.send(500, "application/json",
+        "{\"ok\":false,\"error\":\"nvs_save_failed\"}");
+  }
+  StaticJsonDocument<160> reply;
+  reply["ok"] = true;
+  reply["points"] = levelPointCount;
+  reply["distance_mm"] = mm;
+  reply["liters"] = liters;
+  String out;
+  serializeJson(reply, out);
+  localServer.send(200, "application/json", out);
+}
 static void setupLocalApi() {
   localServer.collectHeaders(LOCAL_HEADER_KEYS, 1);
   localServer.on("/api/local/summary", HTTP_GET, handleSummary);
+  localServer.on("/api/local/level/calibration", HTTP_POST, handleLevelCalibration);
   localServer.on("/api/local/actuators", HTTP_GET, handleActuatorTargets);
   localServer.on("/api/local/control/targets", HTTP_POST, handleControlTargets);
   localServer.on("/api/local/control/pump", HTTP_POST, handlePumpPulse);
@@ -2396,6 +2528,7 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   levelUart.begin(LEVEL_UART_BAUD, SERIAL_8N1, PIN_LEVEL_UART_RX, -1);
+  loadLevelCalibration();
   setupGrowPhaseButtons();
   loadPhaseProfile();
   loadGrowPhase();  // Vor der Uhr den verbindlichen NVS-Phasenstatus laden.
