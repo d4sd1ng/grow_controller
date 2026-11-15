@@ -231,3 +231,44 @@ Ein erfolgreicher statischer Vertragstest ist KEIN Hardwaretest.
 Netzspannungsseitige Verdrahtung, SSR-Polung und Ausfallsicherheit
 muessen vor einer spaeteren Freigabe separat durch eine qualifizierte
 Person geprueft werden.
+
+
+### A02YYUW: Füllstand (rein lesend)
+
+Der A02YYUW sendet vier UART-Bytes (0xFF, Distanz-High, Distanz-Low,
+Prüfsumme) bei 9600 Baud. Anschlüsse am **Sensor-ESP32**:
+
+| A02YYUW | Sensor-ESP32 |
+| --- | --- |
+| VCC | 3,3 V |
+| GND | GND |
+| TX | GPIO18 (RX von UART1) |
+| RX | nicht anschließen (gefilterte Messwerte) |
+
+Der UART-Eingang ist **kein** TRIG/ECHO-Paar. Die Sensordaten werden
+nicht blockierend gelesen, mit Prüfsumme und Messbereich 30–4500 mm
+validiert und aus fünf gültigen Messungen per Median geglättet.
+Nach 3 Sekunden ohne gültige Messung wird der Status ungültig.
+
+Die lokale `/api/local/summary` und die Telemetrie enthalten
+`level_sensor_ok`, `level_distance_mm`, `level_calibrated`,
+`level_liters` und `level_percent`. Der Pi speichert die zusätzlichen
+Werte in den Telemetrie-Extras; das LVGL-Display nutzt sie in der
+Statuszeile, falls keine andere Meldung Vorrang hat.
+
+Für Liter und Prozent ist eine Kalibrierung mit **mindestens zwei
+bekannten Füllmengen** erforderlich; wegen der Form des Behälters
+sind weitere Messpunkte sinnvoll (maximal acht). Jeder erfasste Punkt
+wird über den authentifizierten lokalen API-Endpunkt
+`POST /api/local/level/calibration` mit `{"liters": 10.0}` gespeichert.
+Der Controller verknüpft die angegebene Menge mit dem gerade gültigen
+Abstand und speichert die Punkte unter `levelcal_v1` im NVS.
+Zwischen den Punkten wird linear interpoliert. Außerhalb des
+kalibrierten Bereichs werden Liter und Prozent als `null` ausgegeben,
+nicht geschätzt. Der Prozentwert ist relativ zum **größten kalibrierten
+Volumen**, nicht zur ursprünglichen 90-Liter-Nennkapazität.
+
+Die Füllstandsmessung löst **keine** Dosierung aus und verändert
+weder pH-/EC-Kalibrierungen noch Pumpenfreigaben. Wegen des feuchten
+Tankumfelds Montage und tatsächliche UART-/Stromversorgung vor Ort
+prüfen; die Firmware ist noch nicht auf echter Hardware getestet.
