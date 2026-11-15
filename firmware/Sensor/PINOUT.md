@@ -185,14 +185,14 @@ Die obige Kontaktfolge ist die **vorgesehene Steckverbinderbelegung**;
 die reale Steckerorientierung und Pinreihenfolge sind noch zu prüfen.
 PH4502C DO/TO werden von der Firmware nicht ausgewertet.
 
-**ADS1115 A0:** Im ausdrücklich als **veraltet** gekennzeichneten
-`wiring_plan_v2.md` ist ein Spannungsteiler **10 kΩ vom
-PH4502C-PO-Signal zum A0-Knoten und 20 kΩ von A0 nach GND**
-dokumentiert. Für die neue Platine werden deshalb **zwei
-Widerstandspositionen R_PH_OBEN/R_PH_UNTEN** reserviert. Ihre
-Bestückungswerte werden erst nach Abgleich des tatsächlich
-betriebenen Aufbaus freigegeben. **Änderungen des Teilungsverhältnisses
-beeinflussen die gespeicherte pH-Kalibrierung.**
+**ADS1115 A0:** Das vom Nutzer beschriebene Messsignal des bisherigen
+Aufbaus wird **direkt von PH4502C PO nach ADS1115 A0** übernommen.
+Der 10-kΩ/20-kΩ-Spannungsteiler in `wiring_plan_v2.md` war eine
+unbestätigte, ausdrücklich korrigierte Annahme und ist **nicht** Teil
+der neuen Sensorplatine. Es werden **keine R_PH_OBEN/R_PH_UNTEN**
+bestückt oder geroutet. Die vorhandene Kalibrierung/Firmware bleibt
+unverändert; Analogpegel und reale Funktion sind bei der Inbetriebnahme
+der neuen PCB zu testen.
 
 **ADS1115 A1:** Das bisher dokumentierte CQRobot-TDS-Analogsignal
 wurde **ohne Spannungsteiler** an A1 geführt; ein fester
@@ -318,9 +318,10 @@ Versorgungstopologie überprüft sind.
 Hinzu kommt **eine steckbare ADS1115-Modulaufnahme**.
 Vier 4,7-kΩ-Datenpull-ups (3 DHT22, 1 DS18B20)
 und drei RGB-Vorwiderstandspositionen sind vorgesehen.
-ADS1115-A0-Spannungsteiler und I²C-Pull-ups bleiben
-gesondert zu verifizieren; die Sensorplatine ist nicht
-fertigungsfreigegeben.
+pH-PO wird direkt zum ADS1115 A0 geführt; **kein Spannungs-
+teiler** auf dem Sensorträger. Optionale I²C-Pull-ups bleiben bis
+zur Prüfung der Breakouts unbestückt; vor Fertigung sind noch
+Footprint-Abgleich und KiCad-DRC erforderlich.
 
 Das Sensor-Board hat **kein lokales Display**. Die Messwerte erscheinen im seriellen Monitor und über die Server-API auf dem separaten LVGL-Remote.
 
@@ -436,3 +437,14 @@ werden, dass diese **fotografierte Reihenfolge** erhalten bleibt.
 **Noch offen vor Herstellungsfreigabe:** echte ESP32-Modulvariante,
 Reihenmittenmaß, Rückseite/Orientierung, ADS1115-Modulumriss,
 USB-C-Freiraum, Versorgungskapazität und geprüfte Analogpegel.
+
+## Aktueller PCB-Stand (15.11.2026)
+
+Die zu dieser Firmware gehörende **geroutete Sensorträgerplatine**
+liegt unter `hardware/cad/sensor_pcb_routed_candidate.kicad_pcb`.
+Auswahl: 12 externe steckbare Anschlüsse, steckbarer ESP32 30 Pin,
+steckbarer ADS1115 1×10, **11 bedrahtete
+Widerstandspositionen** (vier Daten-Pull-ups, drei RGB, vier
+optionale I²C), keine zusätzlichen LEDs. pH-PO direkt auf A0,
+EC analog direkt auf A1. Die PCB ist **noch nicht fertigungsfreigegeben**
+(KiCad-DRC und physische Footprintprüfung offen).
