@@ -168,3 +168,7 @@ Korrektur der bisherigen Bildinterpretation: Die Maßlinie zwischen den **innere
 ### Vorläufiges Konstruktionsmaß: Sensor-ESP32 25,40 mm
 
 Nutzer hält den aus der Produktabbildung abgeleiteten Standard-Reihenabstand von **25,40 mm** für wahrscheinlich. Für den 30-Pin-Sensor-ESP32 wird deshalb **2 × 15 Buchsenleisten mit 2,54 mm Längsraster und vorläufig 25,40 mm Reihenmittenabstand** als Konstruktionsansatz geführt. Modulaußenmaße laut Bild: 28 × 51 mm. **Status: vorläufig, nicht gemessen; keine Fertigungsfreigabe**, bis die reale Modulgeometrie bestätigt wurde. Die nominalen 25,40 mm dürfen nicht als bereits verifiziert ausgegeben werden.
+
+### ADS1115: eine 10-polige Kontaktreihe
+
+Nutzer bestätigt: Das vorhandene ADS1115-Breakout hat **eine einzige Reihe mit 10 Pins**, nicht zwei Pinreihen. Steckbar über **eine 1×10-Buchsenleiste**, Pinraster nach vorheriger Angabe nominal **2,54 mm**; Achsabstand erster–letzter Kontakt rechnerisch **9 × 2,54 = 22,86 mm**. Kein Reihenabstand erforderlich. Vor der Fertigungsfreigabe Außenkontur, USB-/Nachbarbauteilfreiraum (falls relevant), Orientierung und Lage des Pin-Headers auf dem realen Modul abgleichen. Die früheren Formulierungen »Pinreihen«/»Reihenabstand« für ADS1115 sind damit überholt.
