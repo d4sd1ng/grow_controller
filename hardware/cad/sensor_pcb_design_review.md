@@ -54,7 +54,7 @@ einige Signale bewusst nicht vollständig spezifiziert:
 | ADS1115 A0 | `PH_A0_CONDITIONED_UNVERIFIED` und `PH_A0_MID` sind derzeit **verschiedene** Netze; Eingangskreis absichtlich noch nicht fertig |
 | ADS1115 A1 | `EC_A1_CONDITIONED_UNVERIFIED` und `EC_ANALOG_UNVERIFIED` sind noch nicht verbunden; elektrische Pegelprüfung erforderlich |
 | PH4502C GND1 und GND2 | Zwei getrennte Prüfnetze; gemeinsame Beschaltung nicht ohne Prüfung annehmen |
-| 5-V-Versorgung Analogmodule | `ANALOG_5V_UNVERIFIED` nicht an `5V_USB_BOARD` angeschlossen |
+| 5-V-Versorgung Analogmodule | pH und EC laut Nutzerangabe aus dem Sensor-ESP32-5-V-Pin versorgt; CAD-Padnetze sind jetzt dem Netz `5V_USB_BOARD` zugeordnet; physische Leiterbahnen fehlen weiterhin |
 | A02YYUW und MLX90640 | Vorläufig separate `3V3_UNVERIFIED`-Netze bis Modulversorgung geprüft |
 | I²C-Pull-ups | Vier optionale Widerstandspositionen; Modulbestückung vorab klären |
 | 3,3-V-Strombudget | Leistungsfähigkeit des ESP32-Modulreglers für alle Sensoren ungeprüft |
@@ -158,3 +158,9 @@ noch nicht am realen Aufbau gemessen.
 Nutzerangabe 15.11.2026: **pH- und EC-Module werden aus der Versorgung des Sensor-ESP32-Boards gespeist**, nicht durch separate externe Netzteile. Planungsabsicht: Sensor-ESP32 erhält 5 V ausschließlich über USB-C; PH4502C und EC/TDS-Module erhalten die für sie spezifizierte Betriebsspannung aus diesem Board-Versorgungszweig. Für bisherige Modulplanung sind 5-V-Versorgungsanschlüsse vorgesehen; deren tatsächliche elektrische Eignung und Stromreserve sind noch zu prüfen. **Die Datenmessung erfolgt weiterhin über den steckbaren ADS1115 (A0 pH, A1 EC/TDS)**, nicht über direkte ESP32-ADC-Pins.
 
 **Fertigungskriterium offen:** Schaltungsprüfung des konkreten 30-Pin-DevKit: Ist sein 5-V/VIN-Pin bei Einspeisung über USB-C als belastbarer Spannungsausgang ausgeführt? Ist eine Diode/Schutzschaltung vorhanden? Wie groß ist die verfügbare Stromreserve, und ist keine unzulässige Rückspeisung möglich? Die Antwort ist aus der bisherigen Pinout-Zeichnung **nicht** ableitbar. Die beiden Analogeingangspegel bleiben unabhängig davon zu prüfen (ADS1115 3,3 V).
+
+## 7. Nutzerbestätigung: Versorgung pH und EC ausreichend (15.11.2026)
+
+Der Nutzer bestätigt ausdrücklich, dass die über USB-C gespeiste 5-V-Versorgung des Sensor-ESP32 für pH- und EC-Modul **ausreichend** ist. Diese Kapazität wird als **Nutzervorgabe** übernommen, nicht als von uns durch Strommessung oder Board-Schaltplan verifizierter Wert. Der Versorgungsweg ist keine offene *Planungsentscheidung* mehr: Im CAD-Vorentwurf nutzen **J_PH Kontakt 1**, **J_EC Kontakt 1** und **U_ESP32 Kontakt 15** das gemeinsame Netz `5V_USB_BOARD`. Ein zusätzliches Netzteil oder ein zweiter 5-V-Einspeisepunkt ist nicht vorgesehen.
+
+**Unverändert offen:** Das PCB besitzt bislang **keine gerouteten Leiterbahnen**, und die tatsächliche Stromreserve wurde nicht unabhängig gemessen. Die pH- und EC-Analogeingangsspannungen sowie ihre Beschaltung zum mit 3,3 V versorgten ADS1115 müssen unabhängig von der ausreichenden Versorgung geprüft werden.
