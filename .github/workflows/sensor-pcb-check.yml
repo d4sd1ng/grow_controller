@@ -2,10 +2,8 @@ name: Sensor PCB KiCad DRC
 
 on:
   push:
-    branches:
-      - fix/restore-serial-sensor-readings-20261114
+    branches: [main]
     paths:
-      - 'hardware/cad/sensor_pcb_routed_candidate.kicad_pcb'
       - '.github/workflows/sensor-pcb-check.yml'
   workflow_dispatch:
 
@@ -17,29 +15,40 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - name: Checkout PCB
+      - name: Checkout routed sensor PCB from development branch
         uses: actions/checkout@v4
-      - name: Install KiCad CLI in runner
+        with:
+          ref: fix/restore-serial-sensor-readings-20261114
+          persist-credentials: false
+
+      - name: Install KiCad CLI
+        shell: bash
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends kicad
           kicad-cli version
-      - name: Run KiCad board DRC
+
+      - name: Check board exists
+        run: test -f hardware/cad/sensor_pcb_routed_candidate.kicad_pcb
+
+      - name: KiCad PCB design rule check
         shell: bash
         run: |
           mkdir -p pcb-drc-output
           set +e
-          kicad-cli pcb drc --exit-code-violations --all-track-errors --severity-all \
+          kicad-cli pcb drc \
+            --exit-code-violations --all-track-errors --severity-all \
             --output pcb-drc-output/sensor_drc.txt \
             hardware/cad/sensor_pcb_routed_candidate.kicad_pcb \
             > pcb-drc-output/kicad_stdout.txt 2>&1
           result=$?
           cat pcb-drc-output/kicad_stdout.txt
           if [[ -f pcb-drc-output/sensor_drc.txt ]]; then
-            head -n 140 pcb-drc-output/sensor_drc.txt
+            head -n 120 pcb-drc-output/sensor_drc.txt
           fi
           exit "$result"
-      - name: Preserve DRC report, including failures
+
+      - name: Upload DRC report even when check fails
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -47,5 +56,5 @@ jobs:
           path: pcb-drc-output/
           if-no-files-found: warn
 
-# Intentionally no Gerber/Excellon export: prototype footprints and
-# unapproved mechanical geometry make manufacturing unsafe.
+# This workflow intentionally does not export production Gerbers.
+# Placeholder footprints and mounting geometry remain unapproved.
