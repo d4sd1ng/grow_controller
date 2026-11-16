@@ -197,5 +197,50 @@ class LegacyLightTelemetryStoreTests(unittest.TestCase):
 
 
 
+class HistoricalMlCompatibilityTests(unittest.TestCase):
+    def test_preserves_both_historical_light_and_pump_observations(self):
+        import pandas as pd
+        from ml_controller import prepare_data
+        data = pd.DataFrame({
+            "air_temperature": [22.0, 23.0],
+            "humidity": [50.0, 51.0],
+            "water_temperature": [19.0, 20.0],
+            "ec": [1.4, 1.5],
+            "ph": [6.0, 6.2],
+            "light": [True, False],
+            "water_pump": [True, False],
+        })
+        _, labels = prepare_data(data)
+        self.assertIn("light", labels.columns)
+        self.assertIn("water_pump", labels.columns)
+
+    def test_unknown_historical_light_is_not_assumed_off(self):
+        import pandas as pd
+        from ml_controller import prepare_data
+        data = pd.DataFrame({
+            "air_temperature": [22.0, 23.0],
+            "humidity": [50.0, 51.0],
+            "water_temperature": [19.0, 20.0],
+            "ec": [1.4, 1.5],
+            "ph": [6.0, 6.2],
+            "light": [True, None],
+            "water_pump": [False, False],
+        })
+        _, labels = prepare_data(data)
+        self.assertNotIn("light", labels.columns)
+        self.assertIn("water_pump", labels.columns)
+
+
+class DashboardReadOnlyContractTests(unittest.TestCase):
+    def test_dashboard_live_sensor_reads_are_separate_from_actuator_commands(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("from sensor_node_client import get_summary as get_sensor_summary", source)
+        self.assertIn("_sensor_live = get_sensor_summary()", source)
+        self.assertNotIn("from sensor_node_client import set_targets", source)
+
+
 if __name__ == "__main__":
     unittest.main()
