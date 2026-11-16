@@ -39,6 +39,9 @@ print(f"Footprint references: {len(references)}, outline rectangles: {len(outlin
 
 if placeholders:
     print("NOT APPROVED FOR FABRICATION: unverified footprint geometry")
+    if "--release" in sys.argv:
+        print("RELEASE BLOCKED: all placeholder geometries require physical verification")
+        sys.exit(2)
 for title, errors in [("Duplicate nets", duplicate), ("Unknown net references", unknown),
                       ("Net name mismatch", mismatch)]:
     if errors:
