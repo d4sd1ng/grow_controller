@@ -192,6 +192,12 @@ class TelemetryStore:
         ts = d.pop("ts")
         d["timestamp"] = ts if isinstance(ts, str) else _ts_iso(ts)
         d["extras"] = extras
+        # Hardware-v2 status values remain in extras_json to preserve old
+        # SQLite/PostgreSQL schemas; expose read-only fields to the UI too.
+        if isinstance(extras, dict):
+            for key in ("light", "lamp_cooling"):
+                if isinstance(extras.get(key), bool):
+                    d[key] = extras[key]
         return d
 
     def query_range(self, start: datetime, end: datetime) -> pd.DataFrame:
