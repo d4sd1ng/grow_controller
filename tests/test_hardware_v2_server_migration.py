@@ -107,5 +107,48 @@ class TelemetryReadOnlyIntegrationTests(unittest.TestCase):
         self.assertTrue(result["control"]["targets"]["light"])
 
 
+class AdditionalHardwareV2CompatibilityTests(unittest.TestCase):
+    def test_legacy_postgres_getters_keep_current_backend(self):
+        from env_config import (
+            get_grow_database_backend, get_grow_database_schema,
+            get_grow_database_url, get_grow_postgres_dsn,
+        )
+        with patch.dict(os.environ, {
+            "GROW_DB_BACKEND": "sqlite",
+            "GROW_POSTGRES_DSN": "postgresql://example.invalid/current",
+            "GROW_DATABASE_URL": "postgresql://example.invalid/legacy",
+            "GROW_DATABASE_SCHEMA": "grow_controller",
+        }, clear=False):
+            self.assertEqual(get_grow_database_backend(), "sqlite")
+            self.assertEqual(
+                get_grow_postgres_dsn(), "postgresql://example.invalid/current"
+            )
+            self.assertEqual(
+                get_grow_database_url(), "postgresql://example.invalid/legacy"
+            )
+            self.assertEqual(get_grow_database_schema(), "grow_controller")
+
+    def test_extended_sensor_validation_is_available(self):
+        data = normalize_ingest_payload({
+            "vpd": 1.5,
+            "tds_ppm": 750,
+            "ph_voltage": 2.5,
+            "dht1_temperature": 21.3,
+            "dht2_humidity": 55.0,
+            "ds18b20_1_temperature": 20.1,
+        })
+        self.assertEqual(data["vpd"], 1.5)
+        self.assertEqual(data["tds_ppm"], 750.0)
+        self.assertEqual(data["ph_voltage"], 2.5)
+        self.assertEqual(data["dht1_temperature"], 21.3)
+        self.assertEqual(data["dht2_humidity"], 55.0)
+        self.assertEqual(data["ds18b20_1_temperature"], 20.1)
+
+    def test_out_of_range_extra_sensor_reading_is_rejected(self):
+        data = normalize_ingest_payload({"vpd": 9, "tds_ppm": -5})
+        self.assertIsNone(data["vpd"])
+        self.assertIsNone(data["tds_ppm"])
+
+
 if __name__ == "__main__":
     unittest.main()
