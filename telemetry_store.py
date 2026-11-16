@@ -218,6 +218,9 @@ class TelemetryStore:
             return df.set_index(pd.DatetimeIndex([], name="timestamp"))
         for col in ("circulation_vent", "exhaust_vent", "heater", "pump"):
             df[col] = df[col].astype(bool)
+        from telemetry_payload import relay_extra_status
+        for key in ("light", "lamp_cooling"):
+            df[key] = df["extras_json"].map(lambda raw: relay_extra_status(raw, key))
         df = df.rename(columns={"ts": "timestamp"})
         df = df.set_index("timestamp")
         return df
