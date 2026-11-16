@@ -7,6 +7,7 @@ legacy water_pump → pump alias, and device_info with I2C scan results.
 from __future__ import annotations
 
 from typing import Any
+import json
 
 _RELAY_KEYS = frozenset({"light", "heater", "pump", "circulation_vent", "exhaust_vent", "lamp_cooling"})
 
@@ -32,6 +33,25 @@ _VALUE_RANGES = {
     "ds18b20_1_temperature": (-5.0, 50.0),
     "ds18b20_2_temperature": (-5.0, 50.0),
 }
+
+
+def relay_extra_status(value: str | dict[str, Any] | None, key: str) -> bool | None:
+    """Return a stored, explicitly boolean relay observation, or unknown.
+
+    Handles SQLite JSON strings and PostgreSQL JSON/JSONB dictionaries
+    without interpreting absent states as switched off.
+    """
+    if key not in ("light", "lamp_cooling"):
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(value, dict):
+        return None
+    state = value.get(key)
+    return state if isinstance(state, bool) else None
 
 
 def _validate_range(key: str, value: float | None) -> float | None:
