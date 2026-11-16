@@ -9,13 +9,15 @@
 | Sensor-PCB-Außenkontur | 179 × 115 mm | KiCad Edge.Cuts von (5,5) bis (184,120) |
 | Platinendicke | 1,6 mm | KiCad-(general thickness 1.6) |
 | Kupferlagen | zwei, F.Cu/B.Cu | PCB-Datei |
-| Sensor-ESP32-Sockel | 2 × 15, Raster längs 2,54 mm, **vorläufige Reihenmitte 25,40 mm** | vorhandener Entwurf, noch nicht am Modul vermessen |
-| ADS1115-Sockel | 1 × 10, Raster 2,54 mm | vorhandener Entwurf / Nutzerangabe |
+| Sensor-ESP32-Sockel | 2 × 15, Raster 2,54 mm, Abstand der Reihenmitten 25,40 mm | Maßbild des Nutzers vom 15.11.2026; als verbindliche Konstruktionsvorgabe übernommen |
+| ADS1115-Sockel | 1 × 10, Raster 2,54 mm; erster bis letzter Kontakt 22,86 mm | Nutzerfestlegung vom 15.11.2026 |
 | Externe Sensor-/Bedienverbinder | 2 × 2-polig, 6 × 3-polig, 4 × 4-polig, Phoenix MSTBA 2,5, Raster 5,08 mm | dokumentierte Produktauswahl |
 | Platinenseitige Klemmen, 2-polig | Phoenix Contact **1757242**, MSTBA 2,5/2-G-5,08 | Herstellerkatalog |
 | Platinenseitige Klemmen, 3-polig | Phoenix Contact **1757255**, MSTBA 2,5/3-G-5,08 | Herstellerkatalog |
 | Platinenseitige Klemmen, 4-polig | Phoenix Contact **1757268**, MSTBA 2,5/4-G-5,08 | Herstellerkatalog |
 | Gegenstecker | 2p **1757019**, 3p **1757022**, 4p **1757035** | dokumentierte Auswahl |
+| Sensor-ESP32-Außenkontur | 28 × 51 mm | vom Nutzer geliefertes Maßbild, als PCB-Vorgabe übernommen |
+| C3-Super-Mini-Modul (separate Platine) | 18 × 22,52 mm, 2 × 8 Kontakte, Raster 2,54 mm, Reihenmitten 15,24 mm | im Projekt festgelegtes Maßbild |
 | Versorgung Sensor-ESP32 | 5 V über USB-C | Projektvorgabe |
 | ADS1115 | 3,3 V, A0=pH, A1=EC/TDS, SDA GPIO21, SCL GPIO22 | Projektvorgabe |
 | Externe Status-LED | genau eine RGB-LED, gemeinsame Kathode | Projektvorgabe |
@@ -44,14 +46,15 @@ KiCad 9.0.2 meldete 25 Warnungen, alle `lib_footprint_issues`, nachdem elektrisc
 
 Die Bibliotheksnamen werden **nicht** blind geändert: Erst müssen die offiziellen Footprints an Pads, Orientierung, Körperkontur, 3D-Modell und Steckraum ausgerichtet und erneut geroutet/geprüft werden.
 
-## 4. Offen — nicht durch Schätzwerte ersetzen
+## 4. Aktuelle Arbeitspunkte — bereits festgelegte Modulmaße NICHT erneut abfragen
 
-1. Exaktes Maß zwischen **realen** ESP32-Pinreihen, Modul-USB-C-Lage, Breite und Höhe; vorläufig 25,40 mm ist nicht gemessen.
-2. ADS1115-Pinreihenfolge, realer Header-Versatz zur Platinenkante und Modulaußenmaß.
-3. THT-Widerstandsabmessungen/Bohrungen für die bereits vorhandenen Teile.
-4. 3D/Einbauraum aller Phoenix-Gegenstecker, Steckerorientierung am Gehäuse, Abgangszugentlastung.
-5. Befestigungslochbild und Einbaufläche im konkreten Gehäuse, inklusive Steckerfreiraum.
-6. Ausreichende 3,3-V-Reglerreserve und 5-V-Versorgung am tatsächlich gelieferten ESP32.
-7. Eingangsspannungen pH/EC gegenüber ADS1115-Grenzwerten für alle Betriebszustände.
+Das bemaßte ESP32-Maßbild und die dokumentierten Kontaktgeometrien gelten für diesen Prototyp als **freigegebene Design-Eingabewerte**. Erneutes Erfragen oder Zurückstufen dieser Angaben zu einer bloßen Schätzung ist kein zulässiger Arbeitsblocker.
 
-**Ohne diese realen Maße und Versorgungstests ist eine fertig bestückbare Platine technisch nicht nachgewiesen.** Die CAD-Vorschau- und CAM-Dateien unter PR #13 sind ausdrücklich nicht zur Bestellung bestimmt.
+1. Vorhandene PCB-Placeholders durch **zu den festgelegten Maßen passende** Bibliotheks-Footprints ersetzen; die tatsächlichen Padpositionen, Orientierung und Einsteckrichtung mit dem Maßbild abgleichen.
+2. ADS1115: belegte Kontaktfolge aus dem vorliegenden Modul und der bisherigen Pinout-Dokumentation in den Schaltplan übernehmen; Verpolung vermeiden.
+3. Bestückungsaufnahme der vorhandenen bedrahteten Widerstände und Einbau-/Aussteckraum der Phoenix-Klemmen auf dem Board prüfen.
+4. Gehäuse- und Kabelabgang mit dem entworfenen Board mechanisch abgleichen; Befestigungspositionen auf der konkreten PCB definieren.
+5. Strombudget und pH/EC-Analogpegel unabhängig von der mechanischen Bemaßung kontrollieren.
+6. Abschließend KiCad-DRC und Gerber-/Bohrdaten erneut erzeugen.
+
+**Noch nicht fertigungsfreigegeben** ist das Leiterplattenlayout wegen der aktuellen Platzhalter-Bibliothek, der mechanischen Integration und der elektrotechnischen Funktionstests – **nicht** wegen fehlender ESP32-/C3-Maßbilder. Die CAM-Vorschau unter PR #13 bleibt bis zur Prüfung gesperrt.
