@@ -2,8 +2,7 @@
 
 **Verbindliche Arbeitsdatei:** `sensor_pcb_routed_candidate.kicad_pcb`.
 
-**Status: Alle im Board definierten Mehrfachnetze geroutet,
-aber OHNE KICAD-DRC / HERSTELLER-FOOTPRINT-FREIGABE nicht bestellfertig.**
+**Status: Alle 25 Footprint-Positionen mit Projektbibliothek zugeordnet; KiCad 9.0.2 DRC erfolgreich mit 0 Meldungen. Eine mechanische und elektrische Freigabe ist davon getrennt.**
 
 ## Umfang der Sensorplatine
 
@@ -94,15 +93,12 @@ Kabelabgang sind nicht anhand eines exakten Hersteller-3D-Modells
 
 ## KiCad-DRC vom 16.11.2026
 
-Mit KiCad 9.0.2 auf dem bestehenden VPS-Runner tatsächlich geprüft (Run 43796471420). Nach Entfernung doppelt liegender Vias und Korrektur der GND-Durchkontaktierung: **0 unverbundene Pads, 0 akute Routing-Warnungen, 25 Library-Warnungen** wegen `Grow_Placeholder`-Footprints. **Noch keine Maß- oder Fertigungsfreigabe.**
+Mit KiCad 9.0.2 auf dem bestehenden VPS-Runner tatsächlich geprüft (Run 43796471420). Nach Entfernung doppelt liegender Vias und Korrektur der GND-Durchkontaktierung: **0 unverbundene Pads, 0 akute Routing-Warnungen** beim damaligen Placeholder-Stand. **Aktuell: 0 DRC-Meldungen nach expliziter Belegung aller 25 Projekt-Footprints** (Run 43962759317). Noch keine Fertigungsfreigabe.
 
 ## Echte Restpunkte vor Bestellung
 
-1. **KiCad-DRC durchgeführt:** 25 Warnungen für die unbestätigte `Grow_Placeholder`-Bibliothek; die Fertigungsfreigabe bleibt gesperrt.
-2. **Footprints:** Im Entwurf bleiben Modul- und Connector-Footprints
-   mit `Grow_Placeholder` gekennzeichnet. Tatsächliches Produkt,
-   Buchsenleistentyp, Lötstiftorientierung, Einsteckraum und
-   Bauteilkollisionen vor Fertigung abgleichen.
+1. **KiCad-DRC bestanden:** 0 Warnungen/Fehler, 0 unverbundene Pads (KiCad 9.0.2, Runner 43962759317). Alle 25 Footprints verwenden `Grow_Controller_Sensor`.
+2. **Footprints:** sechs definierte Projekttypen, vollständig dokumentiert in `FOOTPRINT_ASSIGNMENTS_25.md`; vor der konkreten Bestückung Steckorientierung und Einsteckraum abgleichen.
 3. **Mechanik:** 179 × 115 mm ist eine **vorläufige** Außenkontur;
    Gehäuse, Befestigungslochbild und Montagehöhen sind nicht
    freigegeben. Der Entwurf enthält keine ungefragt erfundenen
@@ -112,7 +108,6 @@ Mit KiCad 9.0.2 auf dem bestehenden VPS-Runner tatsächlich geprüft (Run 437964
    MLX90640-Breakout und Sensor-ESP32-3,3-V-Ausgang.
 5. **Test:** Arduino-/Hardwaretest der gefertigten Platine
    einschließlich pH/EC, Kamera und der I²C-Busse fehlt.
-6. **Gerber/Excellon:** **Nicht erzeugt.** Export erst nach
-   KiCad-DRC und Footprint-/Mechanikfreigabe.
+6. **Gerber/Excellon:** Prüfdaten wurden bereits erzeugt und als `NOT_FOR_ORDER`-Archiv archiviert (PR #13). Freigegebene Produktionsdaten erst nach Mechanik- und Elektrikprüfung.
 
 **Kein automatischer Fertigungsauftrag, kein Gerber-Freigabevermerk.**
