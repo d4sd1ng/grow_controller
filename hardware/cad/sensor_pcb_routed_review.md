@@ -18,8 +18,8 @@ aber OHNE KICAD-DRC / HERSTELLER-FOOTPRINT-FREIGABE nicht bestellfertig.**
 | Bedrahtete Widerstandspositionen | 11: 4 Daten-Pull-ups, 3 RGB, 4 optionale I²C |
 | Gesamt-Footprints | 25 |
 | Leiterplattenpads | 100 |
-| Geroutete Kupfersegmente | 1213 |
-| Vias | 64 |
+| Geroutete Kupfersegmente | 1211 |
+| Vias | 58 |
 | Netze mit mindestens 2 Pads | 22 |
 | Statisch unverbundene Mehrfachnetze | **0** |
 | Statisch erkannte Fremdnetzkollisionen (0,2-mm-Mindestabstand) | **0** |
@@ -92,10 +92,13 @@ Kabelabgang sind nicht anhand eines exakten Hersteller-3D-Modells
 - **Nur bedrahtete Widerstandspositionen.** Gehäuse-/Drahtmaße
   des vorhandenen Bestandes für endgültige Footprintfreigabe prüfen.
 
+## KiCad-DRC vom 16.11.2026
+
+Mit KiCad 9.0.2 auf dem bestehenden VPS-Runner tatsächlich geprüft (Run 43796471420). Nach Entfernung doppelt liegender Vias und Korrektur der GND-Durchkontaktierung: **0 unverbundene Pads, 0 akute Routing-Warnungen, 25 Library-Warnungen** wegen `Grow_Placeholder`-Footprints. **Noch keine Maß- oder Fertigungsfreigabe.**
+
 ## Echte Restpunkte vor Bestellung
 
-1. **KiCad-DRC (im aktuellen Chat nicht ausführbar):** CLI/PCB-Editor
-   steht hier nicht zur Verfügung; daher keine DRC-Bestätigung.
+1. **KiCad-DRC durchgeführt:** 25 Warnungen für die unbestätigte `Grow_Placeholder`-Bibliothek; die Fertigungsfreigabe bleibt gesperrt.
 2. **Footprints:** Im Entwurf bleiben Modul- und Connector-Footprints
    mit `Grow_Placeholder` gekennzeichnet. Tatsächliches Produkt,
    Buchsenleistentyp, Lötstiftorientierung, Einsteckraum und
