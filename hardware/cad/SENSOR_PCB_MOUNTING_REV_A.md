@@ -9,7 +9,7 @@
 | H3 | 172 / 36 | Ø3,2 mm | NPTH, M3 |
 | H4 | 174 / 97 | Ø3,2 mm | NPTH, M3 |
 
-Die 4 Bohrungen wurden computergestützt auf bestehenden Kupferlagen, Footprint-Courtyards und Board-Edge positioniert. Alle vier sind eine **konkrete mechanische Prototyp-Auslegung**; sie entsprechen noch keinem bestätigten Gehäuse-Lochbild. Für jede Schraubstelle wurde ein kreisförmiger Ø6,4-mm-Courtyard für den Platzbedarf vorgesehen. **Die reale Schraubkopf-/Unterlegscheibenabmessung muss innerhalb des vorgesehenen mechanischen Umrisses liegen.**
+Die vier Bohrungen sind **kein Versuch, eine bereits existierende Sensor-Gehäusewand zu treffen**. Das aktuell vorhandene separate Gehäuse gehört zur **Relaissteuerung**, nicht zu dieser Platine.\n\nDie 4 Bohrungen wurden computergestützt auf bestehenden Kupferlagen, Footprint-Courtyards und Board-Edge positioniert. Alle vier sind eine **konkrete mechanische Prototyp-Auslegung**; sie sind **die Konstruktionsvorgabe für ein späteres Sensor-Gehäuse**, das aktuell nicht existiert. Für jede Schraubstelle wurde ein kreisförmiger Ø6,4-mm-Courtyard für den Platzbedarf vorgesehen. **Die reale Schraubkopf-/Unterlegscheibenabmessung muss innerhalb des vorgesehenen mechanischen Umrisses liegen.**
 
 Prüfnachweis: https://github.com/d4sd1ng/homepage/actions/runs/43979793594. KiCad 9.0.2: 0 DRC-Meldungen, 0 offene Pads, 0 Footprintfehler; separate statische Prüfung: 0 Courtyard-Überschneidungen, 0 Elemente außerhalb der Außenkontur, exakt 4 NPTH-Montagebohrungen. 
 
