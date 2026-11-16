@@ -288,8 +288,15 @@ def prepare_data(historical_data):
     """Prepare DataFrame for ML training."""
     X = historical_data[['air_temperature', 'humidity', 'water_temperature', 'ec', 'ph']]
     
-    relay_columns = ['heater', 'circulation_vent', 'exhaust_vent', 'water_pump']
-    available_relay_columns = [col for col in relay_columns if col in historical_data.columns]
+    # Historical hardware-v2 light telemetry and current legacy pump data coexist.
+    # Only columns present in the input are used for the training target.
+    relay_columns = ['light', 'heater', 'circulation_vent', 'exhaust_vent', 'water_pump']
+    # Only train on fully observed statuses: absent historical light fields
+    # must not silently become "off" or break integer conversion.
+    available_relay_columns = [
+        col for col in relay_columns
+        if col in historical_data.columns and historical_data[col].notna().all()
+    ]
     
     if available_relay_columns:
         y = historical_data[available_relay_columns].astype(int)

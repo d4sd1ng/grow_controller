@@ -100,3 +100,51 @@ def get_telemetry_cors_origins() -> list[str]:
 
 def get_telemetry_api_reload_enabled() -> bool:
     return os.environ.get("TELEMETRY_API_RELOAD", "").strip() == "1"
+
+
+def get_iot_sensor_host() -> str | None:
+    """Sensor-ESP host/IP for optional direct LAN control from Python."""
+    value = os.environ.get("IOT_SENSOR_HOST", "").strip()
+    return value or None
+
+
+def get_iot_sensor_port() -> int:
+    value = os.environ.get("IOT_SENSOR_PORT", "8081").strip()
+    try:
+        return int(value)
+    except ValueError:
+        return 8081
+
+
+def get_iot_sensor_api_key() -> str | None:
+    """Local Sensor-ESP API key; falls back to TELEMETRY_API_KEY."""
+    value = os.environ.get("IOT_API_KEY", "").strip()
+    return value or get_telemetry_api_key()
+
+
+# Legacy hardware-v2 PostgreSQL configuration getters retained for
+# compatibility; the current GROW_DB_BACKEND/GROW_POSTGRES_DSN path is unchanged.
+def get_grow_database_url() -> str:
+    """
+    PostgreSQL DSN for the production telemetry store.
+
+    Example:
+    postgresql://grow_controller:secret@127.0.0.1:5432/grow_controller
+    """
+    value = os.environ.get("GROW_DATABASE_URL", "").strip()
+    if not value:
+        raise RuntimeError("GROW_DATABASE_URL is required")
+    if not (value.startswith("postgresql://") or value.startswith("postgres://")):
+        raise RuntimeError("GROW_DATABASE_URL must be a PostgreSQL URL")
+    return value
+
+
+def get_grow_database_schema() -> str:
+    """Dedicated PostgreSQL schema used by Grow Controller."""
+    value = os.environ.get("GROW_DATABASE_SCHEMA", "grow_controller").strip()
+    if not value:
+        return "grow_controller"
+    if not value.replace("_", "").isalnum() or value[0].isdigit():
+        raise RuntimeError("GROW_DATABASE_SCHEMA contains invalid characters")
+    return value
+

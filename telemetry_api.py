@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from data_manager import DataManager
 from env_config import get_telemetry_api_key, get_telemetry_cors_origins, load_dotenv_if_present
 from telemetry_payload import normalize_ingest_payload
+from sensor_node_client import get_summary as get_sensor_summary
 
 load_dotenv_if_present()
 
@@ -153,6 +154,12 @@ def get_control_state(
     x_telemetry_key: str | None = Header(default=None, alias="X-Telemetry-Key"),
 ) -> dict[str, Any]:
     _require_api_key(x_telemetry_key)
+    # Hardware-V2-Lesepfad: aktive ESP32-Rueckmeldung hat Vorrang.
+    summary = get_sensor_summary()
+    if isinstance(summary, dict):
+        control = summary.get("control")
+        if isinstance(control, dict):
+            return {"ok": True, **control}
     st = get_dm().get_control_state()
     return {"ok": True, **st}
 
@@ -219,10 +226,20 @@ def get_mobile_summary(
     _require_api_key(x_telemetry_key)
     dm = get_dm()
     ctrl = dm.get_control_state()
+    reading = dm.get_latest_reading()
+    # Nur lesende Integration: bestehende C3-Steuerung bleibt unveraendert.
+    sensor_summary = get_sensor_summary()
+    if isinstance(sensor_summary, dict):
+        sensor_ctrl = sensor_summary.get("control")
+        sensor_reading = sensor_summary.get("reading")
+        if isinstance(sensor_ctrl, dict):
+            ctrl = sensor_ctrl
+        if isinstance(sensor_reading, dict):
+            reading = sensor_reading
     return {
         "ok": True,
         "control": ctrl,
-        "reading": dm.get_latest_reading(),
+        "reading": reading,
         "alerts": dm.get_alerts_recent(alert_limit),
     }
 

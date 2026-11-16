@@ -20,6 +20,7 @@ from pid_controller import PIDController
 from schedule_manager import EquipmentSchedule
 from ml_controller import MLController
 from multi_device_manager import get_multi_device_manager
+from sensor_node_client import get_summary as get_sensor_summary
 
 load_dotenv_if_present()
 
@@ -513,6 +514,23 @@ def update_real_time_data():
         if st.button("Toggle Water Pump", key="toggle_water_pump", use_container_width=True):
             toggle_water_pump()
             st.rerun()
+
+    # Hardware-V2-Monitor: only GET data, never forward switching commands.
+    _sensor_live = get_sensor_summary()
+    if isinstance(_sensor_live, dict):
+        _readings = _sensor_live.get("reading")
+        _control = _sensor_live.get("control")
+        st.markdown("<h3>Sensor-ESP (live)</h3>", unsafe_allow_html=True)
+        if isinstance(_readings, dict):
+            _vals = {k: _readings.get(k) for k in (
+                "ph", "ec", "air_temperature", "humidity", "water_temperature",
+                "light_level", "tds_ppm", "vpd"
+            ) if _readings.get(k) is not None}
+            st.json(_vals)
+        if isinstance(_control, dict):
+            st.caption("Live-Sensor-Zustand (nur lesend): "
+                       + str(_control.get("control_mode", "unbekannt")))
+    # No new buttons, no hardware actuation: existing local simulator stays as-is.
 
     # Schedule Status
     st.markdown("<h2 class='medium-font'>Active Schedules</h2>", unsafe_allow_html=True)

@@ -152,6 +152,12 @@ class PostgresTelemetryStore:
             d[col] = bool(d[col])
         d["timestamp"] = _ts_iso(d.pop("ts"))
         d["extras"] = extras
+        # Hardware-v2 status values remain in extras_json to preserve old
+        # SQLite/PostgreSQL schemas; expose read-only fields to the UI too.
+        if isinstance(extras, dict):
+            for key in ("light", "lamp_cooling"):
+                if isinstance(extras.get(key), bool):
+                    d[key] = extras[key]
         return d
 
     def query_range(self, start: datetime, end: datetime) -> pd.DataFrame:
@@ -168,6 +174,9 @@ class PostgresTelemetryStore:
         df["ts"] = pd.to_datetime(df["ts"])
         for col in _RELAY_COLS:
             df[col] = df[col].astype(bool)
+        from telemetry_payload import relay_extra_status
+        for key in ("light", "lamp_cooling"):
+            df[key] = df["extras_json"].map(lambda raw: relay_extra_status(raw, key))
         df = df.rename(columns={"ts": "timestamp"}).set_index("timestamp")
         return df
 
