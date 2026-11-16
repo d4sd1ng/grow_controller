@@ -1,14 +1,14 @@
 """
 Normalize JSON bodies from the grow-room ESP before they hit DataManager.
-Supports flat keys, nested `relays` / `relay_states`, water_pump → pump alias,
-and device_info with I2C scan results.
+Supports flat keys, nested `relays` / `relay_states`, modern light state,
+legacy water_pump → pump alias, and device_info with I2C scan results.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-_RELAY_KEYS = frozenset({"heater", "pump", "circulation_vent", "exhaust_vent"})
+_RELAY_KEYS = frozenset({"light", "heater", "pump", "circulation_vent", "exhaust_vent", "lamp_cooling"})
 
 # Valid ranges for sensor values (prevent unrealistic/erroneous data)
 _VALUE_RANGES = {
