@@ -17,7 +17,7 @@ Den steckbaren ESP32 über **zwei erhöhte, einreihige, bedrahtete 1×15-Buchsen
 - Phoenix Contact Gegenstecker **MSTB 2,5/4-ST-5,08 / 1757035**: Körperhöhe 15 mm, Breite 20,32 mm, Länge 18,3 mm laut Hersteller.
 - Theoretische Höhendifferenz zwischen erhöhtem Kontaktträger (18,67 mm) und einzelnem Phoenix-Steckerkörper (15 mm) beträgt **3,67 mm**. Das ist **keine gesicherte USB-Steckerfreiheit**: Lage der USB-Buchse am ESP32-Modul, Male-USB-C-Steckgehäuse, Drahtknickradius sowie das zusammengesetzte Phoenix-Steckpaar sind in dieser Differenz nicht enthalten.
 
-**Die Variante ist ein mechanischer Lösungsansatz, keine freigegebene Bestückung.** Sie muss in einer realen Zusammenbauprobe mit allen gesteckten Phoenix-Steckern und dem vorgesehenen USB-C-Kabel oder anhand vollständig verifizierter 3D-Modelle auf Steckbarkeit, Belastung des ESP32-Steckmoduls und freie Gehäusehöhe geprüft werden.
+**Die Variante ist ein mechanischer Lösungsansatz, keine freigegebene Bestückung.** Sie muss in einer realen Zusammenbauprobe mit allen gesteckten Phoenix-Steckern und dem vorgesehenen USB-C-Kabel oder anhand vollständig verifizierter 3D-Modelle auf Steckbarkeit, Belastung des ESP32-Steckmoduls und ausreichende Z-Höhe über der noch offenen Sensorplatine geprüft werden. Ein Sensor-Gehäuse existiert derzeit nicht.
 
 ## Berechnung und Datenquellen
 
@@ -30,4 +30,4 @@ Den steckbaren ESP32 über **zwei erhöhte, einreihige, bedrahtete 1×15-Buchsen
 
 ## Fertigungsstatus
 
-KiCad 9.0.2 meldet 0 Leiterplatten-DRC-Fehler am Rev-A-Montageentwurf. **Noch offen:** reale USB-/Stecker-Kollisionsprobe, Gehäuse-Innenhöhe und Lochbild-Gegenstück sowie Niederspannungs-Funktionstest. Keine Produktionsfreigabe.
+KiCad 9.0.2 meldet 0 Leiterplatten-DRC-Fehler am Rev-A-Montageentwurf. **Noch offen:** USB-/Stecker-Zugänglichkeit an der offenen Platine sowie Niederspannungs-Funktionstest nach Erhalt des Prototyps. Die **Gehäuseplanung folgt danach**. Die erste unbestückte PCB-Prototypfertigung benötigt keine Gehäusepassprobe; sie ist von der Live-Betriebsfreigabe zu trennen.
