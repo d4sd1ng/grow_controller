@@ -28,3 +28,12 @@
 
 ## Bestellung
 Keine Produktionsgerber als fertiges Produkt ausgeben. Nur nach Freigabe aller relevanten Punkte durch reale Maß-/Elektroprüfung und bestandenen KiCad-DRC in die Fertigung geben. Keine 230-V-Lastpfade auf diesem Sensorträger.
+
+## Echter KiCad-9.0.2-DRC (VPS-Runner, 16.11.2026, 03:10 UTC)
+- GitHub Actions: https://github.com/d4sd1ng/homepage/actions/runs/43796471420
+- Lauf auf bestehendem `nurovelle-vps`-Runner; KiCad 9.0.2 isoliert in Debian-Trixie-Dockercontainer.
+- Originalresultat nach Routingkorrekturen: **25 Warnungen**, ausschließlich `lib_footprint_issues` für alle 25 `Grow_Placeholder`-Bibliothekseinträge.
+- **Keine unverbundenen Pads**, **keine ausgewiesenen Footprint errors**, keine aktuellen `track_dangling`-/`holes_co_located`-Meldungen.
+- Der KiCad-CLI-Lauf liefert wegen der Warnungen weiterhin Exit-Code 5. **Keine Fertigungsfreigabe**.
+- Beseitigt: 7 doppelte Vias, zwei versehentlich eingeführte kurze GND-Stubs sowie eine fehlende GND-Durchkontaktierung an (41,83 mm; 55,80 mm).
+- Die 25 Library-Fehler dürfen nicht durch blindes Umbenennen der Platzhalter kaschiert werden; ihre Geometrie bleibt unbestätigt.
