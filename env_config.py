@@ -100,3 +100,23 @@ def get_telemetry_cors_origins() -> list[str]:
 
 def get_telemetry_api_reload_enabled() -> bool:
     return os.environ.get("TELEMETRY_API_RELOAD", "").strip() == "1"
+
+
+def get_iot_sensor_host() -> str | None:
+    """Sensor-ESP host/IP for optional direct LAN control from Python."""
+    value = os.environ.get("IOT_SENSOR_HOST", "").strip()
+    return value or None
+
+
+def get_iot_sensor_port() -> int:
+    value = os.environ.get("IOT_SENSOR_PORT", "8081").strip()
+    try:
+        return int(value)
+    except ValueError:
+        return 8081
+
+
+def get_iot_sensor_api_key() -> str | None:
+    """Local Sensor-ESP API key; falls back to TELEMETRY_API_KEY."""
+    value = os.environ.get("IOT_API_KEY", "").strip()
+    return value or get_telemetry_api_key()
