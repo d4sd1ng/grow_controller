@@ -25,6 +25,18 @@ print(f"PCB: {board.name}")
 print(f"Net declarations: {len(decls)}, references: {len(refs)}")
 print(f"Footprints: {len(footprints)}, unapproved placeholders: {len(placeholders)}")
 print(f"Tracks: {text.count('(segment ')}, vias: {text.count('(via ')}")
+
+references = re.findall(r'\\(fp_text reference "([^"]+)"', text)
+duplicate_refs = sorted(ref for ref, count in Counter(references).items() if count != 1)
+outline = re.findall(r'\\(gr_rect \\(start ([\\d.]+) ([\\d.]+)\\) \\(end ([\\d.]+) ([\\d.]+)\\).*?\\(layer "Edge.Cuts"\\)', text)
+expected = {"J_DHT1", "J_DHT2", "J_DHT3", "J_DS18", "J_LEVEL",
+            "J_EC", "J_PH", "J_BH1750", "J_MLX", "J_RGB",
+            "J_PHASE", "J_SERVICE", "U_ESP32", "U_ADS1115"}
+missing = sorted(expected - set(references))
+if duplicate_refs or missing or len(outline) != 1:
+    print(f"ERROR footprint integrity: duplicates={duplicate_refs}, missing={missing}, outlines={len(outline)}")
+print(f"Footprint references: {len(references)}, outline rectangles: {len(outline)}")
+
 if placeholders:
     print("NOT APPROVED FOR FABRICATION: unverified footprint geometry")
 for title, errors in [("Duplicate nets", duplicate), ("Unknown net references", unknown),
@@ -33,6 +45,6 @@ for title, errors in [("Duplicate nets", duplicate), ("Unknown net references", 
         print(f"ERROR {title}: {errors}")
 if balance != 0 or minimum != 0:
     print(f"ERROR parentheses balance: {balance}, minimum nesting: {minimum}")
-if duplicate or unknown or mismatch or balance or minimum:
+if duplicate or unknown or mismatch or balance or minimum or duplicate_refs or missing or len(outline) != 1:
     sys.exit(1)
 print("Static integrity check passed. This is NOT a fabrication release.")
