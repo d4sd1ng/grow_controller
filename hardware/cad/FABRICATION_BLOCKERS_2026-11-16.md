@@ -1,3 +1,5 @@
+> **Fortgeschriebener Stand:** Die unten aufgeführten früheren DRC-/Bibliotheksfehler sind historisch. Am 16.11.2026 wurden alle 25 Footprints konkret zugeordnet und KiCad 9.0.2 lieferte **0 DRC-Meldungen / 0 unverbundene Pads / 0 Footprint-Fehler**. Nachweis: https://github.com/d4sd1ng/homepage/actions/runs/43962759317 und `hardware/cad/FOOTPRINT_ASSIGNMENTS_25.md`. Die mechanische/elektrische Freigabe bleibt offen.
+
 # Sensor-PCB — Fertigungsprüfung, 16.11.2026
 
 **Status: NICHT BESTELLFREI.** Dies ist der tatsächliche Prüfstand, keine Freigabe.
