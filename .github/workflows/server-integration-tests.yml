@@ -29,6 +29,13 @@ permissions:
   contents: read
 
 jobs:
+  runner-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Verify GitHub-hosted runner availability
+        run: python3 -c 'print("GitHub-hosted Actions runner is available")'
+
   server-tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
