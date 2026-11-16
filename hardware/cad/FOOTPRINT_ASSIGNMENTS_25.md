@@ -42,3 +42,11 @@ Quelle: bestehendes Sensor-Layout und verbindliches Maßbild. **Alle 25 Position
 Eine Zuordnung ist kein Ersatz für KiCad-DRC, korrekte Montage- und Gehäusefreigabe, Spannungsgrenzenprüfung und einen Test der fertigen Baugruppe. Insbesondere überprüft die fertigungstechnische Sichtprüfung die Steckrichtung und Zugriff auf alle abziehbaren Gegenstecker.
 
 **Nicht eigenständig zur Produktion freigegeben.**
+
+## KiCad-Durchlauf auf dem vorhandenen VPS-Runner
+
+- **KiCad 9.0.2: 0 DRC-Meldungen, 0 offene Pads, 0 Footprint-Fehler** am 16.11.2026, geprüft auf dem Branch mit diesen 25 Zuordnungen.
+- Referenzlauf: https://github.com/d4sd1ng/homepage/actions/runs/43962759317
+- Die projektspezifische Bibliothek wird im isolierten Prüfcontainer registriert; das laufende Homepage-Deployment bleibt unberührt.
+- Die Bearbeitung verändert keine bestehenden Sensor-Pin-Netzverbindungen, sondern benennt die eingebetteten Footprints konkret und ergänzt Körper-/Courtyard-Geometrien.
+- Keine Freigabe zur Fertigung: Gehäusebefestigung, endgültiger Steckraum und elektrische Funktionstests sind davon getrennte Prüfungen.
