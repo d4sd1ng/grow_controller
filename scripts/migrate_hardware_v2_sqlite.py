@@ -8,6 +8,7 @@ Only data fields are migrated; hardware control commands are not executed.
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import json
 import os
 import sqlite3
@@ -38,11 +39,11 @@ def migrate(source: Path, destination: Path) -> dict[str, int]:
 
     try:
         # Input is opened in read-only mode, then copied with SQLite backup API.
-        with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as original:
-            with sqlite3.connect(str(tmp)) as db:
+        with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as original:
+            with closing(sqlite3.connect(str(tmp))) as db:
                 original.backup(db)
 
-        with sqlite3.connect(str(tmp)) as db:
+        with closing(sqlite3.connect(str(tmp))) as db:
             db.row_factory = sqlite3.Row
             if not table_columns(db, "readings") or not table_columns(db, "app_control"):
                 raise ValueError("expected readings and app_control tables")
