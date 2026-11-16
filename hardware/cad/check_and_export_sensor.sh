@@ -51,6 +51,6 @@ mkdir -p "$OUT/gerber"
 kicad-cli pcb export gerbers \
   --layers "F.Cu,B.Cu,F.SilkS,B.SilkS,F.Mask,B.Mask,Edge.Cuts" \
   --output "$OUT/gerber" "$PCB"
-kicad-cli pcb export drill --format excellon \
+kicad-cli pcb export drill --format excellon --excellon-separate-th \
   --output "$OUT/gerber" "$PCB"
 echo "Gerber/Excellon exportiert nach $OUT/gerber; vor Bestellung visuell pruefen."
