@@ -1,0 +1,22 @@
+name: Runner availability probe
+
+on:
+  push:
+    branches:
+      - integrate/hardware-v2-server-20261116
+    paths:
+      - ".github/workflows/runner-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Prove runner started
+        run: |
+          echo 'GitHub-hosted runner started'
+          python3 -c 'print("python runner: ok")'
