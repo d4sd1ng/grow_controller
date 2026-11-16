@@ -26,19 +26,29 @@
 - Historische, nicht portierte Hardware-Steuerdateien bleiben
   vollständig über den Archivbranch erreichbar.
 
-## Aufräummaßnahme
+## Durchgeführte Branch-Bereinigung
 
-Der Branch `hardware-v2-firmware` darf jetzt auf den
-aktuellen `main`-Stand **mit Force-with-Lease** zurückgesetzt
-werden, da sein Original-HEAD im oben genannten Archiv
-gesichert und alle relevanten Serveränderungen separat
-über PR #11 übernommen wurden. Dies ist ein **Branch-Reset**,
-**kein vollständiger 53-Commit-Code-Merge**. Die
-historischen Commits verbleiben im Archiv, nicht zwingend
-im aktiven `main`-Arbeitsbaum.
+Am 16.11.2026 wurde `hardware-v2-firmware` nach
+archivgesichertem Altstand `1cdeabe403927b4614d18e946273d2fa8019dd4b`
+per **Force-with-Lease** auf den neuesten `main` gesetzt.
+Vorher wurde Draft-PR #10 geschlossen, **ohne** seinen
+konfliktbehafteten historischen Dateibaum nach `main` zu mergen.
 
-Die Archivkopie nicht löschen, solange weitere historische
-Funktionen gebraucht oder geprüft werden.
+`fix/restore-serial-sensor-readings-20261114` und
+`integrate/hardware-v2-server-20261116` wurden danach mit
+**normalem Fast-Forward** auf `main` gesetzt.
+GitHub Compare meldete bei diesen **drei aktiven Branches
+jeweils 0 ahead und 0 behind**.
+
+`archive/hardware-v2-firmware-20261116` ist absichtlich ein
+abweichender Archivbranch mit den vollständigen 53 Commits;
+er wird **nicht gelöscht oder überschrieben**.
+
+**Wichtig:** Dieser Branch-Reset ist ein Aufräumen der Branch-Refs,
+kein inhaltlicher Vollmerge aller historischen Codezeilen.
+Die funktionsfähigen Serverteile wurden gezielt in PR #11
+portiert. Der Bestand historischer, hardwarewirksamer Funktionen
+bleibt im Archiv und wird nicht automatisch aktiviert.
 
 ## Weiterhin nicht nachgewiesen
 
