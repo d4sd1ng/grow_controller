@@ -36,13 +36,11 @@ def migrate(source: Path, destination: Path) -> dict[str, int]:
     if tmp.exists():
         raise FileExistsError(f"temporary destination exists: {tmp}")
 
-    copied = False
     try:
         # Input is opened in read-only mode, then copied with SQLite backup API.
         with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as original:
             with sqlite3.connect(str(tmp)) as db:
                 original.backup(db)
-                copied = True
 
         with sqlite3.connect(str(tmp)) as db:
             db.row_factory = sqlite3.Row
@@ -56,26 +54,37 @@ def migrate(source: Path, destination: Path) -> dict[str, int]:
                 if "light" in reading_columns:
                     # Preserve original booleans in extras before removing
                     # hardware-v2's incompatible required light column.
-                    cur = db.execute("SELECT id, light, extras_json FROM readings")
-                    for row in cur:
-                        raw = row["extras_json"]
-                        try:
-                            extras = json.loads(raw) if raw else {}
-                        except (TypeError, ValueError) as exc:
-                            raise ValueError(
-                                f"invalid extras_json in reading id={row['id']}"
-                            ) from exc
-                        if not isinstance(extras, dict):
-                            raise ValueError(
-                                f"extras_json is not an object in reading id={row['id']}"
-                            )
-                        if "light" not in extras:
-                            extras["light"] = bool(row["light"])
-                            db.execute(
-                                "UPDATE readings SET extras_json=? WHERE id=?",
-                                (json.dumps(extras), row["id"]),
-                            )
-                            changed += 1
+                    last_id = -1
+                    while True:
+                        rows = db.execute(
+                            "SELECT id, light, extras_json FROM readings "
+                            "WHERE id > ? ORDER BY id LIMIT 500",
+                            (last_id,),
+                        ).fetchall()
+                        if not rows:
+                            break
+                        for row in rows:
+                            raw = row["extras_json"]
+                            try:
+                                extras = json.loads(raw) if raw else {}
+                            except (TypeError, ValueError) as exc:
+                                raise ValueError(
+                                    f"invalid extras_json in reading id={row['id']}"
+                                ) from exc
+                            if extras is None:
+                                extras = {}
+                            if not isinstance(extras, dict):
+                                raise ValueError(
+                                    f"extras_json is not an object in reading id={row['id']}"
+                                )
+                            if "light" not in extras:
+                                extras["light"] = bool(row["light"])
+                                db.execute(
+                                    "UPDATE readings SET extras_json=? WHERE id=?",
+                                    (json.dumps(extras), row["id"]),
+                                )
+                                changed += 1
+                        last_id = rows[-1]["id"]
                     db.execute("ALTER TABLE readings DROP COLUMN light")
                 if "pump" not in table_columns(db, "readings"):
                     db.execute(
@@ -96,7 +105,7 @@ def migrate(source: Path, destination: Path) -> dict[str, int]:
         os.replace(tmp, destination)
         return {"readings": before, "light_values_preserved": changed}
     except BaseException:
-        if copied and tmp.exists():
+        if tmp.exists():
             tmp.unlink()
         raise
 
