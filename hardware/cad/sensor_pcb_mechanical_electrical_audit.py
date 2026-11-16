@@ -154,7 +154,7 @@ for i, (ref1, a) in enumerate(parts):
         if distance < 2.0:
             warning.append((ref1, ref2, distance))
 
-mounting_holes = len(re.findall(r'"\w*MountingHole[^"]*"|\(pad "[^"]*" np_thru_hole', source))
+mounting_holes = len(re.findall(r'\(pad "[^"]*" np_thru_hole', source))
 esp = next((box for ref, box in parts if ref == "U_ESP32"), None)
 lower_connectors = [p for p in parts if p[0] in ("J_BH1750", "J_MLX")]
 
