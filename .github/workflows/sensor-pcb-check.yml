@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/sensor-pcb-check.yml'
+      - 'hardware/cad/**'
   workflow_dispatch:
 
 permissions:
@@ -15,10 +16,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - name: Checkout routed sensor PCB from development branch
+      - name: Checkout current repository revision
         uses: actions/checkout@v4
         with:
-          ref: fix/restore-serial-sensor-readings-20261114
           persist-credentials: false
 
       - name: Install KiCad CLI
