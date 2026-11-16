@@ -19,6 +19,18 @@ _VALUE_RANGES = {
     "light_level": (0.0, 200000.0),
     "ec": (0.0, 10.0),
     "ph": (0.0, 14.0),
+    "vpd": (0.0, 5.0),
+    "tds_ppm": (0.0, 10000.0),
+    "ph_voltage": (0.0, 3.3),
+    "tds_voltage": (0.0, 3.3),
+    "dht1_temperature": (-5.0, 60.0),
+    "dht1_humidity": (0.0, 100.0),
+    "dht2_temperature": (-5.0, 60.0),
+    "dht2_humidity": (0.0, 100.0),
+    "dht3_temperature": (-5.0, 60.0),
+    "dht3_humidity": (0.0, 100.0),
+    "ds18b20_1_temperature": (-5.0, 50.0),
+    "ds18b20_2_temperature": (-5.0, 50.0),
 }
 
 
