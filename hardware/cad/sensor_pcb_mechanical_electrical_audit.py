@@ -95,6 +95,7 @@ if not outline:
     raise SystemExit("FAIL: board outline missing")
 edge = tuple(map(float, outline.groups()))
 
+mechanical_refs = {"H1", "H2", "H3", "H4"}
 for raw in footprints(source):
     match_ref = re.search(r'\(fp_text reference "([^"]+)"', raw)
     match_at = re.match(r'\(footprint "[^"]+" \(layer "[^"]+"\) '
@@ -102,7 +103,19 @@ for raw in footprints(source):
     match_cr = re.search(r'\(fp_rect \(start ([\d.-]+) ([\d.-]+)\) '
                          r'\(end ([\d.-]+) ([\d.-]+)\).*?'
                          r'\(layer "F.CrtYd"\)', raw)
-    if not match_ref or not match_at or not match_cr:
+    if not match_ref or not match_at:
+        errors.append("Footprint missing ref or placement")
+        continue
+    is_hole = match_ref.group(1) in mechanical_refs
+    if is_hole and not match_cr:
+        circle = re.search(r'\(fp_circle \(center 0 0\) \(end ([\d.]+) 0\).*?\(layer "F.CrtYd"\)', raw)
+        if circle:
+            radius = float(circle.group(1))
+            class _CircleMatch:
+                def groups(self):
+                    return (-radius, -radius, radius, radius)
+            match_cr = _CircleMatch()
+    if not match_cr:
         errors.append("Footprint missing ref, placement or courtyard")
         continue
     ref = match_ref.group(1)
@@ -116,14 +129,18 @@ for raw in footprints(source):
         outside.append(ref)
     pad = padmap(raw)
     target = expected.get(ref)
-    if target is None:
+    if is_hole:
+        hole_ok = 'np_thru_hole' in raw and '(drill 3.2)' in raw
+        if not hole_ok:
+            errors.append(f"{ref}: expected 3.2 mm NPTH mounting hole")
+    elif target is None:
         errors.append(f"Unexpected footprint {ref}")
     elif [pad.get(i) for i in range(1, len(target) + 1)] != target or len(pad) != len(target):
         errors.append(f"{ref}: pad net mapping mismatch: {pad}")
     parts.append((ref, box))
 
-if set(ref for ref, _ in parts) != set(expected):
-    errors.append("Footprint reference set differs from 25-item expected BOM")
+if set(ref for ref, _ in parts) != set(expected) | mechanical_refs:
+    errors.append("Footprint reference set differs from 25 electrical items plus 4 M3 holes")
 for i, (ref1, a) in enumerate(parts):
     for ref2, b in parts[i+1:]:
         xgap = max(a[0] - b[2], b[0] - a[2], 0)
@@ -143,7 +160,7 @@ lower_connectors = [p for p in parts if p[0] in ("J_BH1750", "J_MLX")]
 
 print("# Sensor PCB — automated mechanical and electrical review")
 print(f"- Edge.Cuts: {edge[2]-edge[0]:.2f} x {edge[3]-edge[1]:.2f} mm; 2 copper layers")
-print(f"- Footprints: {len(parts)}; complete expected pin-net mappings: {len(parts)-len(errors)} checked")
+print(f"- Footprints: {len(parts)} (25 electrical + 4 mechanical); expected pin-net mappings: 25 checked; errors: {len(errors)}")
 print(f"- Courtyard overlaps: {len(collisions)}; items beyond Edge.Cuts: {len(outside)}")
 print(f"- Mounting-hole objects in layout: {mounting_holes}")
 print("- Closest component courtyards:")
@@ -158,8 +175,11 @@ print("- Analog inputs A0/A1 are directly connected from 5-V-powered pH/EC break
 print("- 3.3-V and 5-V power-source current, reverse-feed and load margins require real measurements.")
 if collisions or outside:
     errors.append(f"collisions={collisions}, outside={outside}")
-if mounting_holes == 0:
-    print("HOLD: No mounting holes / enclosure interface defined on this PCB.")
+if mounting_holes != 4:
+    errors.append(f"Expected 4 board mounting holes, found {mounting_holes}")
+    print("HOLD: Four mechanical holes not present.")
+else:
+    print("HOLD: Four M3 holes provided, but enclosure mating-hole coordinates not independently verified.")
 if any("U_ESP32" in (a, b) for a, b, _ in warning):
     print("HOLD: ESP32 USB access must be checked against lower connector plug bodies.")
 for e in errors:
@@ -170,8 +190,8 @@ print("PASS: Static electrical pin mappings and basic in-board footprint envelop
 print("NOT APPROVED: Cable access, mounting geometry and live electrical measurements remain open.")
 if "--release" in sys.argv:
     unresolved = []
-    if mounting_holes == 0:
-        unresolved.append("No board mounting interface")
+    if mounting_holes != 4:
+        unresolved.append("Four mounting holes missing")
     if any("U_ESP32" in (a, b) for a, b, _ in warning):
         unresolved.append("Unverified USB connector and plugged-header clearance")
     if unresolved:
