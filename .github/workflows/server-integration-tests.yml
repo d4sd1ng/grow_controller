@@ -7,6 +7,8 @@ on:
       - "env_config.py"
       - "telemetry_api.py"
       - "telemetry_payload.py"
+      - "telemetry_store.py"
+      - "postgres_telemetry_store.py"
       - "tests/test_hardware_v2_server_migration.py"
       - ".github/workflows/server-integration-tests.yml"
   push:
@@ -17,6 +19,8 @@ on:
       - "env_config.py"
       - "telemetry_api.py"
       - "telemetry_payload.py"
+      - "telemetry_store.py"
+      - "postgres_telemetry_store.py"
       - "tests/test_hardware_v2_server_migration.py"
       - ".github/workflows/server-integration-tests.yml"
   workflow_dispatch:
@@ -40,7 +44,7 @@ jobs:
         run: |
           mkdir -p migration-test-results
           set +e
-          python -m py_compile sensor_node_client.py env_config.py telemetry_api.py telemetry_payload.py tests/test_hardware_v2_server_migration.py \
+          python -m py_compile sensor_node_client.py env_config.py telemetry_api.py telemetry_payload.py telemetry_store.py postgres_telemetry_store.py tests/test_hardware_v2_server_migration.py \
             > migration-test-results/syntax.txt 2>&1
           status=$?
           cat migration-test-results/syntax.txt
