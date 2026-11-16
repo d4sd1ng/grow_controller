@@ -36,3 +36,4 @@ if balance != 0 or minimum != 0:
 if duplicate or unknown or mismatch or balance or minimum:
     sys.exit(1)
 print("Static integrity check passed. This is NOT a fabrication release.")
+print("Run KiCad DRC and footprint/mechanical review before production.")
