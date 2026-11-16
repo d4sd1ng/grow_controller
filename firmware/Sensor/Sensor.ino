@@ -1,8 +1,8 @@
 /**
- * Grow Controller: Sensor-ESP32 mit OLED und ADS1115 (restore from PR #1).
+ * Grow Controller: ESP32-Pro-Sensorcontroller ohne lokales Display.
  *
- * - 3x DHT22, DS18B20 (D23), ADS1115 + OLED (D21/D22), BH1750 (D13/D14)
- * - Kamera MLX90640 (optional) am OLED-I2C D21/D22 (0x33)
+ * - 3x DHT22, DS18B20 (D23), ADS1115 (D21/D22), BH1750 (D13/D14)
+ * - Kamera MLX90640 (optional) am Sensor-I2C D21/D22 (0x33)
  * - HTTP-API fuer CYD/Raspberry Pi, Telemetrie und pH-Alarm
  * - Zweites Geraet: ESP32-C3 SuperMini als eigenstaendiger Leistungscontroller.
  *
@@ -23,8 +23,6 @@
 #include "air_fusion.h"
 #include "calibration_capture.h"
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <Adafruit_ADS1X15.h>
 #include <DHT.h>
 #include <OneWire.h>
@@ -87,6 +85,13 @@ static constexpr uint8_t PIN_RGB_BLUE = 17; // TX2: Pumpen-Filterwechsel, nur be
 static constexpr uint8_t PIN_PH_BUZZER = 5; // Buzzer an D5; deaktiviert bis Typ/Treiber geklaert
 static constexpr unsigned long PHASE_DEBOUNCE_MS = 50;
 static constexpr uint8_t PIN_ONEWIRE = 23; // DS18B20 auf D23; PH4502C DO wird nicht genutzt
+// A02YYUW on UART1: Sensor-TX -> GPIO18 (ESP32 RX), Sensor-RX offen.
+// Bei 3.3-V-Versorgung liegen UART-Ausgangspegel im ESP32-Bereich.
+static constexpr uint8_t PIN_LEVEL_UART_RX = 18;
+static constexpr uint32_t LEVEL_UART_BAUD = 9600;
+static constexpr uint16_t LEVEL_MIN_DISTANCE_MM = 30;
+static constexpr uint16_t LEVEL_MAX_DISTANCE_MM = 4500;
+static constexpr unsigned long LEVEL_TIMEOUT_MS = 3000UL;
 // Erst nach verifizierter TO-Ausgangsspannung <= ADS-VDD (3.3 V) einschalten.
 static constexpr bool PH_TO_WIRED = false;
 static constexpr bool PH_DO_WIRED = false; // PH4502C DO bleibt ungenutzt
@@ -98,7 +103,6 @@ static constexpr int PIN_BH_SCL = 14;
 
 /* ---------- Intervale ---------- */
 static constexpr unsigned long SENSOR_READ_MS = 2000;
-static constexpr unsigned long OLED_REFRESH_MS = 1000;
 static constexpr unsigned long TELEMETRY_INTERVAL_MS = 10000;
 static constexpr unsigned long WIFI_RECONNECT_MS = 5000;
 
@@ -155,14 +159,10 @@ static void loadPhCalibration() {
       fabsf(phVolt4 - phVolt7) >= 0.001f;
 }
 
-/* ---------- OLED / I2C ---------- */
-static constexpr uint8_t OLED_ADDR = 0x3C;
-static constexpr int OLED_RESET = -1;
-Adafruit_SSD1306 display(128, 64, &Wire, OLED_RESET);
-bool oledOk = false;
+/* ---------- I2C: ADS1115 und optionale MLX90640 auf GPIO21/22 ---------- */
 Adafruit_ADS1115 ads;
 
-/* ADS1115 + OLED auf Wire D21/D22, BH1750 separat auf zweitem I2C-Controller D13/D14 */
+/* ADS1115 auf Wire D21/D22, BH1750 separat auf zweitem I2C-Controller D13/D14 */
 TwoWire bhWire = TwoWire(1);
 static uint8_t bh1750Addr = 0;
 static bool bh1750Present = false;
@@ -213,9 +213,139 @@ struct SensorData {
   float vpdLeafCandidate = NAN; // vorlaeufiger Blatt-VPD: ROI + fusionierte DHT22-Werte
   bool mlx90640Ok = false;
   uint32_t lux = 0;
+  float levelDistanceMm = NAN; // Distanz, keine Liter ohne Kalibrierung
 
   bool adsOk = false;
 } sensors;
+
+/* ---------- A02YYUW: UART-Distanz, ohne automatische Dosierung ---------- */
+HardwareSerial levelUart(1); // UART0 bleibt USB-Serial
+static uint8_t levelFrame[4] = {};
+static uint8_t levelFramePos = 0;
+static unsigned long lastValidLevelMs = 0;
+static constexpr uint8_t LEVEL_MEDIAN_COUNT = 5;
+static uint16_t recentLevelMm[LEVEL_MEDIAN_COUNT] = {};
+static uint8_t recentLevelCount = 0;
+static uint8_t recentLevelIndex = 0;
+
+static bool levelSensorOk() {
+  return lastValidLevelMs != 0 &&
+         millis() - lastValidLevelMs <= LEVEL_TIMEOUT_MS;
+}
+static void pollLevelSensor() {
+  // Nicht blockierender 4-Byte-Rahmen: FF, High, Low, Checksum.
+  while (levelUart.available()) {
+    const uint8_t b = static_cast<uint8_t>(levelUart.read());
+    if (levelFramePos == 0 && b != 0xFF) continue;
+    levelFrame[levelFramePos++] = b;
+    if (levelFramePos < 4) continue;
+    levelFramePos = 0;
+    const uint8_t sum = static_cast<uint8_t>(
+        levelFrame[0] + levelFrame[1] + levelFrame[2]);
+    if (sum != levelFrame[3]) continue;
+    const uint16_t mm = (static_cast<uint16_t>(levelFrame[1]) << 8) |
+                        levelFrame[2];
+    if (mm < LEVEL_MIN_DISTANCE_MM || mm > LEVEL_MAX_DISTANCE_MM) continue;
+    recentLevelMm[recentLevelIndex] = mm;
+    recentLevelIndex = (recentLevelIndex + 1) % LEVEL_MEDIAN_COUNT;
+    if (recentLevelCount < LEVEL_MEDIAN_COUNT) ++recentLevelCount;
+    uint16_t sorted[LEVEL_MEDIAN_COUNT];
+    for (uint8_t i = 0; i < recentLevelCount; ++i)
+      sorted[i] = recentLevelMm[i];
+    for (uint8_t i = 1; i < recentLevelCount; ++i) {
+      const uint16_t key = sorted[i];
+      int j = static_cast<int>(i) - 1;
+      while (j >= 0 && sorted[j] > key) {
+        sorted[j + 1] = sorted[j];
+        --j;
+      }
+      sorted[j + 1] = key;
+    }
+    sensors.levelDistanceMm = sorted[recentLevelCount / 2];
+    lastValidLevelMs = millis();
+  }
+  if (!levelSensorOk()) sensors.levelDistanceMm = NAN;
+}
+// Bis zu acht per Hand erfasste Volumenpunkte: groesserer Abstand = weniger Liter.
+// Absichtlich getrennt von pH-/EC-NVS; kein Default-Tankvolumen wird geraten.
+static constexpr uint8_t LEVEL_CAL_MAX = 8;
+static constexpr char LEVEL_CAL_NVS[] = "levelcal_v1";
+struct LevelPoint {
+  uint16_t distanceMm;
+  float liters;
+};
+static LevelPoint levelPoints[LEVEL_CAL_MAX] = {};
+static uint8_t levelPointCount = 0;
+static void loadLevelCalibration() {
+  Preferences prefs;
+  if (!prefs.begin(LEVEL_CAL_NVS, true)) return;
+  uint8_t count = prefs.getUChar("count", 0);
+  if (count >= 2 && count <= LEVEL_CAL_MAX &&
+      prefs.getBytesLength("points") == count * sizeof(LevelPoint)) {
+    LevelPoint candidate[LEVEL_CAL_MAX] = {};
+    if (prefs.getBytes("points", candidate, count * sizeof(LevelPoint)) ==
+        count * sizeof(LevelPoint)) {
+      bool valid = true;
+      for (uint8_t i = 0; i < count; ++i) {
+        if (candidate[i].distanceMm < LEVEL_MIN_DISTANCE_MM ||
+            candidate[i].distanceMm > LEVEL_MAX_DISTANCE_MM ||
+            !isfinite(candidate[i].liters) || candidate[i].liters < 0.0f ||
+            candidate[i].liters > 90.0f ||
+            (i > 0 && (candidate[i - 1].distanceMm <= candidate[i].distanceMm ||
+                       candidate[i - 1].liters >= candidate[i].liters)))
+          valid = false;
+      }
+      if (valid) {
+        memcpy(levelPoints, candidate, count * sizeof(LevelPoint));
+        levelPointCount = count;
+      }
+    }
+  }
+  prefs.end();
+}
+static bool saveLevelCalibration() {
+  Preferences prefs;
+  if (!prefs.begin(LEVEL_CAL_NVS, false)) return false;
+  const size_t bytes = levelPointCount * sizeof(LevelPoint);
+  const bool ok = prefs.putBytes("points", levelPoints, bytes) == bytes &&
+                  prefs.putUChar("count", levelPointCount) == sizeof(uint8_t);
+  prefs.end();
+  return ok;
+}
+static float calibratedLevelLiters() {
+  if (!levelSensorOk() || levelPointCount < 2) return NAN;
+  const float d = sensors.levelDistanceMm;
+  if (d > levelPoints[0].distanceMm ||
+      d < levelPoints[levelPointCount - 1].distanceMm) return NAN;
+  for (uint8_t i = 1; i < levelPointCount; ++i) {
+    if (d >= levelPoints[i].distanceMm) {
+      const float lowD = levelPoints[i - 1].distanceMm;
+      const float highD = levelPoints[i].distanceMm;
+      const float t = (lowD - d) / (lowD - highD);
+      return levelPoints[i - 1].liters +
+             t * (levelPoints[i].liters - levelPoints[i - 1].liters);
+    }
+  }
+  return NAN;
+}
+static void writeLevelMeasurement(JsonObject obj) {
+  obj["level_sensor"] = "a02yyuw";
+  obj["level_sensor_ok"] = levelSensorOk();
+  obj["level_calibrated"] = levelPointCount >= 2;
+  obj["level_calibration_points"] = levelPointCount;
+  if (levelSensorOk()) obj["level_distance_mm"] = sensors.levelDistanceMm;
+  else obj["level_distance_mm"] = nullptr;
+  const float liters = calibratedLevelLiters();
+  if (isfinite(liters)) {
+    obj["level_liters"] = liters;
+    obj["level_percent"] = 100.0f * liters /
+                           levelPoints[levelPointCount - 1].liters;
+  } else {
+    obj["level_liters"] = nullptr;
+    obj["level_percent"] = nullptr;
+  }
+  obj["level_percent_reference"] = "highest_calibrated_volume";
+}
 
 /* ---------- Aktor-Soll / Ist ---------- */
 struct ActuatorState {
@@ -235,7 +365,11 @@ static bool sameState(const ActuatorState &a, const ActuatorState &b);
 ActuatorState targets;
 ActuatorState actual;
 uint32_t commandSeq = 0;
-static constexpr uint8_t DOSING_PUMP_COUNT = 5; // exakt 5, gemeinsam mit C3/Remote
+static constexpr uint8_t DOSING_PUMP_COUNT = 6; // sechs Kanäle, gemeinsam mit C3/Remote
+static constexpr const char *DOSING_CHANNEL_1_PRODUCT = "Plagron pH Min";
+static constexpr bool DOSING_CHANNEL_1_ENABLED = false; // chemische Dosierung gesperrt
+// Die noch nicht zugeordneten Kanäle 2-5 werden nicht automatisch belegt.
+// Kanal 6 ist auf PCA9685 OUT5 reserviert und bleibt gesperrt.
 static constexpr uint16_t PUMP_PULSE_MAX_MS = 2000;
 static constexpr unsigned long C3_HEARTBEAT_TIMEOUT_MS = 8000UL;
 unsigned long lastC3StatusMs = 0;
@@ -277,6 +411,7 @@ static bool setGrowWeekManually(int week);
 static void loadPhaseClock();
 static void pollPhaseClock();
 static bool setPhaseClockEpoch(uint32_t startEpoch);
+static time_t validatedUtcNow();
 static PhaseProfile blueteProfile = {NAN, NAN, false};
 static constexpr char PHASE_PROFILE_NVS[] = "phaseprof_v1";
 static constexpr char PHASE_NVS[] = "growphase_v1";
@@ -348,30 +483,38 @@ static void loadGrowPhase() {
       phaseName(growPhase), phaseProfile().configured ? "bereit" : "FEHLT");
 }
 static void setGrowPhase(GrowPhase next) {
-  // Ohne gestarteten Durchlauf oder nach STOP beginnt der physische Taster
-  // einen kompletten NEUEN Durchlauf in Wachstum.
-  if (cycleStopped || (!phaseStartEpoch && !phaseClockPending)) next = GrowPhase::Wuchs;
-  if (next == growPhase && phaseStartEpoch && !cycleStopped) return;
-  growPhase = next;
-  refreshPhaseRgb();
+  // Der physische Taster und die API sind verbindlich: eine explizite
+  // Phasenwahl darf von der Wochenuhr NICHT rueckgaengig gemacht werden.
+  if (next == growPhase && phaseStartEpoch && !cycleStopped && !phaseClockPending)
+    return;
   Preferences prefs;
-  bool saved = false;
-  if (prefs.begin(PHASE_NVS, false)) {
-    saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) == sizeof(uint8_t);
-    prefs.end();
+  if (!prefs.begin(PHASE_NVS, false)) {
+    Serial.println(F("PHASENWECHSEL ABGELEHNT: NVS nicht verfuegbar."));
+    return;
   }
-  // Phasenwechsel startet W1 (Wuchs) oder W3 (Blueteeinleitung).
-  // Die 7-Tage-Fortschaltung benoetigt eine gueltige UTC-Zeit.
+  const bool saved = prefs.putUChar("phase", static_cast<uint8_t>(next)) ==
+                     sizeof(uint8_t);
+  prefs.end();
+  if (!saved) {
+    Serial.println(F("PHASENWECHSEL ABGELEHNT: NVS-Schreibfehler."));
+    return;
+  }
+  growPhase = next;
+  // Nur ein ausdruecklicher manueller Wechsel richtet die Phasenuhr neu
+  // aus: Wuchs startet W1, Bluete startet W3. Kein automatischer Reset.
+  if (!beginPhaseClock(next))
+    Serial.println(F("PHASEN-UHR: UTC noch nicht verfuegbar; Auswahl gespeichert, Zeitstart ausstehend."));
   if (!setGrowWeek(next == GrowPhase::Bluete ? 3 : 1))
     Serial.println(F("WARNUNG: Phasenwoche konnte nicht gespeichert werden."));
-  if (!beginPhaseClock(next))
-    Serial.println(F("PHASEN-UHR: Startzeit ausstehend; NTP wird benoetigt."));
   targets = ActuatorState{};
   ++commandSeq;
-  Serial.printf("PHASE -> %s | Profil %s | Speicher %s\n",
-      phaseName(growPhase), phaseProfile().configured ? "OK" : "NICHT KONFIGURIERT",
-      saved ? "OK" : "FEHLER");
+  refreshPhaseRgb();
+  Serial.printf("PHASE MANUELL -> %s | Profil %s | NVS OK | Uhr %s\n",
+      phaseName(growPhase),
+      phaseProfile().configured ? "OK" : "NICHT KONFIGURIERT",
+      phaseClockPending ? "wartet auf NTP" : "gespeichert");
 }
+
 static void pollGrowPhaseButtons(unsigned long nowMs) {
   (void)nowMs;
   uint32_t pressedCount;
@@ -482,7 +625,8 @@ static bool persistPhaseClock(uint32_t startEpoch, bool stopped = false) {
   if (!prefs.begin(PHASE_CLOCK_NVS, false)) return false;
   const bool saved =
       prefs.putUInt("start", startEpoch) == sizeof(uint32_t) &&
-      prefs.putBool("stopped", stopped) == 1;
+      prefs.putBool("stopped", stopped) == sizeof(bool) &&
+      prefs.putBool("pending", false) == sizeof(bool);
   prefs.end();
   return saved;
 }
@@ -499,17 +643,40 @@ static bool setPhaseClockEpoch(uint32_t startEpoch) {
   return true;
 }
 static bool beginPhaseClock(GrowPhase next) {
-  // Manueller Phasenwechsel setzt den Start einer neuen 13-Wochen-Runde.
-  // Bei ausdruecklich vorgezogener Bluete wird W3 als Startpunkt verwendet.
+  // Nur eine explizite Phasenwahl setzt die zeitliche Referenz:
+  // Wuchs beginnt in W1; Bluete beginnt in W3.
+  const bool bloom = next == GrowPhase::Bluete;
+  const time_t now = validatedUtcNow();
+  if (now) {
+    const uint32_t offset = bloom ? 2U * PHASE_WEEK_SECONDS : 0U;
+    if (setPhaseClockEpoch(static_cast<uint32_t>(now) - offset)) {
+      phaseClockPendingBloom = bloom;
+      return true;
+    }
+    Serial.println(F("FEHLER: Phasenuhr konnte nicht in NVS gespeichert werden."));
+  }
+  // Bei noch fehlender UTC keinen alten Zeitstempel als neue Phase
+  // weiterbenutzen. Den ausstehenden Start ueber Neustarts erhalten.
+  Preferences prefs;
+  bool saved = false;
+  if (prefs.begin(PHASE_CLOCK_NVS, false)) {
+    saved = prefs.putUInt("start", 0U) == sizeof(uint32_t) &&
+            prefs.putBool("stopped", false) == sizeof(bool) &&
+            prefs.putBool("pending_bloom", bloom) == sizeof(bool) &&
+            prefs.putBool("pending", true) == sizeof(bool);
+    prefs.end();
+  }
+  if (!saved) {
+    Serial.println(F("FEHLER: ausstehender Phasenstart nicht in NVS gespeichert."));
+    // Zeit bleibt absichtlich gesperrt statt einen falschen Start zu erfinden.
+  }
   phaseStartEpoch = 0;
   phaseDurationElapsed = false;
   cycleStopped = false;
   phaseClockPending = true;
-  phaseClockPendingBloom = next == GrowPhase::Bluete;
-  const time_t now = validatedUtcNow();
-  if (!now) return false;
-  const uint32_t offset = phaseClockPendingBloom ? 2U * PHASE_WEEK_SECONDS : 0U;
-  return setPhaseClockEpoch(static_cast<uint32_t>(now) - offset);
+  phaseClockPendingBloom = bloom;
+  lastPhaseClockPollMs = 0;
+  return false;
 }
 static void loadPhaseClock() {
   Preferences prefs;
@@ -519,7 +686,18 @@ static void loadPhaseClock() {
   }
   const uint32_t saved = prefs.getUInt("start", 0);
   const bool stopped = prefs.getBool("stopped", false);
+  const bool pending = prefs.getBool("pending", false);
+  const bool pendingBloom = prefs.getBool("pending_bloom", false);
   prefs.end();
+  if (pending) {
+    phaseStartEpoch = 0;
+    cycleStopped = false;
+    phaseClockPending = true;
+    phaseClockPendingBloom = pendingBloom;
+    Serial.printf("DURCHLAUF: manuelle Phase %s gespeichert; Uhrstart wartet auf NTP.\n",
+                  phaseName(growPhase));
+    return;
+  }
   if (saved >= static_cast<uint32_t>(PHASE_MIN_VALID_UNIX)) {
     phaseStartEpoch = saved;
     cycleStopped = stopped;
@@ -578,22 +756,8 @@ static void pollPhaseClock() {
   const grow_clock::CycleState state =
       grow_clock::evaluateCycle(phaseStartEpoch, static_cast<uint32_t>(now));
   if (!state.valid) return;
-  // Nach zwei Wochen AUTOMATISCH in die Blueteeinleitung wechseln.
-  const GrowPhase desiredPhase = state.bloom ? GrowPhase::Bluete : GrowPhase::Wuchs;
-  if (growPhase != desiredPhase) {
-    growPhase = desiredPhase;
-    Preferences prefs;
-    bool saved = false;
-    if (prefs.begin(PHASE_NVS, false)) {
-      saved = prefs.putUChar("phase", static_cast<uint8_t>(growPhase)) == sizeof(uint8_t);
-      prefs.end();
-    }
-    targets = ActuatorState{};
-    ++commandSeq;
-    Serial.printf("AUTOMATISCHER PHASENWECHSEL: %s | NVS: %s\n",
-                  phaseName(growPhase), saved ? "OK" : "FEHLER");
-    refreshPhaseRgb();
-  }
+  // Keine zeitbasierte Phasenumstellung: manuell gewaehlte Phase bleibt
+  // ueber Wochenwechsel und Stromausfall bestehen, bis der Nutzer sie aendert.
   if (state.totalWeek != growWeek && !setGrowWeek(state.totalWeek))
     Serial.println(F("DURCHLAUF: Wochenstand konnte nicht gespeichert werden."));
   if (state.finished && !cycleStopped) stopCompletedCycle();
@@ -773,11 +937,16 @@ static void scanI2CAndBind(bool forceFullScan = false); // ADS fest D21/D22; BH 
 
 static void handleCalibrationSerial(char command);
 static void pollCalibrationCapture();
+static bool calibrationActive(); // vor dem seriellen Handler deklariert
 static void handlePhTestSerial() {
   while (Serial.available()) {
     const char c = static_cast<char>(Serial.read());
     if (c >= '0' && c <= '3') setPhTestMode(c);
-    else if (c == 'i' || c == 'I') scanI2CAndBind(true);
+    else if (c == 'i' || c == 'I') {
+      if (calibrationActive())
+        Serial.println(F("I2C-Scan waehrend Kalibrierung gesperrt."));
+      else scanI2CAndBind(true);
+    }
     else if (c == '7' || c == '4' || c == 'e' || c == 'E' ||
              c == 's' || c == 'S' || c == 'x' || c == 'X')
       handleCalibrationSerial(c);
@@ -845,7 +1014,6 @@ const char *LOCAL_HEADER_KEYS[] = {"X-Telemetry-Key"};
 
 /* ---------- Timing ---------- */
 unsigned long lastSensorRead = 0;
-unsigned long lastOledRefresh = 0;
 unsigned long lastTelemetry = 0;
 unsigned long lastWifiReconnect = 0;
 bool sensorMdnsStarted = false;
@@ -1089,7 +1257,7 @@ static bool i2cResponds(TwoWire& bus, uint8_t addr) {
 
 static void scanI2CAndBind(bool forceFullScan) {
   // Urspruengliche feste Zuordnung:
-  // ADS1115 mit OLED auf Wire / GPIO21 SDA + GPIO22 SCL, ADDR=GND (0x48).
+  // ADS1115 auf Wire / GPIO21 SDA + GPIO22 SCL, ADDR=GND (0x48).
   // BH1750 getrennt auf bhWire / GPIO13 SDA + GPIO14 SCL.
   // I2C-Scan ist reine Diagnose und darf ADS/BH nicht auf andere Busse umbinden.
   ads.setGain(GAIN_ONE);
@@ -1097,7 +1265,7 @@ static void scanI2CAndBind(bool forceFullScan) {
   adsFoundAddr = sensors.adsOk ? 0x48 : 0;
   adsFoundBus = sensors.adsOk ? "D21(SDA)/D22(SCL)" : "nicht gefunden";
   if (sensors.adsOk)
-    Serial.println(F("ADS1115 GEFUNDEN: 0x48 auf D21/D22 (OLED-Bus)"));
+    Serial.println(F("ADS1115 GEFUNDEN: 0x48 auf D21/D22 (Sensor-I2C)"));
   else
     Serial.println(F("ADS1115 NICHT GEFUNDEN: 0x48 auf D21/D22"));
 
@@ -1230,7 +1398,7 @@ static float mlxFrame[32 * 24];
 static bool mlxInitialized = false;
 static unsigned long lastMlxReadMs = 0;
 static void setupMlx90640() {
-  Wire.setClock(400000); // schnelle Bilduebertragung, ADS/OLED danach wieder 100 kHz
+  Wire.setClock(400000); // Kamera-Uebertragung; ADS danach wieder 100 kHz
   mlxInitialized = mlx90640.begin(0x33, &Wire);
   if (mlxInitialized) {
     mlx90640.setMode(MLX90640_CHESS);
@@ -1344,6 +1512,57 @@ static void readSensors() {
   sensors.lux = readBh1750();
 }
 
+/* ---------- Sichtbare Live-Messwerte im seriellen Monitor ---------- */
+static void printLiveFloat(float value, uint8_t precision) {
+  if (isfinite(value)) Serial.print(value, precision);
+  else Serial.print(F("--"));
+}
+
+static void printLiveSensorValues() {
+  Serial.println(F("========== LIVE-SENSORWERTE =========="));
+  for (uint8_t i = 0; i < 3; ++i) {
+    Serial.printf("DHT22 #%u | Luft: ", i + 1);
+    printLiveFloat(sensors.dht[i].tempC, 1);
+    Serial.print(F(" C | Feuchte: "));
+    printLiveFloat(sensors.dht[i].rh, 1);
+    Serial.println(F(" %"));
+  }
+  Serial.print(F("KLIMA (fusioniert) | Luft: "));
+  printLiveFloat(sensors.air.tempC, 1);
+  Serial.print(F(" C | Feuchte: "));
+  printLiveFloat(sensors.air.rh, 1);
+  Serial.printf(" %% | gueltige DHT: %u/3\n", sensors.airValidSensorCount);
+
+  Serial.printf("DS18B20 | erkannt: %u | Sensor 1: ", sensors.dsCount);
+  printLiveFloat(sensors.ds1C, 2);
+  Serial.print(F(" C | Sensor 2: "));
+  printLiveFloat(sensors.ds2C, 2);
+  Serial.println(F(" C"));
+  Serial.print(F("WASSER | "));
+  printLiveFloat(sensors.waterTempC, 2);
+  Serial.println(F(" C"));
+
+  Serial.print(F("BH1750 | "));
+  if (bh1750Present) Serial.printf("%lu lx\n", static_cast<unsigned long>(sensors.lux));
+  else Serial.println(F("NICHT ERKANNT"));
+
+  Serial.printf("ADS1115 | %s\n", sensors.adsOk ? "OK" : "NICHT ERKANNT");
+  Serial.print(F("pH | "));
+  printLiveFloat(sensors.ph, 2);
+  Serial.print(F(" | A0: "));
+  printLiveFloat(sensors.phInputV, 3);
+  Serial.printf(" V | kalibriert: %s\n", phCalibrated ? "ja" : "nein");
+
+  Serial.print(F("EC | "));
+  printLiveFloat(sensors.ec, 2);
+  Serial.print(F(" mS/cm | TDS: "));
+  printLiveFloat(sensors.tdsPpm, 1);
+  Serial.print(F(" ppm | A1: "));
+  printLiveFloat(sensors.tdsInputV, 3);
+  Serial.println(F(" V"));
+  Serial.println(F("====================================="));
+}
+
 /* ---------- Integrierte pH-/EC-Kalibrierung, ohne Firmwarewechsel ---------- */
 // Die 160x20ms (pH) bzw. 8x30x40ms (EC) Samples werden ueber den
 // regulaeren loop verteilt: Webserver, C3-Heartbeat und Alarme bleiben aktiv.
@@ -1359,6 +1578,22 @@ struct CalibrationCapture {
   uint32_t startedMs = 0;
 };
 static CalibrationCapture calibration;
+
+// Einziger ADS1115-Lesepfad waehrend der Kalibrierung.
+static bool calibrationActive() {
+  return calibration.mode != CalibrationMode::None;
+}
+static void resetEcFilterAfterCalibration() {
+  ecRingIndex = 0;
+  ecRingCount = 0;
+  lastEcSampleMs = 0;
+}
+static void endCalibrationCapture() {
+  calibration = CalibrationCapture{};
+  resetEcFilterAfterCalibration();
+  Serial.println(F("KALIBRIERMODUS ENDE: normale Messungen wieder freigegeben."));
+}
+
 // Explizite Arduino-Prototypen erst NACH Enum/Struct-Deklaration.
 static const char *calibrationName(CalibrationMode mode);
 static void printCalibrationStatus();
@@ -1458,13 +1693,21 @@ static bool storeEcCalibration(float voltage, float temperatureC, float factor) 
 }
 static void finishCalibration() {
   const CalibrationMode mode = calibration.mode;
-  if (!validDsTempC(sensors.waterTempC) ||
-      fabsf(sensors.waterTempC - calibration.waterTempStartC) > 3.0f) {
+  // Temperatur erst NACH dem letzten ADC-Sample erneut pruefen.
+  ds18b20.requestTemperatures();
+  float waterC = NAN;
+  if (sensors.dsCount == 1) {
+    waterC = ds18b20.getTempCByIndex(0);
+  } else if (sensors.dsCount > 1 && waterSensorRomSelected) {
+    waterC = ds18b20.getTempC(waterSensorRom);
+  }
+  if (!validDsTempC(waterC) ||
+      fabsf(waterC - calibration.waterTempStartC) > 3.0f) {
     Serial.println(F("ABGELEHNT: DS18B20 fehlt oder Temperaturdifferenz >3C."));
-    calibration = CalibrationCapture{};
+    endCalibrationCapture();
     return;
   }
-  const float waterC = sensors.waterTempC;
+  sensors.waterTempC = waterC;
   bool saved = false;
   if (mode == CalibrationMode::Ph7 || mode == CalibrationMode::Ph4) {
     const float v = calibration.window.mean();
@@ -1489,13 +1732,10 @@ static void finishCalibration() {
       else Serial.println(F("ABGELEHNT: Referenzspannung/EC-Faktor unplausibel."));
     } else Serial.println(F("ABGELEHNT: EC-Mediane instabil (>10mV Std oder >30mV Spanne)."));
   }
-  calibration = CalibrationCapture{};
+  endCalibrationCapture();
   if (saved) {
     Serial.println(F("OK: NVS-Kalibrierung gespeichert und zurueckgelesen."));
-    sensors.ph = phFromVoltage(sensors.phInputV, sensors.waterTempC);
-    sensors.ec = cqrobotEcMs(sensors.tdsInputV, sensors.waterTempC);
-    sensors.tdsPpm = isfinite(sensors.ec) ? sensors.ec * 500.0f : NAN;
-    updatePhAlarm();
+    // Neue pH-/EC-Werte erst mit frischen ADC-Messungen nach Kalibrierende.
   } else Serial.println(F("NICHT GESPEICHERT: Kalibrierung abgelehnt oder NVS-Fehler."));
   printCalibrationStatus();
 }
@@ -1506,7 +1746,7 @@ static void handleCalibrationSerial(char command) {
   }
   if (command == 'x' || command == 'X') {
     if (calibration.mode != CalibrationMode::None) {
-      calibration = CalibrationCapture{};
+      endCalibrationCapture();
       Serial.println(F("ABGEBROCHEN: kein neuer Kalibrierwert gespeichert."));
     }
     return;
@@ -1529,12 +1769,14 @@ static void handleCalibrationSerial(char command) {
   else if (command == 'e' || command == 'E') mode = CalibrationMode::Ec1413;
   if (mode == CalibrationMode::None) return;
   calibration = CalibrationCapture{};
+  resetEcFilterAfterCalibration(); // keine alten EC-Medianwerte verwenden
   calibration.mode = mode;
   calibration.waterTempStartC = sensors.waterTempC;
   calibration.startedMs = millis();
   calibration.nextSampleMs = millis();
   Serial.printf("KALIBRIERUNG START: %s | DS %.2f C | mit x abbrechen.\n",
                 calibrationName(mode), calibration.waterTempStartC);
+  Serial.println(F("KALIBRIERMODUS: normale Sensorwerte, Hintergrund-ADC, I2C-Scan und Telemetrie PAUSIERT."));
 }
 static void pollCalibrationCapture() {
   if (calibration.mode == CalibrationMode::None) return;
@@ -1543,14 +1785,14 @@ static void pollCalibrationCapture() {
   if (!sensors.adsOk || !validDsTempC(sensors.waterTempC) ||
       now - calibration.startedMs > 60000UL) {
     Serial.println(F("KALIBRIERUNG ABBRUCH: ADS/DS18B20 fehlt oder Timeout."));
-    calibration = CalibrationCapture{};
+    endCalibrationCapture();
     return;
   }
   const bool ec = calibration.mode == CalibrationMode::Ec1413;
   const float v = adsCountsToVolts(ads.readADC_SingleEnded(ec ? 1 : 0));
   if (!calibration.window.add(v, ec ? 2.3f : 3.3f)) {
     Serial.println(F("KALIBRIERUNG ABBRUCH: ADS-Messung ungueltig."));
-    calibration = CalibrationCapture{};
+    endCalibrationCapture();
     return;
   }
   if (!ec) {
@@ -1565,7 +1807,7 @@ static void pollCalibrationCapture() {
   const float medianV = grow_cal::median30(calibration.ecSamples);
   const float rawStd = calibration.window.stdDev();
   if (!calibration.medians.add(medianV, 2.3f)) {
-    calibration = CalibrationCapture{};
+    endCalibrationCapture();
     Serial.println(F("EC ABBRUCH: ungueltiger Fenster-Median."));
     return;
   }
@@ -1677,6 +1919,7 @@ static void handleSummary() {
 
   JsonObject reading = doc.createNestedObject("reading");
   writeNutrientTargets(reading);
+  writeLevelMeasurement(reading);
   if (sensors.air.ok) {
     reading["air_temperature"] = sensors.air.tempC;
     reading["humidity"] = sensors.air.rh;
@@ -1748,6 +1991,8 @@ static void handleSummary() {
   outputs["outputs_enabled"] = c3Connected() && c3OutputsEnabled;
   outputs["failsafe"] = c3Failsafe;
   outputs["pump_count"] = DOSING_PUMP_COUNT;
+  outputs["pump_1_product"] = DOSING_CHANNEL_1_PRODUCT;
+  outputs["pump_1_enabled"] = DOSING_CHANNEL_1_ENABLED;
   outputs["pump_active"] = c3Connected() ? c3PumpActive : 0;
   outputs["pump_service_off"] = pumpServiceOff;
   outputs["pump_service_off_confirmed"] = pumpServiceOff && pumpServiceOffConfirmed && c3Connected();
@@ -1766,6 +2011,8 @@ static void handleActuatorTargets() {
   doc["ok"] = true;
   doc["power_controller_connected"] = c3Connected();
   doc["pump_count"] = DOSING_PUMP_COUNT;
+  doc["pump_1_product"] = DOSING_CHANNEL_1_PRODUCT;
+  doc["pump_1_enabled"] = DOSING_CHANNEL_1_ENABLED;
   doc["pump_service_off"] = pumpServiceOff;
   doc["pump_pending"] = pendingPumpIndex != 0 && (millis() - pumpCommandMs) < 3000UL;
   doc["pump_index"] = pendingPumpIndex;
@@ -2039,9 +2286,70 @@ static void handlePhaseClock() {
   pollPhaseClock();
   localServer.send(200, "application/json", "{\"ok\":true}");
 }
+static void handleLevelCalibration() {
+  if (!localAuthorized()) return sendUnauthorized();
+  // Eine bekannte Wassermenge zum aktuellen, frischen Distanzwert erfassen.
+  // Keine Aenderung an Aktoren oder Dosiervorgaengen.
+  if (!levelSensorOk()) return localServer.send(
+      503, "application/json", "{\"ok\":false,\"error\":\"level_sensor_unavailable\"}");
+  StaticJsonDocument<128> body;
+  if (deserializeJson(body, localServer.arg("plain")) ||
+      !body["liters"].is<float>() && !body["liters"].is<int>()) {
+    return localServer.send(
+        400, "application/json", "{\"ok\":false,\"error\":\"liters_required\"}");
+  }
+  const float liters = body["liters"].as<float>();
+  if (!isfinite(liters) || liters < 0.0f || liters > 90.0f)
+    return localServer.send(
+        422, "application/json", "{\"ok\":false,\"error\":\"liters_out_of_range\"}");
+  const uint16_t mm = static_cast<uint16_t>(roundf(sensors.levelDistanceMm));
+  if (levelPointCount >= LEVEL_CAL_MAX)
+    return localServer.send(
+        409, "application/json", "{\"ok\":false,\"error\":\"calibration_full\"}");
+  LevelPoint candidate[LEVEL_CAL_MAX];
+  memcpy(candidate, levelPoints, sizeof(levelPoints));
+  uint8_t newCount = levelPointCount + 1;
+  candidate[levelPointCount] = {mm, liters};
+  // Sortiere nach Distanz absteigend; Liter muss entsprechend ansteigen.
+  for (uint8_t i = 1; i < newCount; ++i) {
+    const LevelPoint key = candidate[i];
+    int j = static_cast<int>(i) - 1;
+    while (j >= 0 && candidate[j].distanceMm < key.distanceMm) {
+      candidate[j + 1] = candidate[j];
+      --j;
+    }
+    candidate[j + 1] = key;
+  }
+  for (uint8_t i = 1; i < newCount; ++i) {
+    if (candidate[i - 1].distanceMm <= candidate[i].distanceMm ||
+        candidate[i - 1].liters >= candidate[i].liters)
+      return localServer.send(422, "application/json",
+          "{\"ok\":false,\"error\":\"non_monotonic_calibration\"}");
+  }
+  const uint8_t oldCount = levelPointCount;
+  LevelPoint oldPoints[LEVEL_CAL_MAX];
+  memcpy(oldPoints, levelPoints, sizeof(levelPoints));
+  memcpy(levelPoints, candidate, sizeof(levelPoints));
+  levelPointCount = newCount;
+  if (!saveLevelCalibration()) {
+    memcpy(levelPoints, oldPoints, sizeof(levelPoints));
+    levelPointCount = oldCount;
+    return localServer.send(500, "application/json",
+        "{\"ok\":false,\"error\":\"nvs_save_failed\"}");
+  }
+  StaticJsonDocument<160> reply;
+  reply["ok"] = true;
+  reply["points"] = levelPointCount;
+  reply["distance_mm"] = mm;
+  reply["liters"] = liters;
+  String out;
+  serializeJson(reply, out);
+  localServer.send(200, "application/json", out);
+}
 static void setupLocalApi() {
   localServer.collectHeaders(LOCAL_HEADER_KEYS, 1);
   localServer.on("/api/local/summary", HTTP_GET, handleSummary);
+  localServer.on("/api/local/level/calibration", HTTP_POST, handleLevelCalibration);
   localServer.on("/api/local/actuators", HTTP_GET, handleActuatorTargets);
   localServer.on("/api/local/control/targets", HTTP_POST, handleControlTargets);
   localServer.on("/api/local/control/pump", HTTP_POST, handlePumpPulse);
@@ -2072,6 +2380,7 @@ static bool sendTelemetry() {
   root["water_temperature_source"] = validDsTempC(sensors.waterTempC) ? "ds18b20" : "unassigned";
   root["phase"] = phaseName(growPhase);
   writeNutrientTargets(root);
+  writeLevelMeasurement(root);
   root["phase_profile_configured"] = phaseProfile().configured;
   const VpdControlBand vpdBand = activeVpdControlBand();
   root["phase_clock_status"] = phaseClockStatus();
@@ -2219,72 +2528,6 @@ static void sendPhTestAlertEvent() {
   }
 }
 
-/* ---------- OLED ---------- */
-
-static void drawOled() {
-  if (!oledOk) return;
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-
-  display.setCursor(0, 0);
-  if (cycleStopped) display.print(F("STOPP"));
-  else display.print(growPhase == GrowPhase::Wuchs ? F("WUCHS") : F("BLUETE"));
-  if (growWeek) display.printf(" W%u", growWeek);
-  else display.print(F(" W?"));
-  if (!phaseProfile().configured) display.print(F(" !"));
-
-  display.setCursor(0, 12);
-  if (sensors.air.ok) {
-    display.printf("T %.1fC RH %.0f%%", sensors.air.tempC, sensors.air.rh);
-  } else {
-    display.print("DHT FEHLER");
-  }
-
-  display.setCursor(0, 24);
-  // Zur Platzersparnis alle 5 s zwischen Box/H2O, Lux und Blatt-VPD wechseln.
-  // pH/EC und die Alarmzeile bleiben zu jeder Zeit sichtbar.
-  const uint8_t infoPage = (millis() / 5000UL) % 3UL;
-  if (infoPage == 2UL) {
-    if (isfinite(sensors.vpd)) display.printf("VPD %.2f kPa", sensors.vpd);
-    else display.print(F("VPD --"));
-    if (!sensors.vpdFromCamera) display.print(F(" -2C"));
-    if (sensors.airValidSensorCount == 1) display.print(F(" !1DHT"));
-    else if (sensors.airValidSensorCount == 2) display.print(F(" 2DHT"));
-  } else if (infoPage == 1UL) {
-    if (bh1750Present) {
-      display.printf("%lu lx ~%.0f lm",
-                     static_cast<unsigned long>(sensors.lux),
-                     estimatedAreaLumens(static_cast<float>(sensors.lux)));
-    } else display.print(F("BH1750 --"));
-  } else {
-    display.print("Box ");
-    if (isfinite(sensors.caseTempC)) display.printf("%.1fC", sensors.caseTempC);
-    else display.print("--");
-    display.print(" H2O ");
-    if (isfinite(sensors.waterTempC)) display.printf("%.1fC", sensors.waterTempC);
-    else display.print("--");
-  }
-
-  display.setCursor(0, 36);
-  display.print("pH ");
-  if (isnan(sensors.ph)) display.print("--");
-  else display.printf("%.2f", sensors.ph);
-  display.print(" EC ");
-  if (!isfinite(sensors.ec)) display.print("--");
-  else display.printf("%.2f", sensors.ec);
-
-  display.setCursor(0, 50);
-  const PhAlarm shown = phTestActive ? phTestAlarm : phAlarm;
-  if (phTestActive) display.print("TEST ");
-  if (shown == PhAlarm::Low) display.print("ALARM pH <5.5");
-  else if (shown == PhAlarm::High) display.print("ALARM pH >6.2");
-  else if (shown == PhAlarm::Fault) display.print("pH SENSORFEHLER");
-  else display.print("pH OK 5.5-6.2");
-
-  display.display();
-}
-
 /* ---------- Setup / Loop ---------- */
 
 void setup() {
@@ -2292,9 +2535,13 @@ void setup() {
   actual = ActuatorState{};
   Serial.begin(115200);
   delay(300);
+  levelUart.begin(LEVEL_UART_BAUD, SERIAL_8N1, PIN_LEVEL_UART_RX, -1);
+  loadLevelCalibration();
   setupGrowPhaseButtons();
+  loadPhaseProfile();
+  loadGrowPhase();  // Vor der Uhr den verbindlichen NVS-Phasenstatus laden.
   loadGrowWeek();
-  loadPhaseClock();
+  loadPhaseClock(); // Gespeicherten Start wiederherstellen, NICHT neu starten.
   setupPhBuzzer();
   Serial.println(F("pH-Test: 1=LOW 5.40 | 2=HIGH 6.30 | 3=NORMAL 6.00 | 0=Test aus"));
   loadPhCalibration();
@@ -2309,16 +2556,6 @@ void setup() {
   Wire.setTimeOut(30);
   bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000);
   bhWire.setTimeOut(30);
-
-  oledOk = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-  if (oledOk) {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 24);
-    display.print("Grow Sensor V4");
-    display.display();
-  }
 
   scanI2CAndBind();
   setupMlx90640();
@@ -2350,6 +2587,7 @@ void setup() {
   }
 
   readSensors();
+  printLiveSensorValues();
   lastSensorRead = millis();
   pollPhaseClock(); // Laufzeit-Grenzen vor dem ersten automatischen Schaltkommando pruefen.
   autoControl();
@@ -2360,21 +2598,24 @@ void setup() {
 void loop() {
   const unsigned long now = millis();
   static unsigned long lastI2cRetryMs = millis();
-  if (!sensors.adsOk && now - lastI2cRetryMs >= 30000UL) {
+  if (!calibrationActive() && !sensors.adsOk && now - lastI2cRetryMs >= 30000UL) {
     lastI2cRetryMs = now;
     scanI2CAndBind();
   }
 
   localServer.handleClient();
+  pollLevelSensor();
   refreshPhaseRgb();  // Verbindungstimeout: blau sofort wieder aus.
   pollGrowPhaseButtons(now);
   pollPumpServiceButton(now);
   pollPhaseClock();
   handlePhTestSerial();
-  pollCalibrationCapture(); // ein ADC-Wert je Durchlauf, API/C3 bleibt erreichbar
+  pollCalibrationCapture(); // exklusiver ADC-Leser; lokale API/C3 bleibt erreichbar
   updatePhBuzzer(now);
-  sampleTdsBackground(now);
-  pollMlx90640(now);
+  if (!calibrationActive()) {
+    sampleTdsBackground(now);
+    pollMlx90640(now);
+  }
 
   if (WiFi.status() != WL_CONNECTED && now - lastWifiReconnect >= WIFI_RECONNECT_MS) {
     lastWifiReconnect = now;
@@ -2387,21 +2628,17 @@ void loop() {
     }
   }
 
-  if (now - lastSensorRead >= SENSOR_READ_MS) {
+  if (!calibrationActive() && now - lastSensorRead >= SENSOR_READ_MS) {
     lastSensorRead = now;
     readSensors();
+    printLiveSensorValues();
     if (phTestActive) updatePhTestAlarm();
   }
 
   autoControl();
   applyActuators();
 
-  if (now - lastOledRefresh >= OLED_REFRESH_MS) {
-    lastOledRefresh = now;
-    drawOled();
-  }
-
-  if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
+  if (!calibrationActive() && now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
     lastTelemetry = now;
     sendTelemetry();
   }

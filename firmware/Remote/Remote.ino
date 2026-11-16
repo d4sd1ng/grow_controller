@@ -4,7 +4,7 @@
   Libraries: TFT_eSPI 2.5.x, LVGL 8.4.x, XPT2046_Touchscreen, ArduinoJson 7.x.
   External local files preserved: device_secrets.h, grow_http_client.h, lv_conf.h.
 
-  Important: five pump channels are DISPLAYED, but dosing remains LOCKED until
+  Important: six pump channels are DISPLAYED, but dosing remains LOCKED until
   calibration and hardware integration have been verified. No dosing commands.
   Touch coordinates are initial CYD defaults, NOT a confirmed calibration.
 */
@@ -33,7 +33,7 @@
 namespace {
 constexpr uint16_t SCREEN_W = 320;
 constexpr uint16_t SCREEN_H = 240;
-constexpr uint8_t PUMP_COUNT = 5;  // Current agreed controller configuration.
+constexpr uint8_t PUMP_COUNT = 6;  // six locked dosing channels
 constexpr uint32_t SUMMARY_INTERVAL_MS = 5000;
 constexpr uint32_t C3_INTERVAL_MS = 8000;
 constexpr uint32_t WIFI_RETRY_MS = 10000;
@@ -68,6 +68,8 @@ static lv_obj_t *pages[4] = {};
 static lv_obj_t *navButtons[4] = {};
 static lv_obj_t *topStatus = nullptr;
 static lv_obj_t *homeValues[4] = {};
+static lv_obj_t *homeWater = nullptr;
+static lv_obj_t *homeLux = nullptr;
 static lv_obj_t *homeMode = nullptr;
 static lv_obj_t *homeTds = nullptr;
 static lv_obj_t *homeVpd = nullptr;
@@ -327,6 +329,11 @@ void buildUi() {
   // Page 0: four well-spaced measurements and system summary.
   makeMetric(pages[0], 7, 4, "TEMPERATUR", 0);
   makeMetric(pages[0], 165, 4, "LUFTFEUCHTE", 1);
+  // Zusaetzliche Sensorwerte, ohne weitere Navigation oder Aktor-Aenderungen.
+  homeWater = makeLabel(pages[0], 15, 47, 132, "Wasser: --", MUTED,
+                        &lv_font_montserrat_12);
+  homeLux = makeLabel(pages[0], 173, 47, 132, "Licht: --", MUTED,
+                      &lv_font_montserrat_12);
   makeMetric(pages[0], 7, 69, "pH-WERT", 2);
   makeMetric(pages[0], 165, 69, "EC", 3);
   homeMode = makeLabel(pages[0], 8, 138, 88, "Modus: --", MUTED, &lv_font_montserrat_12);
@@ -356,12 +363,13 @@ void buildUi() {
                           0x77392E, &lv_font_montserrat_12);
   lv_obj_add_event_cb(stopButton, onStop, LV_EVENT_CLICKED, nullptr);
 
-  // Page 3: all five physically planned pumps, permanently locked for now.
+  // Page 3: all six dosing channels, permanently locked for now.
   for (int i = 0; i < PUMP_COUNT; ++i) {
     const int x = 7 + (i % 3) * 104;
     const int y = 7 + (i / 3) * 49;
     char name[24];
-    snprintf(name, sizeof(name), "P%d  GESPERRT", i + 1);
+    if (i == 0) snprintf(name, sizeof(name), "P1 pH MIN");
+    else snprintf(name, sizeof(name), "P%d  GESPERRT", i + 1);
     pumpButtons[i] = makeButton(pages[3], x, y, 98, 42, name, PANEL,
                                 &lv_font_montserrat_12);
     setButtonEnabled(pumpButtons[i], false);
@@ -394,6 +402,20 @@ void updateReadingLabel(lv_obj_t *obj, JsonVariantConst value, const char *patte
   if (!isfinite(number)) { textIfChanged(obj, "--"); return; }
   char txt[34];
   snprintf(txt, sizeof(txt), pattern, number);
+  textIfChanged(obj, txt);
+}
+
+void updateSmallReading(lv_obj_t *obj, JsonVariantConst value,
+                        const char *missing, const char *pattern) {
+  if (value.isNull() || !(value.is<float>() || value.is<double>() ||
+      value.is<int>() || value.is<long>() || value.is<unsigned long>())) {
+    textIfChanged(obj, missing);
+    return;
+  }
+  const float reading = value.as<float>();
+  if (!isfinite(reading)) { textIfChanged(obj, missing); return; }
+  char txt[42];
+  snprintf(txt, sizeof(txt), pattern, reading);
   textIfChanged(obj, txt);
 }
 
@@ -440,6 +462,12 @@ void fetchSummary() {
   updateReadingLabel(homeValues[1], reading["humidity"], "%.0f %%");
   updateReadingLabel(homeValues[2], reading["ph"], "%.2f");
   updateReadingLabel(homeValues[3], reading["ec"], "%.2f mS");
+  updateSmallReading(homeWater, reading["water_temperature"],
+                     "Wasser: --", "Wasser: %.1f C");
+  // BH1750-Gueltigkeit: nicht light_level (bei fehlendem BH ebenfalls 0),
+  // sondern den nur bei erkanntem Sensor gesetzten Extra-Wert verwenden.
+  updateSmallReading(homeLux, reading["extras"]["illuminance_lux"],
+                     "Licht: --", "Licht: %.0f lx");
 
   const bool runComplete = reading["extras"]["cycle_stopped"] | false;
   const char *phase = reading["extras"]["phase"] | "";
@@ -481,7 +509,19 @@ void fetchSummary() {
     textIfChanged(homeAlert, "WARNUNG: nur 1 DHT22");
   } else if (validDht == 2U) {
     textIfChanged(homeAlert, "DHT22: 2/3 gueltig (Mittelwert)");
-  } else textIfChanged(homeAlert, "Keine aktiven Meldungen");
+  } else {
+    // Füllstand auf der Startseite, solange keine wichtigere Warnung anliegt.
+    JsonVariantConst level = reading["extras"]["level_liters"];
+    const bool levelOk = reading["extras"]["level_sensor_ok"] | false;
+    if (levelOk && (level.is<float>() || level.is<double>() || level.is<int>())) {
+      snprintf(status, sizeof(status), "Tank: %.1f L (kalibriert)", level.as<float>());
+      textIfChanged(homeAlert, status);
+    } else if (levelOk) {
+      textIfChanged(homeAlert, "Tank: Sensor OK, Literkalibrierung fehlt");
+    } else {
+      textIfChanged(homeAlert, "Tank: Füllstandssensor nicht verfügbar");
+    }
+  }
 
   const JsonObjectConst target = doc["control"]["targets"].as<JsonObjectConst>();
   // Server-Sollwerte sind KEINE bestaetigten Schaltzustaende.

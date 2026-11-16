@@ -9,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SENSOR = ROOT / "firmware" / "Sensor" / "Sensor.ino"
 REMOTE = ROOT / "firmware" / "Remote" / "Remote.ino"
+PH_TOOL = ROOT / "firmware" / "ph_calibration_tool" / "ph_calibration_tool.ino"
 C3 = ROOT / "firmware" / "C3" / "C3.ino"
 
 
@@ -18,6 +19,7 @@ class FirmwareContractTests(unittest.TestCase):
         cls.sensor = SENSOR.read_text(encoding="utf-8")
         cls.remote = REMOTE.read_text(encoding="utf-8")
         cls.c3 = C3.read_text(encoding="utf-8")
+        cls.ph_tool = PH_TOOL.read_text(encoding="utf-8")
 
     def test_sketch_files_and_entrypoints(self):
         for name, source in [("Sensor", self.sensor), ("Remote", self.remote), ("C3", self.c3)]:
@@ -27,7 +29,30 @@ class FirmwareContractTests(unittest.TestCase):
                 self.assertIn('#include "device_secrets.h"', source)
                 self.assertIn("#error", source)
         self.assertEqual(sorted(p.name for p in (ROOT / "firmware").glob("*/*.ino")),
-                         ["C3.ino", "Remote.ino", "Sensor.ino"])
+                         ["C3.ino", "Remote.ino", "Sensor.ino", "ph_calibration_tool.ino"])
+
+    def test_standalone_calibration_tool_compatibility(self):
+        self.assertEqual(self.ph_tool.count("void setup() {"), 1)
+        self.assertEqual(self.ph_tool.count("void loop() {"), 1)
+        self.assertIn("PIN_I2C_SDA = 21;", self.ph_tool)
+        self.assertIn("PIN_I2C_SCL = 22;", self.ph_tool)
+        self.assertIn("PIN_ONEWIRE = 23;", self.ph_tool)
+        self.assertIn("ads.readADC_SingleEnded(channel)", self.ph_tool)
+        self.assertIn("sampleChannel(0, CAPTURE_SAMPLE_COUNT", self.ph_tool)
+        self.assertIn("sampleChannel(1, grow_cal::EC_SAMPLES_PER_WINDOW", self.ph_tool)
+        self.assertIn("grow_cal::ecCalibrationFactor(meanV, afterC)", self.ph_tool)
+        for key in ('"phads_v1"', '"ecads_v1"', '"have7"', '"have4"',
+                    '"volt7"', '"volt4"', '"temp7"', '"temp4"',
+                    '"factor"', '"ref_v"', '"temp_c"', '"valid"'):
+            with self.subTest(key=key):
+                self.assertIn(key, self.ph_tool)
+                self.assertIn(key, self.sensor)
+        for unsupported in ("Adafruit_SSD1306", "Adafruit_GFX", "WiFi.begin",
+                            "display.begin(", "ESP.eraseFlash", "preferences.clear()"):
+            self.assertNotIn(unsupported, self.ph_tool)
+        self.assertIn('loadCalibration();\n  return verified &&', self.ph_tool)
+        self.assertIn("handleSerial();\n  delay(2);", self.ph_tool)
+        self.assertIn("NVS-Loeschung deaktiviert.", self.ph_tool)
 
     def test_sensor_pinout(self):
         pins = {"PIN_DHT1": 25, "PIN_DHT2": 26, "PIN_DHT3": 27,
@@ -41,12 +66,67 @@ class FirmwareContractTests(unittest.TestCase):
             with self.subTest(pin=name):
                 self.assertRegex(self.sensor, rf"\b{name}\s*=\s*{pin}\s*;")
 
-    def test_five_pumps_and_locked_dosing(self):
-        self.assertIn("DOSING_PUMP_COUNT = 5;", self.sensor)
-        self.assertIn("PUMP_COUNT = 5;", self.remote)
-        self.assertIn("MAX_DOSE_MS[5] = {0, 0, 0, 0, 0}", self.c3)
+    def test_ph_minus_channel_metadata_stays_safe(self):
+        self.assertIn('DOSING_CHANNEL_1_PRODUCT = "Plagron pH Min"', self.sensor)
+        self.assertIn('DOSING_CHANNEL_1_ENABLED = false', self.sensor)
+        self.assertIn('outputs["pump_1_enabled"] = DOSING_CHANNEL_1_ENABLED;', self.sensor)
+        self.assertIn('DOSE_CHANNEL_NAME[DOSING_PUMP_COUNT]', self.c3)
+        self.assertIn('DOSE_CHANNEL_ENABLED[DOSING_PUMP_COUNT] = {false, false, false, false, false, false}', self.c3)
+        self.assertIn('HARDWARE_OUTPUTS_ARMED = false', self.c3)
+        self.assertIn('MAX_DOSE_MS[DOSING_PUMP_COUNT] = {0, 0, 0, 0, 0, 0}', self.c3)
+        self.assertIn('if (i == 0) snprintf(name, sizeof(name), "P1 pH MIN");', self.remote)
+        self.assertIn('setButtonEnabled(pumpButtons[i], false);', self.remote)
+
+    def test_a02yyuw_tank_level_readonly(self):
+        self.assertIn("PIN_LEVEL_UART_RX = 18;", self.sensor)
+        self.assertIn("LEVEL_UART_BAUD = 9600;", self.sensor)
+        self.assertIn("levelUart.begin(LEVEL_UART_BAUD, SERIAL_8N1, PIN_LEVEL_UART_RX, -1)", self.sensor)
+        self.assertIn("static void pollLevelSensor()", self.sensor)
+        self.assertIn("if (sum != levelFrame[3]) continue;", self.sensor)
+        self.assertIn("LEVEL_MEDIAN_COUNT = 5;", self.sensor)
+        self.assertIn("LEVEL_TIMEOUT_MS = 3000UL;", self.sensor)
+        self.assertIn("loadLevelCalibration();", self.sensor)
+        self.assertIn('LEVEL_CAL_NVS[] = "levelcal_v1"', self.sensor)
+        self.assertIn('"/api/local/level/calibration"', self.sensor)
+        self.assertIn("writeLevelMeasurement(reading);", self.sensor)
+        self.assertIn("writeLevelMeasurement(root);", self.sensor)
+        self.assertIn('obj["level_liters"] = nullptr;', self.sensor)
+        self.assertIn('obj["level_percent"] = nullptr;', self.sensor)
+        self.assertIn("reading[\"extras\"][\"level_liters\"]", self.remote)
+        self.assertIn("Tank: Füllstandssensor nicht verfügbar", self.remote)
+
+    def test_headless_sensor_and_visible_readings(self):
+        # Sensor board has no OLED; I2C must still serve ADS1115 and BH1750.
+        for removed in ("Adafruit_GFX.h", "Adafruit_SSD1306.h",
+                        "SSD1306_", "OLED_ADDR", "OLED_REFRESH_MS",
+                        "oledOk", "drawOled(", "display.begin("):
+            with self.subTest(removed=removed):
+                self.assertNotIn(removed, self.sensor)
+        self.assertIn("Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000)", self.sensor)
+        self.assertIn("ads.begin(0x48, &Wire)", self.sensor)
+        self.assertIn("bhWire.begin(PIN_BH_SDA, PIN_BH_SCL, 50000)", self.sensor)
+        self.assertIn("ds18b20.requestTemperatures();", self.sensor)
+        self.assertIn("sensors.lux = readBh1750();", self.sensor)
+        self.assertIn("static void printLiveSensorValues()", self.sensor)
+        self.assertEqual(self.sensor.count("  printLiveSensorValues();"), 2)
+        self.assertIn('updateSmallReading(homeWater, reading["water_temperature"]', self.remote)
+        self.assertIn('updateSmallReading(homeLux, reading["extras"]["illuminance_lux"]', self.remote)
+
+    def test_six_pumps_and_locked_dosing(self):
+        self.assertIn("DOSING_PUMP_COUNT = 6;", self.sensor)
+        self.assertIn("PUMP_COUNT = 6;", self.remote)
+        self.assertIn("MAX_DOSE_MS[DOSING_PUMP_COUNT] = {0, 0, 0, 0, 0, 0}", self.c3)
         self.assertIn("HARDWARE_OUTPUTS_ARMED = false", self.c3)
         self.assertIn("TOUCH_ACTUATION_VERIFIED = false", self.remote)
+        self.assertIn("PCA OUT0..5: 6 Dosierpumpen", self.c3)
+        self.assertIn("PCA_FAN_FIRST = 6;", self.c3)
+        self.assertIn('p["channel_count"] = DOSING_PUMP_COUNT;', self.c3)
+        self.assertIn('d["pump_count"] = DOSING_PUMP_COUNT;', self.c3)
+        self.assertIn("pump > DOSING_PUMP_COUNT", self.c3)
+        self.assertIn("activeDose < DOSING_PUMP_COUNT", self.c3)
+        self.assertIn("i < DOSING_PUMP_COUNT; ++i", self.c3)
+        self.assertIn("P1 pH MIN", self.remote)
+        self.assertIn("setButtonEnabled(pumpButtons[i], false)", self.remote)
         self.assertIn('c3ApiError(503, "dosing_not_implemented")', self.sensor)
 
     def test_c3_sensor_status_contract(self):
@@ -103,7 +183,21 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertIn('grow_clock::evaluateCycle', self.sensor)
         self.assertIn('stopCompletedCycle()', self.sensor)
         self.assertIn('if (state.finished && !cycleStopped)', self.sensor)
-        self.assertIn('if (growPhase != desiredPhase)', self.sensor)
+        # Die Uhr zaehlt Wochen, aber sie darf eine manuelle Phase nie ueberschreiben.
+        self.assertNotIn('if (growPhase != desiredPhase)', self.sensor)
+        self.assertNotIn('const GrowPhase desiredPhase = state.bloom', self.sensor)
+        self.assertIn('loadGrowPhase();  // Vor der Uhr', self.sensor)
+        self.assertIn('loadPhaseProfile();', self.sensor)
+        self.assertIn('prefs.putBool("pending", true)', self.sensor)
+        self.assertIn('const bool pending = prefs.getBool("pending", false)', self.sensor)
+        self.assertIn('prefs.putBool("pending", false)', self.sensor)
+        self.assertIn('setGrowWeek(next == GrowPhase::Bluete ? 3 : 1)', self.sensor)
+        self.assertIn('if (!beginPhaseClock(next))', self.sensor)
+        self.assertNotIn('if (cycleStopped || (!phaseStartEpoch && !phaseClockPending)) next = GrowPhase::Wuchs;', self.sensor)
+        setup = self.sensor.split('void setup() {', 1)[1].split('void loop() {', 1)[0]
+        self.assertLess(setup.find('loadGrowPhase();'), setup.find('loadPhaseClock();'))
+        self.assertEqual(setup.count('loadGrowPhase();'), 1)
+
         self.assertIn('prefs.putBool("stopped", stopped)', self.sensor)
         self.assertIn('d["cycle_stopped"]', self.c3)
         self.assertIn('doc["cycle_stopped"]', self.sensor)
@@ -133,6 +227,30 @@ class FirmwareContractTests(unittest.TestCase):
         self.assertIn('validDht == 2U', self.remote)
         self.assertNotIn('if (!sensors.dht[0].ok || !isfinite(sensors.vpd)', self.sensor)
         self.assertNotIn('const float airC = sensors.dht[0].tempC;', self.sensor)
+
+    def test_calibration_exclusive_sensor_acquisition(self):
+        # Only the calibration sampler may read ADS1115 during a capture.
+        loop = self.sensor.split("void loop() {", 1)[1]
+        self.assertIn("pollCalibrationCapture();", loop)
+        self.assertIn(
+            "if (!calibrationActive()) {\n"
+            "    sampleTdsBackground(now);\n"
+            "    pollMlx90640(now);\n"
+            "  }", loop)
+        self.assertIn(
+            "if (!calibrationActive() && now - lastSensorRead >= SENSOR_READ_MS)",
+            loop)
+        self.assertIn(
+            "if (!calibrationActive() && now - lastTelemetry >= TELEMETRY_INTERVAL_MS)",
+            loop)
+        self.assertIn("if (!calibrationActive() && !sensors.adsOk", loop)
+        self.assertIn("I2C-Scan waehrend Kalibrierung gesperrt.", self.sensor)
+        self.assertIn("static void endCalibrationCapture()", self.sensor)
+        self.assertIn("resetEcFilterAfterCalibration();", self.sensor)
+        self.assertIn("ds18b20.requestTemperatures();\n  float waterC = NAN;", self.sensor)
+        self.assertIn("localServer.handleClient();", loop)
+        self.assertIn("applyActuators();", loop)
+        self.assertIn("KALIBRIERMODUS ENDE: normale Messungen wieder freigegeben.", self.sensor)
 
     def test_integrated_ph_ec_calibration(self):
         self.assertIn('#include "calibration_capture.h"', self.sensor)

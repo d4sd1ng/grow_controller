@@ -1,20 +1,21 @@
 # Grow Controller – Firmwarestruktur
 
-Stand: 13.11.2026. **Drei getrennte Arduino-Sketches, eindeutige Namen.**
+Stand: 15.11.2026. **Drei Betriebs-Firmwares plus ein eigenstaendiger Kalibrier-Sketch.**
 
 | Rolle | Firmware | Board | Status |
 | --- | --- | --- | --- |
-| Sensor | `firmware/Sensor/Sensor.ino` | ESP32-WROOM mit OLED, ADS1115, DHT22 und DS18B20 | Historisch aus PR #1 wiederhergestellt; Hardwarestand nicht erneut verifiziert |
+| Sensor | `firmware/Sensor/Sensor.ino` | ESP32-Pro-Controller ohne lokales Display, mit ADS1115, DHT22 und DS18B20 | Serielle Live-Messwerte im Korrektur-Branch; Hardwaretest offen |
 | Remote | `firmware/Remote/Remote.ino` | CYD ESP32-2432S028R mit LVGL 8.4 / TFT_eSPI | Neu strukturierte 320×240-Querformatoberfläche, Hardwaretest offen |
 | C3 | `firmware/C3/C3.ino` | ESP32-C3 SuperMini + PCA9685 | Hardwareausgänge gesperrt, fünf Dosierkanäle, Hardwaretest offen |
+| Kalibrierung (temporär) | `firmware/ph_calibration_tool/ph_calibration_tool.ino` | Das gleiche Sensor-ESP32 mit ADS1115 und DS18B20 | Ursprünglicher Sketch aus `hardware-v2-firmware` angepasst; Kompilierung/Hardwaretest offen |
 
-**Keine der drei Rollen darf eine Firmwaredatei einer anderen Rolle ersetzen.** Es gibt kein Installationsskript, das Dateien anderer Geräte überschreibt. Der Arduino-Sketchname entspricht immer dem jeweiligen Ordnernamen.
+**Nur der separate Kalibrier-Sketch ersetzt auf dem Sensor-ESP32 voruebergehend `Sensor.ino`; nach Kalibrierung kommt `Sensor.ino` zurueck.** Andere Rollen/Firmwares bleiben unangetastet. Es gibt kein Installationsskript, das Dateien anderer Geräte überschreibt. Der Arduino-Sketchname entspricht immer dem jeweiligen Ordnernamen.
 
-**Verbindlicher Sensor-GPIO-Abgleich:** [Sensor/PINOUT.md](Sensor/PINOUT.md). Die älteren Verdrahtungsanleitungen enthalten widersprüchliche Pin- und Boardpositionen und dürfen nicht als aktive Anschlusspläne verwendet werden.
+**Verbindlicher Sensor-GPIO-Abgleich:** [Sensor/PINOUT.md](Sensor/PINOUT.md). Die früher dokumentierten physischen Kontaktpositionen beziehen sich auf das ältere Board. Beim Pro-Controller sind diese Positionen noch nicht verifiziert; ältere Verdrahtungsanleitungen dürfen nicht als aktive Anschlusspläne verwendet werden.
 
 ## Wiederherstellung Sensor
 
-`Sensor.ino` wurde aus dem letzten erhaltenen umfangreichen Sensor-Entwicklungsstand des geschlossenen, nicht gemergten PR #1 (Commit `48e2677dc9094118a16ebd9a58c9afefb57a5f9e`) wiederhergestellt, statt den veralteten Stand von `main` zu verwenden. Enthalten sind drei DHT22 (GPIO25/26/27), DS18B20 (GPIO23), ADS1115 (A0 pH / A1 TDS; I²C GPIO21/22), integriertes OLED, optionaler BH1750 (GPIO13/14), pH-/EC-Kalibrierbehandlung, Phasentaster GPIO16 und Wartungstaster GPIO19. Die lokale API auf Port 8081 bietet `/api/local/summary`, `/api/local/actuators` und weitere Funktionen. **Der Stand ist rekonstruiert, nicht auf realer Hardware als identisch mit der zuletzt installierten Firmware bestätigt.** Lokale, nicht in Git gespeicherte Änderungen und Kalibrierwerte lassen sich nicht aus GitHub rekonstruieren.
+`Sensor.ino` wurde aus dem letzten erhaltenen umfangreichen Sensor-Entwicklungsstand des geschlossenen, nicht gemergten PR #1 (Commit `48e2677dc9094118a16ebd9a58c9afefb57a5f9e`) wiederhergestellt, statt den veralteten Stand von `main` zu verwenden. Enthalten sind drei DHT22 (GPIO25/26/27), DS18B20 (GPIO23), ADS1115 (A0 pH / A1 TDS; I²C GPIO21/22), optionaler BH1750 (GPIO13/14), pH-/EC-Kalibrierbehandlung, Phasentaster GPIO16 und Wartungstaster GPIO19. Die lokale OLED-Ansteuerung wurde aus der Sensor-Firmware entfernt; Live-Messwerte werden alle 2 Sekunden im seriellen Monitor ausgegeben. Der separate LVGL-Remote zeigt die Messwerte über die Server-API an. Die lokale API auf Port 8081 bietet `/api/local/summary`, `/api/local/actuators` und weitere Funktionen. **Der Stand ist rekonstruiert, nicht auf realer Hardware als identisch mit der zuletzt installierten Firmware bestätigt.** Lokale, nicht in Git gespeicherte Änderungen und Kalibrierwerte lassen sich nicht aus GitHub rekonstruieren.
 
 ## Remote
 
@@ -35,6 +36,41 @@ Fünf 12-V-Dosierpumpen an PCA9685-Ausgängen 0–4 vorgesehen; PCA-Kanal 5 ist 
 
 **Teststatus:** Git-Dateikonsistenz und Schnittstellen sind textuell überprüft. Ein vollständiger Arduino-Compile, reale Touch-Kalibrierung, Sensor-Kalibrierung und integrierter Hardwaretest sind **nicht** nachgewiesen. Keine automatische Dosierung freigeben.
 
+
+## Eigenstaendige Kalibrier-Firmware (bevorzugter Ablauf)
+
+Der vorhandene `ph_calibration_tool.ino` wurde aus `hardware-v2-firmware`
+wiederhergestellt und angepasst. Er verwendet ausschliesslich ADS1115 (0x48,
+SDA GPIO21, SCL GPIO22; pH A0, EC A1) und einen DS18B20 an GPIO23,
+**ohne OLED, WLAN, Hintergrund-EC-Abtastung oder Steuerfunktionen**.
+Bisherige pH-Mittelwertmessung mit 160 Samples ist erhalten, EC mit
+1413 uS/cm Referenz wurde ergaenzt. Die Rechenlogik liegt neben dem Sketch
+in `ph_calibration_tool/calibration_capture.h` und verwendet die identische
+Vorlage wie `Sensor/calibration_capture.h`.
+
+**Ablauf auf dem gleichen Sensor-ESP32:**
+1. `ph_calibration_tool/ph_calibration_tool.ino` mit passendem ESP32-Board
+   kompilieren und flashen. **Weder "Erase All Flash" noch ein anderes
+   Partitionsschema verwenden.**
+2. Serial Monitor **115200 Baud**: `s` zeigt gespeicherte NVS-Daten,
+   `m` fuehrt einmalige Spannungsdiagnose aus.
+3. pH-Elektrode und DS18B20 in pH-7-Loesung: `7`. Danach abspuelen,
+   in pH-4-Loesung: `4`. Nur stabile Werte werden gespeichert.
+4. EC-Sonde und DS18B20 in **1413-uS/cm-Referenzloesung**: `e`.
+   Acht Messfenster; nach dem letzten wird der Wert geprueft und gespeichert.
+5. `s` kontrolliert beide pH-Punkte sowie EC-Faktor, Referenzspannung
+   und Temperatur. Danach `Sensor/Sensor.ino` wieder flashen,
+   **ohne Flash-Erase, mit demselben Partitionsschema**.
+6. Im normalen seriellen Monitor mit `s` kontrollieren, ob pH und EC
+   geladen sind. Falls nicht, keine Werte erfinden und nicht blind nachkalibrieren.
+
+Die Sensor-Firmware liest identische NVS-Namensraeume:
+`phads_v1` (`have7`, `have4`, `volt7`, `volt4`, `temp7`, `temp4`)
+sowie `ecads_v1` (`valid`, `factor`, `ref_v`, `temp_c`).
+Die Kalibrier-Firmware bietet **keine Loeschfunktion**.
+Ein Messfehler schreibt keine neuen Referenzpunkte.
+Ein erfolgreicher Arduino-Build und ein realer NVS-Roundtrip auf der
+Zielhardware sind noch nicht nachgewiesen.
 
 ## pH- und EC-Kalibrierung direkt in der Sensor-Firmware
 
@@ -83,6 +119,28 @@ Sketch-Update ohne Flash-Erase bestehen.
 (vom Repositoryroot). Der Hosttest prueft den Berechnungskern,
 nicht den ESP32/ADS1115-Hardwarepfad.
 
+## Exklusiver pH-/EC-Kalibriermodus (Korrektur-Branch)
+
+Beim Start mit `7`, `4` oder `e` stoppt die Firmware die regulaeren
+Sensor-Messzyklen (DHT22, DS18B20, BH1750, pH/EC), die EC-Ringpufferabtastung,
+den optionalen Kamera-I2C-Zugriff, aktive I2C-Diagnose und den Telemetrieversand.
+**Nur der Kalibriersampler liest den ADS1115** (A0 bei pH bzw. A1 bei EC).
+Der serielle Monitor meldet Start, EC-Fenster und Ergebnisse; die gewohnte
+2-Sekunden-Live-Ausgabe pausiert absichtlich.
+
+Die Wassertemperatur wird vor dem Start vorausgesetzt und **nach dem letzten
+ADC-Sample** mit dem DS18B20 erneut kontrolliert; ungueltige oder um mehr als
+3 C abweichende Temperatur verhindert die Speicherung. Der EC-Ringpuffer wird
+beim Eintritt und Verlassen des Modus geleert. Bei Abschluss, Ablehnung,
+Timeout, ADC-Fehler oder manueller Eingabe `x` wird die normale Messung
+automatisch wieder freigegeben. Bestehende Kalibrierdaten werden bei einem
+Abbruch nicht durch neue Messpunkte ueberschrieben.
+
+Lokaler HTTP-Server, C3-Kommunikation, Phasenuhr und Sicherheitslogik laufen
+weiter. **Während der Pausierung zeigt eine verbundene Fernanzeige gegebenenfalls
+den letzten gespeicherten Messwert, keinen neuen Live-Wert.**
+Der Kalibriermodus ist auf dem realen ESP32 noch nicht hardwaregetestet.
+
 ## Drei DHT22: gemeinsame Klima- und VPD-Messung
 
 Die Sensor-Firmware liest unveraendert DHT22 #1 (GPIO25), #2 (GPIO26)
@@ -119,8 +177,12 @@ verwendet werden (`GROW_MLX_LEAF_VERIFIED`).
 
 Die zeitbasierte Steuerung umfasst **einen vollstaendigen 13-Wochen-Durchlauf**:
 W1-2 Wachstum = 0,4-0,8 kPa, W3-4 Blueteeinleitung = 0,8-1,2 kPa,
-W5-13 Bluete = 1,2-1,6 kPa. Nach **14 Tagen (W3)** erfolgt der
-**automatische Phasenwechsel** von Wuchs auf Bluete, auch ohne Tastendruck.
+W5-13 Bluete = 1,2-1,6 kPa. **Die Phase wird ausschliesslich
+manuell gewaehlt**, ueber den Taster D16 oder die Phasen-API.
+Die Uhr darf die manuell ausgewaehlte Phase niemals ueberschreiben.
+Der Tastendruck setzt unmittelbar die ausgewaehlte Phase und richtet
+die Wochenreferenz passend aus (Wuchs W1, Bluete W3). Danach werden
+die Wochen mit dem gespeicherten UTC-Startpunkt weitergezaehlt.
 Nach **91 Tagen** wird der gesamte Durchlauf mit `cycle_stopped=true`
 dauerhaft auf STOPP gesetzt. Klimasollwerte und Pumpenanforderungen
 werden dabei deaktiviert. Das C3 wertet diesen STOPP aus, sperrt
@@ -129,6 +191,15 @@ Sensor, Telemetrie und LVGL-Remote bleiben erreichbar.
 
 Die Zeitberechnung verwendet UTC ueber NTP und einen **einzigen im NVS
 gespeicherten Durchlaufstart**, der einen ESP32-Neustart uebersteht.
+Die Phase wird getrennt im NVS gespeichert und **beim Booten geladen**.
+Nach Stromausfall wird weder automatisch die Phase umgestellt noch die
+Wochen-Uhr neu gestartet. Die vergangene Realzeit (auch waehrend des
+Stromausfalls) zaehlt nach erfolgreicher UTC/NTP-Synchronisation weiter.
+Bis eine gueltige Uhrzeit vorliegt, bleibt die automatische Anforderung
+gesperrt. Wurde eine manuelle Auswahl ohne gueltige Uhr vorgenommen,
+bleibt die Auswahl nach Neustart gespeichert; der neue Uhrstart wird
+erst bei NTP-Synchronisation gesetzt. Die waehrend fehlender UTC
+vergangene Zeit ist ohne RTC nicht rekonstruierbar.
 Die abgeschlossene Runde bleibt ebenfalls im NVS gespeichert; es gibt
 **keinen automatischen Neustart nach W13**. Ein neuer Durchlauf startet
 nur nach expliziter Bedienung (z.B. Phasentaster D16 nach STOPP oder
@@ -160,3 +231,44 @@ Ein erfolgreicher statischer Vertragstest ist KEIN Hardwaretest.
 Netzspannungsseitige Verdrahtung, SSR-Polung und Ausfallsicherheit
 muessen vor einer spaeteren Freigabe separat durch eine qualifizierte
 Person geprueft werden.
+
+
+### A02YYUW: Füllstand (rein lesend)
+
+Der A02YYUW sendet vier UART-Bytes (0xFF, Distanz-High, Distanz-Low,
+Prüfsumme) bei 9600 Baud. Anschlüsse am **Sensor-ESP32**:
+
+| A02YYUW | Sensor-ESP32 |
+| --- | --- |
+| VCC | 3,3 V |
+| GND | GND |
+| TX | GPIO18 (RX von UART1) |
+| RX | nicht anschließen (gefilterte Messwerte) |
+
+Der UART-Eingang ist **kein** TRIG/ECHO-Paar. Die Sensordaten werden
+nicht blockierend gelesen, mit Prüfsumme und Messbereich 30–4500 mm
+validiert und aus fünf gültigen Messungen per Median geglättet.
+Nach 3 Sekunden ohne gültige Messung wird der Status ungültig.
+
+Die lokale `/api/local/summary` und die Telemetrie enthalten
+`level_sensor_ok`, `level_distance_mm`, `level_calibrated`,
+`level_liters` und `level_percent`. Der Pi speichert die zusätzlichen
+Werte in den Telemetrie-Extras; das LVGL-Display nutzt sie in der
+Statuszeile, falls keine andere Meldung Vorrang hat.
+
+Für Liter und Prozent ist eine Kalibrierung mit **mindestens zwei
+bekannten Füllmengen** erforderlich; wegen der Form des Behälters
+sind weitere Messpunkte sinnvoll (maximal acht). Jeder erfasste Punkt
+wird über den authentifizierten lokalen API-Endpunkt
+`POST /api/local/level/calibration` mit `{"liters": 10.0}` gespeichert.
+Der Controller verknüpft die angegebene Menge mit dem gerade gültigen
+Abstand und speichert die Punkte unter `levelcal_v1` im NVS.
+Zwischen den Punkten wird linear interpoliert. Außerhalb des
+kalibrierten Bereichs werden Liter und Prozent als `null` ausgegeben,
+nicht geschätzt. Der Prozentwert ist relativ zum **größten kalibrierten
+Volumen**, nicht zur ursprünglichen 90-Liter-Nennkapazität.
+
+Die Füllstandsmessung löst **keine** Dosierung aus und verändert
+weder pH-/EC-Kalibrierungen noch Pumpenfreigaben. Wegen des feuchten
+Tankumfelds Montage und tatsächliche UART-/Stromversorgung vor Ort
+prüfen; die Firmware ist noch nicht auf echter Hardware getestet.

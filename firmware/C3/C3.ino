@@ -37,7 +37,16 @@ const char *TELEMETRY_API_KEY = "";
 // Freigabe nach Plausibilisierung der Kleinspannungsplatine, nicht vorher.
 static constexpr bool HARDWARE_OUTPUTS_ARMED = false;
 // Keine Dosierdauer ohne pumpenspezifische Kalibrierung festlegen.
-static constexpr uint32_t MAX_DOSE_MS[5] = {0, 0, 0, 0, 0};
+static constexpr uint8_t DOSING_PUMP_COUNT = 6;
+static constexpr uint32_t MAX_DOSE_MS[DOSING_PUMP_COUNT] = {0, 0, 0, 0, 0, 0};
+/* Dosierkanal 1 fest: Plagron pH Min (Phosphorsaeure).
+ * Reine Kanal-Metadaten; keine Freigabe fuer Saeurefoerderung.
+ * Alle sechs PCA-Ausgaenge werden reserviert; Hardwareausgaenge gesperrt. */
+static constexpr const char *DOSE_CHANNEL_NAME[DOSING_PUMP_COUNT] = {
+  "Plagron pH Min", "nicht_zugeordnet", "nicht_zugeordnet",
+  "nicht_zugeordnet", "nicht_zugeordnet", "nicht_zugeordnet"
+};
+static constexpr bool DOSE_CHANNEL_ENABLED[DOSING_PUMP_COUNT] = {false, false, false, false, false, false};
 static constexpr int8_t PIN_SSR[5] = {0, 1, 3, 4, 5};
 static constexpr const char *SSR_KEY[5] = {
   "light", "exhaust_vent", "circulation_vent", "heater", "water_pump"
@@ -46,7 +55,7 @@ static constexpr uint8_t PIN_I2C_SDA = 7;
 static constexpr uint8_t PIN_I2C_SCL = 10;
 static constexpr uint8_t PIN_PCA_OE = 20;  // PCA9685 /OE, HIGH = deaktiviert
 static constexpr uint8_t PCA_ADDR = 0x40;
-static constexpr uint8_t PCA_DOSE_FIRST = 0;  // PCA OUT0..4: 5 Dosierpumpen, OUT5 ungenutzt
+static constexpr uint8_t PCA_DOSE_FIRST = 0;  // PCA OUT0..5: 6 Dosierpumpen
 static constexpr uint8_t PCA_FAN_FIRST = 6;   // PWM-Ausgaenge 6-7: 2 Lueftergruppen
 static constexpr uint32_t COMMAND_TIMEOUT_MS = 10000UL;
 static constexpr uint32_t SENSOR_POLL_MS = 1000UL;
@@ -141,7 +150,7 @@ bool writeOutputPca(uint8_t channel, bool value) {
 }
 void stopDose() {
   if (doseGuardTimer) esp_timer_stop(doseGuardTimer);
-  if (activeDose >= 0 && activeDose < 5 && pcaAvailable) {
+  if (activeDose >= 0 && activeDose < DOSING_PUMP_COUNT && pcaAvailable) {
     if (!setPcaChannel(PCA_DOSE_FIRST + uint8_t(activeDose), false)) {
       faultStop("Dose OFF I2C");
       return;
@@ -166,7 +175,7 @@ bool lockPumpChannels() {
     pumpServiceOffConfirmed = false;
     return false;
   }
-  for (uint8_t i = 0; i < 5; ++i) {
+  for (uint8_t i = 0; i < DOSING_PUMP_COUNT; ++i) {
     if (!setPcaChannel(PCA_DOSE_FIRST + i, false)) {
       faultStop("Pump service PCA I2C");
       pumpServiceOffConfirmed = false;
@@ -214,7 +223,7 @@ void stateApi() {
   if (!keyOkay()) return;
   StaticJsonDocument<1024> d;
   d["ok"] = true;
-  d["firmware"] = "c3-1.2.1-pca9685-5ch";
+  d["firmware"] = "c3-1.2.2-pca9685-6ch";
   d["hardware_ready"] = hardwareReady && outputsEnabled;
   d["hardware_config_valid"] = hardwareReady;
   d["pca9685_detected"] = pcaAvailable;
@@ -232,7 +241,14 @@ void stateApi() {
   f["fan_group_2"] = fans[1];
   JsonObject p = d.createNestedObject("dosing");
   p["active_pump"] = activeDose < 0 ? 0 : activeDose + 1;
-  p["channel_count"] = 5;
+  p["channel_count"] = DOSING_PUMP_COUNT;
+  JsonArray channels = p.createNestedArray("channels");
+  for (int i = 0; i < DOSING_PUMP_COUNT; ++i) {
+    JsonObject channel = channels.createNestedObject();
+    channel["pump"] = i + 1;
+    channel["product"] = DOSE_CHANNEL_NAME[i];
+    channel["enabled"] = DOSE_CHANNEL_ENABLED[i];
+  }
   JsonArray limits = p.createNestedArray("max_duration_ms");
   for (uint32_t v : MAX_DOSE_MS) limits.add(v);
   String out;
@@ -279,7 +295,7 @@ void doseApi() {
     return replyError(422, "invalid_fields");
   const int pump = obj["pump"].as<int>();
   const uint32_t duration = obj["duration_ms"].as<uint32_t>();
-  if (pump < 1 || pump > 5 || duration == 0 ||
+  if (pump < 1 || pump > DOSING_PUMP_COUNT || duration == 0 ||
       MAX_DOSE_MS[pump - 1] == 0 || duration > MAX_DOSE_MS[pump - 1])
     return replyError(422, "dose_not_calibrated_or_out_of_range");
   if (activeDose >= 0) return replyError(409, "another_pump_active");
@@ -333,7 +349,7 @@ void pollSensor() {
   http.end();
   StaticJsonDocument<1536> d;
   if (deserializeJson(d, body) || !d["ok"].as<bool>() || !d["commands"].is<JsonObject>()) return;
-  if (d["pump_count"].as<int>() != 5 || !d["pump_service_off"].is<bool>() ||
+  if (d["pump_count"].as<int>() != DOSING_PUMP_COUNT || !d["pump_service_off"].is<bool>() ||
       !d["cycle_stopped"].is<bool>()) return;
   const bool nextCycleStopped = d["cycle_stopped"].as<bool>();
   if (nextCycleStopped) {
@@ -381,7 +397,7 @@ void sendStatus() {
   StaticJsonDocument<1024> d;
   d["device_id"] = "grow_power_c3_01";
   d["firmware_version"] = "1.2.1";
-  d["pump_count"] = 5;
+  d["pump_count"] = DOSING_PUMP_COUNT;
   d["outputs_enabled"] = hardwareReady && outputsEnabled && !stoppedLatch;
   d["pump_active"] = activeDose < 0 ? 0 : activeDose + 1;
   d["pump_ack_seq"] = 0U;  // No dosing command acknowledged via sensor API.
