@@ -13,8 +13,6 @@
 (net 8 "LEVEL_TX")
 (net 9 "EC_ANALOG_UNVERIFIED")
 (net 10 "PH_PO_UNVERIFIED")
-(net 1 "GND")
-(net 1 "GND")
 (net 13 "I2C_BH_SDA")
 (net 14 "I2C_BH_SCL")
 (net 15 "I2C_MAIN_SDA")
