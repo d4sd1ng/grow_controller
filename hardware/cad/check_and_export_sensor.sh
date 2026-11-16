@@ -25,25 +25,33 @@ if ! kicad-cli pcb drc --exit-code-violations --all-track-errors \
 fi
 echo "DRC bestanden. Bericht: $OUT/sensor_drc.txt"
 
-if [[ "${1:-}" != "--export-reviewed" ]]; then
-  echo "Gerber nicht erzeugt. Erneuter Aufruf mit --export-reviewed erst nach Footprint-/Mechanikpruefung."
+MODE="${1:-check}"
+if [[ "$MODE" == "check" ]]; then
+  echo "DRC bestanden. Mit --export-prototype nur unbestueckte Prototyp-Dateien erzeugen."
   exit 0
+fi
+if [[ "$MODE" != "--export-prototype" && "$MODE" != "--export-reviewed" ]]; then
+  echo "Unbekannter Modus. Erlaubt: --export-prototype oder --export-reviewed." >&2
+  exit 2
 fi
 if grep -q 'Grow_Placeholder:' "$PCB"; then
   echo "FERTIGUNG GESPERRT: PCB enthaelt noch nicht freigegebene Grow_Placeholder-Footprints." >&2
   exit 6
 fi
 
-# Explicit hold: DRC=0 and assigned footprints are not enough to authorize the physical production order.
-# A separate physical mounting, connector and electrical review is required.
-if [[ ! -f "$BASE_DIR/FABRICATION_RELEASE_APPROVED" ]]; then
-  echo "FERTIGUNG GESPERRT: Freigabe nach mechanischer und elektrischer Pruefung fehlt." >&2
-  exit 7
-fi
-
-if ! python3 "$BASE_DIR/sensor_pcb_mechanical_electrical_audit.py" --release > "$OUT/mechanical_electrical_release.txt"; then
-  echo "FERTIGUNG GESPERRT: Mechanik-/Steckraumpruefung nicht bestanden. Bericht: $OUT/mechanical_electrical_release.txt" >&2
-  exit 8
+# Separate the first bare-PCB prototype from live electrical/assembled hardware release.
+# There is no sensor enclosure yet. A case-fit test is NOT a prototype PCB prerequisite.
+python3 "$BASE_DIR/audit_sensor_pcb.py" > "$OUT/static_audit.txt"
+python3 "$BASE_DIR/sensor_pcb_mechanical_electrical_audit.py" > "$OUT/mechanical_electrical_audit.txt"
+if [[ "$MODE" == "--export-reviewed" ]]; then
+  if [[ ! -f "$BASE_DIR/FABRICATION_RELEASE_APPROVED" ]]; then
+    echo "BETRIEBSFREIGABE GESPERRT: Live-Betrieb der bestueckten Platine nicht freigegeben." >&2
+    exit 7
+  fi
+  if ! python3 "$BASE_DIR/sensor_pcb_mechanical_electrical_audit.py" --release > "$OUT/mechanical_electrical_release.txt"; then
+    echo "BETRIEBSFREIGABE GESPERRT: USB- und elektrische Pruefung offen." >&2
+    exit 8
+  fi
 fi
 
 # No extra 230V/SSR or chemical-dosing circuit on this sensor board.
@@ -53,4 +61,15 @@ kicad-cli pcb export gerbers \
   --output "$OUT/gerber" "$PCB"
 kicad-cli pcb export drill --format excellon --excellon-separate-th \
   --output "$OUT/gerber" "$PCB"
-echo "Gerber/Excellon exportiert nach $OUT/gerber; vor Bestellung visuell pruefen."
+if [[ "$MODE" == "--export-prototype" ]]; then
+  cat > "$OUT/gerber/PROTOTYPE_ONLY.txt" <<'EOF'
+UNBESTUECKTER SENSOR-PCB-PROTOTYP — KEINE BETRIEBSFREIGABE
+Board: 179 x 115 x 1,6 mm, 2 Lagen, 4 x M3 NPTH.
+Kein Sensor-Gehaeuse vorhanden; ein Gehaeusetest ist keine Voraussetzung der ersten Leerplatine.
+Offen: ESP32 USB-C-Zugang bei gesteckten Phoenix-Gegensteckern, Sensormodul-Pegel und reales Strombudget.
+Keine Freigabe zum Anschluss von 230 V, SSR-Lasten oder chemischer Dosierung.
+EOF
+  echo "Prototyp-Dateien (nur Leerplatine) nach $OUT/gerber exportiert."
+else
+  echo "Gerber/Excellon nach $OUT/gerber exportiert; Live-/Bestueckungsfreigabe separat dokumentiert."
+fi
