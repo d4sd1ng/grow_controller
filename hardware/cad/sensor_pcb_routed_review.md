@@ -1,3 +1,5 @@
+> **Aktueller Stand Rev A — 17.11.2026:** PCB mit **25 elektrischen Footprints und 4 M3-NPTH-Montagebohrungen (29 Gesamtpositionen)** auf `main`. **0 KiCad-DRC-Fehler, 0 unverbundene Pads**. Reproduzierbarer Check über bestehendem `nurovelle-vps`-Runner: https://github.com/d4sd1ng/homepage/actions/runs/43981496756 . Getrennte Excellon-Dateien für PTH und NPTH nachgewiesen: https://github.com/d4sd1ng/homepage/actions/runs/43980832773 . Neues Rev-A-CAM-Reviewarchiv unter https://github.com/d4sd1ng/grow_controller/pull/13 . **Endgültige Gehäuse-, USB- und elektrische Freigabe weiterhin offen.**
+
 # Sensorplatine — gerouteter Prüfstand, 15.11.2026
 
 **Verbindliche Arbeitsdatei:** `sensor_pcb_routed_candidate.kicad_pcb`.
@@ -15,7 +17,9 @@
 | Steckmodul ESP32 DevKit, 30 Pin | 2 × 15, Reihenmitte 25,40 mm, Pinraster 2,54 mm |
 | Steckmodul ADS1115, 10 Pin | 1 × 10, Pinraster 2,54 mm |
 | Bedrahtete Widerstandspositionen | 11: 4 Daten-Pull-ups, 3 RGB, 4 optionale I²C |
-| Gesamt-Footprints | 25 |
+| Elektrische Footprints | 25 |
+| M3-NPTH-Montagebohrungen | 4 |
+| Gesamt-Footprints Rev A | 29 |
 | Leiterplattenpads | 100 |
 | Geroutete Kupfersegmente | 1211 |
 | Vias | 58 |
