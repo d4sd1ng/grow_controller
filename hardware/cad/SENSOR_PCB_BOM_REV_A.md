@@ -19,7 +19,7 @@
 | U_ADS1115 | 1 | Vorhandenes ADS1115-Modul, **1×10, 2,54 mm** | vorhandenes Modul |
 | Aufnahme U_ADS1115 | 1 | Buchsenleiste **1×10, 2,54 mm**, THT | Hersteller-/Bestellnummer noch nicht festgelegt |
 
-**Wichtig:** Die erhöhte ESP32-Steckaufnahme ist eine gezielte Lösung für den eng begrenzten USB-C-Steckraum, kein Nachweis der mechanischen Steckbarkeit bei installiertem Gegenstecker. Zusätzliche Gehäuse-Bauhöhe prüfen.
+**Wichtig:** Die erhöhte ESP32-Steckaufnahme ist eine gezielte Lösung für den eng begrenzten USB-C-Steckraum, kein Nachweis der mechanischen Steckbarkeit bei installiertem Gegenstecker. Für das **spätere** Sensor-Gehäuse die erforderliche Höhe aus dem realen Prototyp übernehmen.
 
 ## Bedrahtete Widerstände
 | Ref | Menge | Wert | Status |
@@ -32,11 +32,11 @@
 **Alle elf Positionen:** bedrahteter Axial-Footprint `Axial_THT_DIN0207_P7p62`, Raster 7,62 mm. Keine SMD-Widerstände.
 
 ## Befestigung
-Vier Ø3,2-mm-NPTH-Bohrungen H1–H4 im KiCad-Board, M3 vorgesehen. Passende Schraubenköpfe/Standoffs für den Ø6,4-mm-Courtyard und das konkrete Gehäuse auswählen; **kein universell passender Gehäuselochsatz behauptet**.
+Vier Ø3,2-mm-NPTH-Bohrungen H1–H4 im KiCad-Board, M3 vorgesehen. Die M3-Koordinaten definieren das **spätere** Sensor-Gehäuse-Lochbild; derzeit existiert nur das getrennte Relaisgehäuse. Schraubenköpfe/Standoffs später passend auswählen.
 
 ## Technische Prüfung
 - KiCad 9.0.2: 0 DRC-Warnungen/Fehler, 0 unverbundene Pads (https://github.com/d4sd1ng/homepage/actions/runs/43980832773).
 - Fertigungsdateien zu Review-Zwecken: getrennte **PTH/NPTH**-Excellon-Dateien und Gerber, https://github.com/d4sd1ng/grow_controller/pull/13.
-- Offene Montage-/Funktionstests: USB-C- und Phoenix-Gegenstecker gemeinsam, M3-Gehäusegegenpunkte, 3,3-/5-V-Strombudget sowie ADS1115-A0/A1-Pegel im realen Betrieb.
+- Offene Montage-/Funktionstests: USB-C- und Phoenix-Gegenstecker gemeinsam, 3,3-/5-V-Strombudget sowie ADS1115-A0/A1-Pegel im realen Betrieb.
 
-**Keine Fertigungsbestellung und keine Freigabe durch diesen Text.**
+**Prototyp-Reihenfolge:** Platine (unbestückt) als Prototyp herstellen → bestücken und elektrische Funktion prüfen → erst danach passendes Sensor-Gehäuse konstruieren. Diese Stückliste allein löst keine Bestellung aus und erteilt keine Live-Betriebsfreigabe.
