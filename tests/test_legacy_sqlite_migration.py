@@ -16,20 +16,34 @@ def make_legacy_database(path: Path, *, extras_json: str = '{"vpd": 1.2}') -> No
         CREATE TABLE readings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ts TEXT NOT NULL,
+            air_temperature REAL,
+            water_temperature REAL,
+            case_temperature REAL,
+            humidity REAL,
+            light_level REAL,
+            ec REAL,
+            ph REAL,
+            circulation_vent INTEGER NOT NULL,
+            exhaust_vent INTEGER NOT NULL,
+            heater INTEGER NOT NULL,
             light INTEGER NOT NULL,
             extras_json TEXT
         );
         CREATE TABLE app_control (
             id INTEGER PRIMARY KEY CHECK(id=1),
             control_mode TEXT NOT NULL DEFAULT 'auto',
-            light INTEGER NOT NULL DEFAULT 0
+            heater INTEGER NOT NULL DEFAULT 0,
+            circulation_vent INTEGER NOT NULL DEFAULT 0,
+            exhaust_vent INTEGER NOT NULL DEFAULT 0,
+            light INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT ''
         );
         INSERT INTO app_control(id, control_mode, light)
         VALUES (1, 'manual', 1);
         """)
         db.execute(
-            "INSERT INTO readings (ts, light, extras_json) VALUES (?, ?, ?)",
-            ("2026-10-01T12:00:00", 1, extras_json),
+            "INSERT INTO readings (ts, light, circulation_vent, exhaust_vent, heater, extras_json) VALUES (?, ?, ?, ?, ?, ?)",
+            ("2026-10-01T12:00:00", 1, 0, 0, 0, extras_json),
         )
 
 
@@ -69,6 +83,12 @@ class LegacySqliteMigrationTests(unittest.TestCase):
                 self.assertEqual(
                     modern.execute("PRAGMA integrity_check").fetchone()[0], "ok"
                 )
+            from telemetry_store import TelemetryStore
+            store = TelemetryStore(dst, retention_days=0)
+            latest = store.fetch_latest()
+            self.assertEqual(latest["timestamp"], "2026-10-01T12:00:00")
+            self.assertTrue(latest["light"])
+            self.assertFalse(latest["pump"])
 
     def test_refuses_to_overwrite_destination(self):
         with tempfile.TemporaryDirectory() as folder:
