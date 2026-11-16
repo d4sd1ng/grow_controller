@@ -1,8 +1,8 @@
-> **Fortgeschriebener Stand:** Die unten aufgeführten früheren DRC-/Bibliotheksfehler sind historisch. Am 16.11.2026 wurden alle 25 Footprints konkret zugeordnet und KiCad 9.0.2 lieferte **0 DRC-Meldungen / 0 unverbundene Pads / 0 Footprint-Fehler**. Nachweis: https://github.com/d4sd1ng/homepage/actions/runs/43962759317 und `hardware/cad/FOOTPRINT_ASSIGNMENTS_25.md`. Die mechanische/elektrische Freigabe bleibt offen.
+> **KORREKTUR 17.11.2026:** Diese Datei enthält einen historischen Prüfstand. Die Sensorplatine hat **noch kein Gehäuse**; das einzige vorhandene Gehäuse gehört zur separaten Relaissteuerung. Eine Gehäuse-Passprobe darf **nicht** Voraussetzung der ersten unbestückten Prototypplatine sein. Aktueller PCB-Stand: 179×115×1,6 mm, 4 M3-NPTH, 25 elektrische Footprints, KiCad-DRC bestanden und PTH/NPTH-Daten vorhanden. Für einen Prototyp-Gerberexport gibt es `check_and_export_sensor.sh --export-prototype`; dieser erteilt **keine** elektrische Betriebs- oder Serienfreigabe.\n\n> **Fortgeschriebener Stand:** Die unten aufgeführten früheren DRC-/Bibliotheksfehler sind historisch. Am 16.11.2026 wurden alle 25 Footprints konkret zugeordnet und KiCad 9.0.2 lieferte **0 DRC-Meldungen / 0 unverbundene Pads / 0 Footprint-Fehler**. Nachweis: https://github.com/d4sd1ng/homepage/actions/runs/43962759317 und `hardware/cad/FOOTPRINT_ASSIGNMENTS_25.md`. Die mechanische/elektrische Freigabe bleibt offen.
 
 # Sensor-PCB — Fertigungsprüfung, 16.11.2026
 
-**Status: NICHT BESTELLFREI.** Dies ist der tatsächliche Prüfstand, keine Freigabe.
+**Historischer Stand:** keine Freigabe für ein live betriebenes, bestücktes System. Der erste unbestückte PCB-Prototyp ist davon zu unterscheiden.
 
 ## Nachweisbare Dateiprüfung
 - Arbeitslayout: `hardware/cad/sensor_pcb_routed_candidate.kicad_pcb`
@@ -22,7 +22,7 @@
 ## Unabhängige technische Freigabesperren
 1. **Nicht vermessene Steckmodule:** ESP32 DevKit 30 Pin (2×15, Reihenmitte vorläufig 25,40 mm) und ADS1115 (1×10). Maßhaltigkeit, Orientierung, USB-Zugang und Steckhöhe vor Serienfertigung prüfen.
 2. **Unverifizierte Footprints:** alle eingebetteten Bibliotheksnamen `Grow_Placeholder:...` müssen geometrisch gegen reale Bauteile verglichen werden. Das Vorhandensein einer Padgruppe ist kein Footprint-Nachweis.
-3. **Mechanik:** 179×115 mm ist vorläufig; Bohrlochbild, Gehäuse, Einbauraum, Kabelabgänge offen.
+3. **Mechanik (historisch):** 179×115 mm ist jetzt CAD-fixiert, 4 M3-Bohrungen gesetzt. Gehäuse und dessen Kabelabgänge folgen erst nach der Prototypplatine; USB-Steckfreiheit an der offenen Platine bleibt gesondert zu prüfen.
 4. **Analoge Sicherheit:** ADS1115 mit 3,3 V; pH/EC-Ausgangsspannungen sind für alle Betriebszustände zu prüfen, einschließlich Überspannungsfällen. Ein direkter Anschluss darf ohne Verifikation nicht freigegeben werden.
 5. **Versorgung:** 5-V-USB-Abgriff, 3,3-V-Reglerreserve und tatsächlich verwendete Module nicht gemessen.
 6. **DRC/ERC und Gerber/Excellon:** keine erfolgreiche fachliche Prüfung und keine freigegebenen Fertigungsdaten.
