@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name "Grow_Controller_Sensor")(type "KiCad")(uri "${KIPRJMOD}/Grow_Controller_Sensor.pretty")(options "")(descr "Grow Controller sensor carrier - explicit routed footprints, project revision 1"))
+)
