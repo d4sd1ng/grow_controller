@@ -31,6 +31,12 @@ jobs:
       - name: Check board exists
         run: test -f hardware/cad/sensor_pcb_routed_candidate.kicad_pcb
 
+      - name: Static PCB integrity preflight
+        shell: bash
+        run: |
+          mkdir -p pcb-drc-output
+          python3 hardware/cad/audit_sensor_pcb.py | tee pcb-drc-output/static_audit.txt
+
       - name: KiCad PCB design rule check
         shell: bash
         run: |
