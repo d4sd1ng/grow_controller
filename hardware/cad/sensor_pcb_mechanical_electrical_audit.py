@@ -179,7 +179,7 @@ if mounting_holes != 4:
     errors.append(f"Expected 4 board mounting holes, found {mounting_holes}")
     print("HOLD: Four mechanical holes not present.")
 else:
-    print("HOLD: Four M3 holes provided, but enclosure mating-hole coordinates not independently verified.")
+    print("INFO: Four M3 holes are the future enclosure mounting pattern; no sensor enclosure exists yet.")
 if any("U_ESP32" in (a, b) for a, b, _ in warning):
     print("HOLD: ESP32 USB access must be checked against lower connector plug bodies.")
 for e in errors:
@@ -187,7 +187,7 @@ for e in errors:
 if errors:
     sys.exit(2)
 print("PASS: Static electrical pin mappings and basic in-board footprint envelopes.")
-print("NOT APPROVED: Cable access, mounting geometry and live electrical measurements remain open.")
+print("BARE PCB PROTOTYPE: no enclosure fit test required. LIVE ELECTRICAL USE: USB accessibility and physical measurements remain unverified.")
 if "--release" in sys.argv:
     unresolved = []
     if mounting_holes != 4:
