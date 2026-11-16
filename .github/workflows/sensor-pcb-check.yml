@@ -6,6 +6,10 @@ on:
     paths:
       - '.github/workflows/sensor-pcb-check.yml'
       - 'hardware/cad/**'
+  pull_request:
+    paths:
+      - '.github/workflows/sensor-pcb-check.yml'
+      - 'hardware/cad/**'
   workflow_dispatch:
 
 permissions:
