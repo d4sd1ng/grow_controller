@@ -44,7 +44,7 @@ Quelle für Footprints: https://kicad.github.io/footprints/Connector_Phoenix_MST
 
 KiCad 9.0.2 meldet nach Einbindung der sechs lokalen Footprint-Bauformen **0 DRC-Meldungen, 0 unverbundene Pads und 0 Footprint-Fehler** für alle 25 Positionen. Quelle: https://github.com/d4sd1ng/homepage/actions/runs/43962759317
 
-Die Bibliotheksnamen sind auf `Grow_Controller_Sensor` umgestellt; Pads, bestehende Netze, Hersteller-Fab-Konturen und Courtyards sind in sechs projektlokalen Footprints abgebildet. Die komplette Zuordnung steht in `FOOTPRINT_ASSIGNMENTS_25.md`. Eine weitere Überprüfung der Steckrichtung im realen Gehäuse bleibt eine Montageprüfung, kein fehlender Footprint.
+Die Bibliotheksnamen sind auf `Grow_Controller_Sensor` umgestellt; Pads, bestehende Netze, Hersteller-Fab-Konturen und Courtyards sind in sechs projektlokalen Footprints abgebildet. Die komplette Zuordnung steht in `FOOTPRINT_ASSIGNMENTS_25.md`. Steckrichtung/USB-Zugang sind an der offenen Platine zu prüfen. Ein Sensor-Gehäuse ist noch nicht vorhanden und erst nach der Platine vorgesehen.
 
 ## 4. Aktuelle Arbeitspunkte — bereits festgelegte Modulmaße NICHT erneut abfragen
 
@@ -53,8 +53,8 @@ Das bemaßte ESP32-Maßbild und die dokumentierten Kontaktgeometrien gelten für
 1. **Erledigt:** alle 25 Platzhalter durch sechs definierte Bibliotheks-Footprints ersetzt. Steckorientierung vor Montageabnahme prüfen.
 2. ADS1115: belegte Kontaktfolge aus dem vorliegenden Modul und der bisherigen Pinout-Dokumentation in den Schaltplan übernehmen; Verpolung vermeiden.
 3. Bestückungsaufnahme der vorhandenen bedrahteten Widerstände und Einbau-/Aussteckraum der Phoenix-Klemmen auf dem Board prüfen.
-4. Gehäuse- und Kabelabgang mit dem entworfenen Board mechanisch abgleichen; Befestigungspositionen auf der konkreten PCB definieren.
+4. **PCB abgeschlossen:** 4 M3-NPTH-Bohrungen auf der Sensorplatine gesetzt. Das spätere Sensor-Gehäuse wird anhand des realen PCB-Prototyps entworfen; keine Passprobe als Fertigungsvoraussetzung.
 5. Strombudget und pH/EC-Analogpegel unabhängig von der mechanischen Bemaßung kontrollieren.
 6. **Erledigt:** KiCad-DRC nach Fußabdruckwechsel erfolgreich. Prüfdaten Gerber/Excellon separat vorhanden; Produktionsfreigabe weiterhin getrennt.
 
-**Noch nicht fertigungsfreigegeben** ist das Leiterplattenlayout wegen mechanischer Integration und elektrotechnischer Funktionstests; **die 25 Footprints sind zugeordnet und DRC-geprüft**. Die CAM-Vorschau unter PR #13 bleibt bis zur Prüfung gesperrt.
+**Unbestückte Prototypplatine und Live-Betriebsfreigabe sind getrennt.** Ein noch nicht vorhandenes Sensor-Gehäuse blockiert die erste Leerplatine nicht; **die 25 Footprints sind zugeordnet und DRC-geprüft**. Die CAM-Vorschau unter PR #13 bleibt bis zur Prüfung gesperrt.
