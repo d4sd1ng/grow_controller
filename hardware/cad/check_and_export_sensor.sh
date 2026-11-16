@@ -41,6 +41,11 @@ if [[ ! -f "$BASE_DIR/FABRICATION_RELEASE_APPROVED" ]]; then
   exit 7
 fi
 
+if ! python3 "$BASE_DIR/sensor_pcb_mechanical_electrical_audit.py" --release > "$OUT/mechanical_electrical_release.txt"; then
+  echo "FERTIGUNG GESPERRT: Mechanik-/Steckraumpruefung nicht bestanden. Bericht: $OUT/mechanical_electrical_release.txt" >&2
+  exit 8
+fi
+
 # No extra 230V/SSR or chemical-dosing circuit on this sensor board.
 mkdir -p "$OUT/gerber"
 kicad-cli pcb export gerbers \
