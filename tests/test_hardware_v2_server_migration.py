@@ -150,5 +150,32 @@ class AdditionalHardwareV2CompatibilityTests(unittest.TestCase):
         self.assertIsNone(data["tds_ppm"])
 
 
+class LegacyLightTelemetryStoreTests(unittest.TestCase):
+    def test_sqlite_light_status_without_schema_replacement(self):
+        from datetime import datetime
+        from telemetry_store import TelemetryStore
+        store = TelemetryStore(":memory:", retention_days=0)
+        store.insert_reading(
+            {"timestamp": datetime.now(), "ph": 6.2},
+            extras={"light": True, "lamp_cooling": False},
+        )
+        row = store.fetch_latest()
+        self.assertEqual(row["ph"], 6.2)
+        self.assertTrue(row["light"])
+        self.assertFalse(row["lamp_cooling"])
+        self.assertTrue(row["extras"]["light"])
+        self.assertIn("pump", row)
+
+    def test_nonboolean_extra_does_not_become_light_status(self):
+        from datetime import datetime
+        from telemetry_store import TelemetryStore
+        store = TelemetryStore(":memory:", retention_days=0)
+        store.insert_reading(
+            {"timestamp": datetime.now()},
+            extras={"light": "unknown"},
+        )
+        self.assertNotIn("light", store.fetch_latest())
+
+
 if __name__ == "__main__":
     unittest.main()
