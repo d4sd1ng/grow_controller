@@ -34,6 +34,13 @@ if grep -q 'Grow_Placeholder:' "$PCB"; then
   exit 6
 fi
 
+# Explicit hold: DRC=0 and assigned footprints are not enough to authorize the physical production order.
+# A separate physical mounting, connector and electrical review is required.
+if [[ ! -f "$BASE_DIR/FABRICATION_RELEASE_APPROVED" ]]; then
+  echo "FERTIGUNG GESPERRT: Freigabe nach mechanischer und elektrischer Pruefung fehlt." >&2
+  exit 7
+fi
+
 # No extra 230V/SSR or chemical-dosing circuit on this sensor board.
 mkdir -p "$OUT/gerber"
 kicad-cli pcb export gerbers \

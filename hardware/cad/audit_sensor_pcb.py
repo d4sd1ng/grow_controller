@@ -16,6 +16,7 @@ unknown = sorted(set((i, n) for i, n in refs if i not in names))
 mismatch = sorted(set((i, n) for i, n in refs if i in names and names[i] != n))
 footprints = re.findall(r'\(footprint "([^"]+)"', text)
 placeholders = [x for x in footprints if x.startswith("Grow_Placeholder:")]
+wrong_library = [x for x in footprints if not x.startswith("Grow_Controller_Sensor:")]
 balance = 0
 minimum = 0
 for char in text:
@@ -23,7 +24,7 @@ for char in text:
     minimum = min(minimum, balance)
 print(f"PCB: {board.name}")
 print(f"Net declarations: {len(decls)}, references: {len(refs)}")
-print(f"Footprints: {len(footprints)}, unapproved placeholders: {len(placeholders)}")
+print(f"Footprints: {len(footprints)}, unapproved placeholders: {len(placeholders)}, wrong library: {len(wrong_library)}")
 print(f"Tracks: {text.count('(segment ')}, vias: {text.count('(via ')}")
 
 references = re.findall(r'\(fp_text reference "([^"]+)"', text)
@@ -48,6 +49,6 @@ for title, errors in [("Duplicate nets", duplicate), ("Unknown net references", 
         print(f"ERROR {title}: {errors}")
 if balance != 0 or minimum != 0:
     print(f"ERROR parentheses balance: {balance}, minimum nesting: {minimum}")
-if duplicate or unknown or mismatch or balance or minimum or duplicate_refs or missing or len(outline) != 1:
+if duplicate or unknown or mismatch or balance or minimum or duplicate_refs or missing or len(outline) != 1 or len(footprints) != 25 or wrong_library:
     sys.exit(1)
 print("Static integrity check passed. This is NOT a fabrication release.")
