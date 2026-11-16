@@ -7,14 +7,14 @@ import sys
 
 board = Path(__file__).with_name("sensor_pcb_routed_candidate.kicad_pcb")
 text = board.read_text(encoding="utf-8")
-decls = [(int(i), n) for i, n in re.findall(r'^\\(net (\\d+) "([^"]+)"\\)', text, re.M)]
-refs = [(int(i), n) for i, n in re.findall(r'\\(net (\\d+) "([^"]+)"\\)', text)]
+decls = [(int(i), n) for i, n in re.findall(r'^\(net (\d+) "([^"]+)"\)', text, re.M)]
+refs = [(int(i), n) for i, n in re.findall(r'\(net (\d+) "([^"]+)"\)', text)]
 counts = Counter(i for i, _ in decls)
 names = dict(decls)
 duplicate = [i for i, count in counts.items() if count != 1]
 unknown = sorted(set((i, n) for i, n in refs if i not in names))
 mismatch = sorted(set((i, n) for i, n in refs if i in names and names[i] != n))
-footprints = re.findall(r'\\(footprint "([^"]+)"', text)
+footprints = re.findall(r'\(footprint "([^"]+)"', text)
 placeholders = [x for x in footprints if x.startswith("Grow_Placeholder:")]
 balance = 0
 minimum = 0
