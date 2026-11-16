@@ -42,19 +42,19 @@ Quelle für Footprints: https://kicad.github.io/footprints/Connector_Phoenix_MST
 
 ## 3. Nachweisbares DRC-Ergebnis — keine kosmetische Umbenennung
 
-KiCad 9.0.2 meldete 25 Warnungen, alle `lib_footprint_issues`, nachdem elektrische Routing-Warnungen bereinigt waren. Keine unverbundenen Pads. Quelle: https://github.com/d4sd1ng/homepage/actions/runs/43796471420
+KiCad 9.0.2 meldet nach Einbindung der sechs lokalen Footprint-Bauformen **0 DRC-Meldungen, 0 unverbundene Pads und 0 Footprint-Fehler** für alle 25 Positionen. Quelle: https://github.com/d4sd1ng/homepage/actions/runs/43962759317
 
-Die Bibliotheksnamen werden **nicht** blind geändert: Erst müssen die offiziellen Footprints an Pads, Orientierung, Körperkontur, 3D-Modell und Steckraum ausgerichtet und erneut geroutet/geprüft werden.
+Die Bibliotheksnamen sind auf `Grow_Controller_Sensor` umgestellt; Pads, bestehende Netze, Hersteller-Fab-Konturen und Courtyards sind in sechs projektlokalen Footprints abgebildet. Die komplette Zuordnung steht in `FOOTPRINT_ASSIGNMENTS_25.md`. Eine weitere Überprüfung der Steckrichtung im realen Gehäuse bleibt eine Montageprüfung, kein fehlender Footprint.
 
 ## 4. Aktuelle Arbeitspunkte — bereits festgelegte Modulmaße NICHT erneut abfragen
 
 Das bemaßte ESP32-Maßbild und die dokumentierten Kontaktgeometrien gelten für diesen Prototyp als **freigegebene Design-Eingabewerte**. Erneutes Erfragen oder Zurückstufen dieser Angaben zu einer bloßen Schätzung ist kein zulässiger Arbeitsblocker.
 
-1. Vorhandene PCB-Placeholders durch **zu den festgelegten Maßen passende** Bibliotheks-Footprints ersetzen; die tatsächlichen Padpositionen, Orientierung und Einsteckrichtung mit dem Maßbild abgleichen.
+1. **Erledigt:** alle 25 Platzhalter durch sechs definierte Bibliotheks-Footprints ersetzt. Steckorientierung vor Montageabnahme prüfen.
 2. ADS1115: belegte Kontaktfolge aus dem vorliegenden Modul und der bisherigen Pinout-Dokumentation in den Schaltplan übernehmen; Verpolung vermeiden.
 3. Bestückungsaufnahme der vorhandenen bedrahteten Widerstände und Einbau-/Aussteckraum der Phoenix-Klemmen auf dem Board prüfen.
 4. Gehäuse- und Kabelabgang mit dem entworfenen Board mechanisch abgleichen; Befestigungspositionen auf der konkreten PCB definieren.
 5. Strombudget und pH/EC-Analogpegel unabhängig von der mechanischen Bemaßung kontrollieren.
-6. Abschließend KiCad-DRC und Gerber-/Bohrdaten erneut erzeugen.
+6. **Erledigt:** KiCad-DRC nach Fußabdruckwechsel erfolgreich. Prüfdaten Gerber/Excellon separat vorhanden; Produktionsfreigabe weiterhin getrennt.
 
-**Noch nicht fertigungsfreigegeben** ist das Leiterplattenlayout wegen der aktuellen Platzhalter-Bibliothek, der mechanischen Integration und der elektrotechnischen Funktionstests – **nicht** wegen fehlender ESP32-/C3-Maßbilder. Die CAM-Vorschau unter PR #13 bleibt bis zur Prüfung gesperrt.
+**Noch nicht fertigungsfreigegeben** ist das Leiterplattenlayout wegen mechanischer Integration und elektrotechnischer Funktionstests; **die 25 Footprints sind zugeordnet und DRC-geprüft**. Die CAM-Vorschau unter PR #13 bleibt bis zur Prüfung gesperrt.
