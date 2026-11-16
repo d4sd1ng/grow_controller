@@ -1,4 +1,4 @@
-> **Aktueller Stand Rev A — 17.11.2026:** PCB mit **25 elektrischen Footprints und 4 M3-NPTH-Montagebohrungen (29 Gesamtpositionen)** auf `main`. **0 KiCad-DRC-Fehler, 0 unverbundene Pads**. Reproduzierbarer Check über bestehendem `nurovelle-vps`-Runner: https://github.com/d4sd1ng/homepage/actions/runs/43981496756 . Getrennte Excellon-Dateien für PTH und NPTH nachgewiesen: https://github.com/d4sd1ng/homepage/actions/runs/43980832773 . Neues Rev-A-CAM-Reviewarchiv unter https://github.com/d4sd1ng/grow_controller/pull/13 . **Endgültige Gehäuse-, USB- und elektrische Freigabe weiterhin offen.**
+> **Aktueller Stand Rev A — 17.11.2026:** PCB mit **25 elektrischen Footprints und 4 M3-NPTH-Montagebohrungen (29 Gesamtpositionen)** auf `main`. **0 KiCad-DRC-Fehler, 0 unverbundene Pads**. Reproduzierbarer Check über bestehendem `nurovelle-vps`-Runner: https://github.com/d4sd1ng/homepage/actions/runs/43981496756 . Getrennte Excellon-Dateien für PTH und NPTH nachgewiesen: https://github.com/d4sd1ng/homepage/actions/runs/43980832773 . Neues Rev-A-CAM-Reviewarchiv unter https://github.com/d4sd1ng/grow_controller/pull/13 . **Kein Sensor-Gehäuse vorhanden oder für die Leerplatine erforderlich. USB-Zugang und elektrische Live-Betriebsprüfung weiterhin offen.**
 
 # Sensorplatine — gerouteter Prüfstand, 15.11.2026
 
@@ -104,7 +104,7 @@ Mit KiCad 9.0.2 auf dem bestehenden VPS-Runner tatsächlich geprüft (Run 437964
 1. **KiCad-DRC bestanden:** 0 Warnungen/Fehler, 0 unverbundene Pads (KiCad 9.0.2, Runner 43962759317). Alle 25 Footprints verwenden `Grow_Controller_Sensor`.
 2. **Footprints:** sechs definierte Projekttypen, vollständig dokumentiert in `FOOTPRINT_ASSIGNMENTS_25.md`; vor der konkreten Bestückung Steckorientierung und Einsteckraum abgleichen.
 3. **Mechanik:** 179 × 115 mm ist eine **vorläufige** Außenkontur;
-   Gehäuse, Befestigungslochbild und Montagehöhen sind nicht
+   spätere Gehäusemontage und endgültige Steckhöhen sind nicht
    freigegeben. Der Entwurf enthält keine ungefragt erfundenen
    Befestigungslöcher.
 4. **Betrieb:** Modultypen und Versorgungspfade bei der
