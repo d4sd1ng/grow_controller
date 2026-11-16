@@ -36,6 +36,29 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check "httpx>=0.25,<1" "fastapi>=0.115,<1" "pandas>=2.2,<3"
       - name: Check Python syntax
-        run: python -m py_compile sensor_node_client.py env_config.py telemetry_api.py telemetry_payload.py tests/test_hardware_v2_server_migration.py
+        shell: bash
+        run: |
+          mkdir -p migration-test-results
+          set +e
+          python -m py_compile sensor_node_client.py env_config.py telemetry_api.py telemetry_payload.py tests/test_hardware_v2_server_migration.py \
+            > migration-test-results/syntax.txt 2>&1
+          status=$?
+          cat migration-test-results/syntax.txt
+          exit "$status"
       - name: Run migrated sensor server tests
-        run: python -m unittest discover -s tests -p 'test_hardware_v2_server_migration.py' -v
+        shell: bash
+        run: |
+          mkdir -p migration-test-results
+          set +e
+          python -m unittest discover -s tests -p 'test_hardware_v2_server_migration.py' -v \
+            > migration-test-results/unittest.txt 2>&1
+          status=$?
+          cat migration-test-results/unittest.txt
+          exit "$status"
+      - name: Upload detailed test result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-v2-server-test-results
+          path: migration-test-results/
+          if-no-files-found: warn
