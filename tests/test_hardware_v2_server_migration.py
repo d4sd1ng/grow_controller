@@ -176,6 +176,26 @@ class LegacyLightTelemetryStoreTests(unittest.TestCase):
         )
         self.assertNotIn("light", store.fetch_latest())
 
+    def test_sqlite_historical_light_is_nullable(self):
+        from datetime import datetime, timedelta
+        from telemetry_store import TelemetryStore
+        store = TelemetryStore(":memory:", retention_days=0)
+        now = datetime.now()
+        store.insert_reading({"timestamp": now - timedelta(seconds=1)},
+                             extras={"light": True})
+        store.insert_reading({"timestamp": now}, extras={"legacy_only": True})
+        df = store.query_range(now - timedelta(minutes=1),
+                               now + timedelta(minutes=1))
+        self.assertEqual(list(df["light"]), [True, None])
+        self.assertIn("lamp_cooling", df.columns)
+
+    def test_unknown_light_is_not_coerced_false(self):
+        from telemetry_payload import relay_extra_status
+        self.assertIsNone(relay_extra_status({"other": True}, "light"))
+        self.assertIsNone(relay_extra_status('{"light": "off"}', "light"))
+        self.assertTrue(relay_extra_status('{"light": true}', "light"))
+
+
 
 if __name__ == "__main__":
     unittest.main()
