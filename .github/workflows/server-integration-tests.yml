@@ -1,0 +1,41 @@
+name: Hardware V2 server migration tests
+
+on:
+  pull_request:
+    paths:
+      - "sensor_node_client.py"
+      - "env_config.py"
+      - "telemetry_api.py"
+      - "telemetry_payload.py"
+      - "tests/test_hardware_v2_server_migration.py"
+      - ".github/workflows/server-integration-tests.yml"
+  push:
+    branches:
+      - integrate/hardware-v2-server-20261116
+    paths:
+      - "sensor_node_client.py"
+      - "env_config.py"
+      - "telemetry_api.py"
+      - "telemetry_payload.py"
+      - "tests/test_hardware_v2_server_migration.py"
+      - ".github/workflows/server-integration-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check "httpx>=0.25,<1" "fastapi>=0.115,<1" "pandas>=2.2,<3"
+      - name: Check Python syntax
+        run: python -m py_compile sensor_node_client.py env_config.py telemetry_api.py telemetry_payload.py tests/test_hardware_v2_server_migration.py
+      - name: Run migrated sensor server tests
+        run: python -m unittest discover -s tests -p 'test_hardware_v2_server_migration.py' -v
