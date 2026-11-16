@@ -168,3 +168,13 @@ if errors:
     sys.exit(2)
 print("PASS: Static electrical pin mappings and basic in-board footprint envelopes.")
 print("NOT APPROVED: Cable access, mounting geometry and live electrical measurements remain open.")
+if "--release" in sys.argv:
+    unresolved = []
+    if mounting_holes == 0:
+        unresolved.append("No board mounting interface")
+    if any("U_ESP32" in (a, b) for a, b, _ in warning):
+        unresolved.append("Unverified USB connector and plugged-header clearance")
+    if unresolved:
+        for issue in unresolved:
+            print("FABRICATION RELEASE BLOCKED:", issue)
+        sys.exit(3)
