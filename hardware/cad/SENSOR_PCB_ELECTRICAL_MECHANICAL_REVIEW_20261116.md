@@ -28,7 +28,7 @@ Quellen:
 - https://www.phoenixcontact.com/de-de/produkte/leiterplattengrundleiste-mstba-25-4-g-508-1757268
 - https://media.digikey.com/pdf/data%20sheets/phoenix%20contact%20pdfs/1757255.pdf
 
-**Nötige CAD-Korrektur:** Zugang zum USB-C-Anschluss ohne Hindernis durch J_BH1750/J_MLX samt Gegensteckern und Kabeln herstellen. Dafür ist eine explizite Änderung von Steckeranordnung, Boardkontur oder Modulposition im Layout nötig. Die genaue Lösung kann nicht ohne Festlegung des Gehäuseeinbaus konstruktiv freigegeben werden.
+**Nötige CAD-Korrektur:** Zugang zum USB-C-Anschluss ohne Hindernis durch J_BH1750/J_MLX samt Gegensteckern und Kabeln herstellen. Dafür ist eine explizite Änderung von Steckeranordnung, Boardkontur oder Modulposition im Layout nötig. Die USB-Zugänglichkeit muss als Eigenschaft der offenen Platine geprüft werden; **ein nicht existierendes Sensor-Gehäuse ist keine Vorbedingung für die erste Leerplatinen-Prototypfertigung**.
 
 ## Elektrischer Anschlussabgleich — bestanden auf Netzebene
 Alle 25 Footprints mit sämtlichen Pins gegen die Projekt-Netzliste geprüft. Wesentliche Ergebnisse:
@@ -43,9 +43,10 @@ Alle 25 Footprints mit sämtlichen Pins gegen die Projekt-Netzliste geprüft. We
 
 **Grenze des Prüfverfahrens:** Ein Netzvergleich zeigt keine realen Stromwerte, keine Signalqualität und keine sicheren Pegel an. Die beiden direkt angeschlossenen ADS1115-Analogeingänge benötigen bei 3,3 V ADS1115-VDD eine verifizierte maximale Eingangsspannung und sichere Betriebsbedingungen. Das echte 5-V-/3,3-V-Lastbudget und die Sensor-Signalpegel sind hier nicht gemessen.
 
-## Fertigungsfreigabe — offene Punkte
-1. **Montage:** keine Befestigungsbohrungen oder abgestimmtes Einbaukonzept im PCB.
-2. **Stecker/USB:** 1 mm CAD-Freiraum vor USB-Bereich; der gesteckte Phoenix-Gegenstecker samt Kabelabgang wurde nicht mit dem ESP32 und Gehäuse abgeglichen.
+## Prototypstand — zeitlich aktualisiert am 17.11.2026
+1. **Montage:** vier M3-NPTH-Bohrungen H1–H4 sind inzwischen im PCB ergänzt und mit KiCad 9.0.2 DRC-geprüft. Ein Gehäuse für diese Sensorplatine ist **noch nicht vorhanden und wird erst nach der physischen Platine geplant**.
+2. **Stecker/USB:** 1 mm CAD-Freiraum vor dem USB-Bereich; die konkrete Zugänglichkeit mit gesteckten Phoenix-Gegenstücken ist am Prototyp zu prüfen.
 3. **Elektrik:** Realmessung der Versorgungs- und ADC-Pegel sowie Sensor-Funktionsprobe auf dem realen Aufbau ist nicht über GitHub möglich.
 
 **Fazit:** Die Software-/CAD-Netzprüfung ist bestanden. Ein real bestückter, mechanisch zugänglicher und elektrisch nachgewiesener Prototyp ist damit noch **nicht** festgestellt. Keine Freigabedatei `FABRICATION_RELEASE_APPROVED` erzeugen und keine vorliegenden Vorschau-Gerber als Bestellfreigabe behandeln.
+\n**Klarstellung:** Vorliegender Bericht dokumentiert teilweise den älteren Stand vor Ergänzung der vier Montagebohrungen. Die erste **unbestückte** Prototypplatine darf als separater Vorgang ausgegeben werden, sofern der erfolgreiche DRC und die Zuordnung der elektrischen/NPTH-Bohrdaten weiterhin nachgewiesen sind. Das ist keine Funktionsfreigabe.\n
