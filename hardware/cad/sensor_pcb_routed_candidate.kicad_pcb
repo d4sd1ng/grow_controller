@@ -385,7 +385,7 @@
  (fp_rect (start 0.66 -1.25) (end 6.96 1.25) (stroke (width 0.12) (type default)) (fill none) (layer "F.Fab"))
 )
 (gr_rect (start 5 5) (end 184 120) (stroke (width 0.05) (type default)) (fill none) (layer "Edge.Cuts"))
-(gr_text "SENSOR PCB / ROUTED / KICAD-DRC PENDING" (at 93 6) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))
+(gr_text "GROW SENSOR PCB REV A" (at 93 6) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))
 (gr_text "GROW_ROUTING_PH_EC_V1 / analog preliminary" (at 116 38) (layer "F.Fab") (effects (font (size 0.8 0.8) (thickness 0.13))))
 
 (footprint "Grow_Controller_Sensor:Axial_THT_DIN0207_P7p62" (layer "F.Cu") (at 34 48) (attr through_hole)
