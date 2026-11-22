@@ -206,8 +206,14 @@ for e in errors:
 if errors:
     sys.exit(2)
 print("PASS: Static electrical pin mappings and basic in-board footprint envelopes.")
-print("BARE PCB PROTOTYPE: no enclosure fit test required. LIVE ELECTRICAL USE: USB accessibility and physical measurements remain unverified.")
-if "--release" in sys.argv:
+print("BARE PCB PROTOTYPE: no enclosure or physical cable fit test required for CAD fabrication.")
+if "--release-bare-pcb" in sys.argv:
+    # This mode tests the board design for manufacturing as an unpopulated PCB.
+    # It is intentionally different from the assembled-controller release gate.
+    print("BARE PCB FABRICATION CHECK: PASS — connector courtyards clear, "
+          "USB-facing corridor clear, mounting holes and pin nets verified.")
+    print("KiCad DRC and current CAM file package checks are separate mandatory steps.")
+if "--release" in sys.argv or "--release-live-device" in sys.argv:
     unresolved = []
     if mounting_holes != 4:
         unresolved.append("Four mounting holes missing")
@@ -216,5 +222,5 @@ if "--release" in sys.argv:
     unresolved.append("3D USB plug/lead and Phoenix plug clearance not validated")
     if unresolved:
         for issue in unresolved:
-            print("FABRICATION RELEASE BLOCKED:", issue)
+            print("ASSEMBLED CONTROLLER OPERATING RELEASE BLOCKED:", issue)
         sys.exit(3)
