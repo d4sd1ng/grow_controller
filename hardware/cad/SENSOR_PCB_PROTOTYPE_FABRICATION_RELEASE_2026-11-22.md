@@ -44,9 +44,9 @@ Für eine **unbestückte Musterleiterplatte** nur den verlinkten neuen Gerber-/D
 
 Die folgenden Prüfungen können mit KiCad-DRC und GitHub-Logs nicht nachgewiesen werden:
 
-- **USB-C-Steckfreiheit:** Die konkrete 2D-Blockade durch J_BH1750 und J_MLX ist im neuen PCB beseitigt und automatisiert als frei geprüft. Die exakte dreidimensionale Steckbarkeit von USB-C-Stecker, Phoenix-Gegensteckern und Kabeln ist nicht durch CAD-Courtyards nachgewiesen; eine erhöhte 1×15-Buchsenleiste ist als Workaround für den bisherigen 2D-Konflikt nicht mehr erforderlich.
+- **USB-C bei der späteren Bestückung:** Der konkrete Layoutkonflikt wurde durch Versetzen von J_BH1750 und J_MLX behoben. Der USB-Austrittskorridor x=53,20–82,20 mm bis zur Platinenkante bei y=120 mm (17,50 mm ab ESP32-Courtyard) ist im CAD frei. **Die USB-C-Frage blockiert die Fertigung der unbestückten Leiterplatte nicht.** Die tatsächliche Kabelsteckprobe ist eine Montageprüfung am fertigen Prototyp und keine Voraussetzung für die Leerplatinenbestellung.
 - **ADS1115 mit 3,3 V:** pH/EC-Spannungen am tatsächlich aufgebauten Messpfad bei den realen Betriebsbedingungen; EC A1 ist direkt angeschlossen. Der 10k/20k-pH-Teiler ist kein allgemeiner Überspannungsschutz.
 - **Versorgung und Steckmodule:** tatsächliche USB-5-V/3,3-V-Belastung, Modulorientierung, Pull-ups und elektrischer Funktionstest mit realen Bauteilen.
 - Firmware-/Kalibrierungsabgleich und Live-Sensorvalidierung nach Bestückung.
 
-Daher gilt: **Fertigung der unbestückten Musterplatine CAD-seitig freigegeben.** **Keine bestätigte Steckbarkeit oder elektrische Funktion** und keine Serienfreigabe. Eine nachträgliche Layoutkorrektur nach dem Muster ist möglich und würde neue CAM-Dateien erfordern.
+**Fertigungsentscheidung:** Die **unbestückte Sensorplatine Rev A ist CAD-seitig zur Musterbestellung freigegeben**, einschließlich des korrigierten USB-C-Austrittsbereichs. Der bereitgestellte Gerber-/Excellon-Datensatz ist der aktuelle Bestellstand. Die Funktionsprüfung mit tatsächlich bestückten Modulen (insbesondere Versorgung und Analogspannung) ist ein **eigener, nachfolgender Prüfschritt** und kein Hindernis für die Herstellung dieser Leerplatine. Eine Serien- oder Betriebsfreigabe ist damit nicht behauptet.
