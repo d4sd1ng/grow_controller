@@ -29,13 +29,23 @@ Silkscreen-Pinbeschriftungen wurden mit versetzt.
 Ein automatischer CAD-Audit prüft, dass der USB-Korridor künftig nicht
 wieder von einem externen Steckverbinder überdeckt wird.
 
-## Grenzen der mechanischen Aussage
+## Ergebnis und Freigabegrenze
 
-Der verifizierte **2D-Courtyard-Korridor** ist ein konkreter, anhand
-der KiCad-Datei prüfbarer Befund. Er ersetzt keine dreidimensionale
-Passprobe mit dem tatsächlich vorhandenen USB-C-Stecker, den
-Phoenix-Gegensteckern und den Kabeln. Insbesondere sind exakte
-Steckerhüllenmaße und Leitungsknickradien nicht in den Footprints modelliert.
+**Der ursprüngliche USB-C-Steckerkonflikt im Leiterplattenlayout ist behoben.**
+Die reservierte USB-Austrittsfläche beträgt geometrisch 29,00 mm in
+X-Richtung (53,20–82,20 mm) und **17,50 mm bis zur Platinenkante**
+in Y-Richtung (102,50–120,00 mm). Im CAD ragt kein externer
+Phoenix-Steckverbinder mehr in diese Fläche.
+
+**Für die Bestellung der unbestückten Leiterplatte ist die USB-C-Frage
+damit abgeschlossen.** Ein USB-C-Stecker muss nicht vollständig *innerhalb*
+der Platinenfläche liegen; der Korridor führt offen bis zur Außenkante.
+Die konkreten Abmessungen eines vorhandenen Kabelsteckers sind für diese
+CAD-Leiterplattenfreigabe nicht mehr als Blocker zu behandeln.
+
+**Grenze der Aussage:** Eine körperliche Steckprobe bei vollständig
+bestückter Platine wurde nicht durchgeführt; sie gehört zur späteren
+Montage-/Funktionsprüfung, nicht zur CAD-Fertigung der Leerplatine.
 
 Die ehemals erwogene **18,67 mm erhöhte E-tec-Buchsenleiste** war
 ein möglicher Workaround für die alte Blockade. Durch das Relayout
@@ -45,14 +55,16 @@ am Aufbau mechanisch geprüft werden.
 
 ## Fertigungsprüfung und Versionsbindung
 
-- KiCad-Board: `hardware/cad/sensor_pcb_routed_candidate.kicad_pcb`
-  auf `fix/sensor-usb-c-corridor-20261122` (bis zum Merge).
+- KiCad-Board: `hardware/cad/sensor_pcb_routed_candidate.kicad_pcb` auf `main`,
+  integriert über [PR #17](https://github.com/d4sd1ng/grow_controller/pull/17).
 - 27 elektrische Footprints, vier M3-NPTH, zwei Kupferlagen.
-- KiCad 9.0.2: nach dem ersten Routingcheck **0 unverbundene Pads**;
-  zwei redundante GND-Durchkontaktierungen wurden danach mit den
-  bereits vorhandenen Vias vereinigt.
-- Der **abschließende** DRC einschließlich der versetzten
-  Silkscreen-Beschriftung ist im zugehörigen CI-Prüfbericht nachzuweisen.
+- **KiCad 9.0.2: finaler DRC bestanden, 0 Verstöße, 0 offene Pads,
+  0 Footprint-Fehler.**
+- Abschlussprüfung und CAM-Ausgabe:
+  https://github.com/d4sd1ng/homepage/actions/runs/45062015261
+- Bestellfähiger Leerplatinen-Datensatz:
+  `sensor-pcb-RevA-USB-C-corrected-20261122.zip`, im
+  Fertigungsfreigabevermerk verlinkt.
 - Früherer Gerber-Datensatz vor diesem Relayout darf **nicht** als
   aktuelle Musterplatine bestellt werden.
 
