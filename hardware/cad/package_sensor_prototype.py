@@ -64,15 +64,15 @@ def main() -> None:
         for p in files
     ]
     readme = (
-        "GROW CONTROLLER SENSOR PCB Rev A — UNBESTUECKTER TESTPROTOTYP\\n"
-        "Aussenkontur: 179 x 115 mm; Dicke: 1,6 mm; Lagen: 2; 4 x M3 NPTH.\\n"
-        "Dateien: 7 Gerberfilme, Excellon PTH und NPTH separat.\\n"
-        f"KiCad-Quelldatei SHA256: {sha}\\n"
-        "Diese CAM-Dateien stammen direkt aus dem KiCad-CLI-Export nach bestandenem DRC.\\n"
-        "NUR LEERPLATINEN-PROTOTYP — KEINE FREIGABE FUER BESTUECKUNG/LIVE-BETRIEB.\\n"
-        "Pruefen am Prototyp: USB-C bei gesteckten Phoenix-Klemmen, Modulsteckung,\\n"
-        "3,3-V/5-V-Lastbudget, pH-/EC-Spannungspegel vor Anschluss des ADS1115.\\n"
-        "KEINE 230-V-LASTVERDRAHTUNG UND KEINE CHEMISCHE DOSIERUNG.\\n"
+        "GROW CONTROLLER SENSOR PCB Rev A — UNBESTUECKTER TESTPROTOTYP\n"
+        "Aussenkontur: 179 x 115 mm; Dicke: 1,6 mm; Lagen: 2; 4 x M3 NPTH.\n"
+        "Dateien: 7 Gerberfilme, Excellon PTH und NPTH separat.\n"
+        f"KiCad-Quelldatei SHA256: {sha}\n"
+        "Diese CAM-Dateien stammen direkt aus dem KiCad-CLI-Export nach bestandenem DRC.\n"
+        "NUR LEERPLATINEN-PROTOTYP — KEINE FREIGABE FUER BESTUECKUNG/LIVE-BETRIEB.\n"
+        "Pruefen am Prototyp: USB-C bei gesteckten Phoenix-Klemmen, Modulsteckung,\n"
+        "3,3-V/5-V-Lastbudget, pH-/EC-Spannungspegel vor Anschluss des ADS1115.\n"
+        "KEINE 230-V-LASTVERDRAHTUNG UND KEINE CHEMISCHE DOSIERUNG.\n"
     )
     # Metadata is deliberately included in the archive: prevents an
     # undocumented preview from being mistaken for a live-use release.
@@ -81,7 +81,7 @@ def main() -> None:
         for p in files:
             z.write(p, arcname=p.name)
         z.writestr("PROTOTYPE_ONLY.txt", readme)
-        z.writestr("CAM_SHA256SUMS.txt", "\\n".join(files_report) + "\\n")
+        z.writestr("CAM_SHA256SUMS.txt", "\n".join(files_report) + "\n")
     print(f"PROTOTYPE CAM CHECK PASSED: {len(files)} manufacturing files")
     print(f"UNPOPULATED PROTOTYPE ZIP: {archive}")
     print("Electrical/mechanical operating release: NOT GRANTED")
