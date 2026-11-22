@@ -1,4 +1,4 @@
-# PCB-Bestellfreigabe — Stand 15.11.2026, Zieltermin 16.11.2026
+> **Fortschreibung vom 22.11.2026:** Die nachfolgende Planung ist ein historischer Stand vom 15./16.11. und die Aussage „nicht bestellfreigegeben“ bezieht sich auf den damaligen Entwurf beziehungsweise einen einsatzbereiten Live-Controller. **Die unbestückte Sensorplatine Rev A hat inzwischen einen CAD-geprüften Gerber-/Bohrdatensatz für eine Musterbestellung.** Verbindliche Version, Einschränkungen und ZIP-Download: [SENSOR_PCB_PROTOTYPE_FABRICATION_RELEASE_2026-11-22.md](cad/SENSOR_PCB_PROTOTYPE_FABRICATION_RELEASE_2026-11-22.md). Keine Betriebsfreigabe für ein bestücktes Gerät.\n\n# PCB-Bestellfreigabe — Stand 15.11.2026, Zieltermin 16.11.2026
 
 **Status: NICHT BESTELLFREIGEGEBEN.** Diese Datei ist eine belegte
 Konstruktions-/Prüfliste, **kein** Schaltplan, kein PCB-Layout, keine Gerberdaten
