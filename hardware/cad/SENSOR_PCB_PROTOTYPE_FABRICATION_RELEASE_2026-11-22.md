@@ -6,7 +6,7 @@ Dies ist ausdrücklich **keine** Freigabe einer elektrisch geprüften, bestückt
 
 ## Verbindlicher PCB-Stand
 
-- Grow-Controller-Repository, **main**, Boardquellstand nach Merge PR #16: `ec0552865d4c09ae05dbb2f5d3f57e23cfa6f8c5`.
+- Grow-Controller-Repository, **main**, Boardquellstand nach Silkscreen-Abschluss: `9297e4c7f42d63ad0d9ce15167cb9f5b8ffcc428`.
 - KiCad: `hardware/cad/sensor_pcb_routed_candidate.kicad_pcb`.
 - PCB: **179 × 115 mm**, **1,6 mm**, **2 Kupferlagen** (F.Cu/B.Cu).
 - Mechanik: vier **Ø 3,2 mm NPTH**-M3-Aufnahmen (H1–H4).
