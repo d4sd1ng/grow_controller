@@ -16,7 +16,7 @@ Dies ist ausdrücklich **keine** Freigabe einer elektrisch geprüften, bestückt
 
 ## Tatsächlich ausgeführte CAD-Fertigungsprüfung
 
-**GitHub Actions auf dem vorhandenen nurovelle-vps-Runner, 22.11.2026:**
+**GitHub Actions auf dem vorhandenen nurovelle-vps-Runner, 22.11.2026; letzter erfolgreicher Durchlauf nach Änderung des Silkscreens:**
 
 https://github.com/d4sd1ng/homepage/actions/runs/45051292786
 
