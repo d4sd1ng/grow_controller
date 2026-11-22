@@ -55,21 +55,17 @@ if [[ "$MODE" == "--export-reviewed" ]]; then
 fi
 
 # No extra 230V/SSR or chemical-dosing circuit on this sensor board.
-mkdir -p "$OUT/gerber"
+# A new CAM directory for each run prevents stale drill/film files from passing
+# the package check after design changes. Existing outputs remain untouched.
+CAM_DIR="$(mktemp -d "$OUT/sensor_cam_XXXXXXXX")"
 kicad-cli pcb export gerbers \
   --layers "F.Cu,B.Cu,F.SilkS,B.SilkS,F.Mask,B.Mask,Edge.Cuts" \
-  --output "$OUT/gerber" "$PCB"
+  --output "$CAM_DIR/" "$PCB"
 kicad-cli pcb export drill --format excellon --excellon-separate-th \
-  --output "$OUT/gerber" "$PCB"
+  --output "$CAM_DIR/" "$PCB"
 if [[ "$MODE" == "--export-prototype" ]]; then
-  cat > "$OUT/gerber/PROTOTYPE_ONLY.txt" <<'EOF'
-UNBESTUECKTER SENSOR-PCB-PROTOTYP — KEINE BETRIEBSFREIGABE
-Board: 179 x 115 x 1,6 mm, 2 Lagen, 4 x M3 NPTH.
-Kein Sensor-Gehaeuse vorhanden; ein Gehaeusetest ist keine Voraussetzung der ersten Leerplatine.
-Offen: ESP32 USB-C-Zugang bei gesteckten Phoenix-Gegensteckern, Sensormodul-Pegel und reales Strombudget.
-Keine Freigabe zum Anschluss von 230 V, SSR-Lasten oder chemischer Dosierung.
-EOF
-  echo "Prototyp-Dateien (nur Leerplatine) nach $OUT/gerber exportiert."
+  python3 "$BASE_DIR/package_sensor_prototype.py" "$CAM_DIR" "$PCB"
+  echo "Nur unbestueckter Sensor-Prototyp. Kein Live-/Bestueckungsfreigabevermerk."
 else
-  echo "Gerber/Excellon nach $OUT/gerber exportiert; Live-/Bestueckungsfreigabe separat dokumentiert."
+  echo "Gerber/Excellon nach $CAM_DIR exportiert; Live-/Bestueckungsfreigabe separat dokumentiert."
 fi
