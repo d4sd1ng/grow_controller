@@ -15,11 +15,11 @@
 | Ref | Menge | Festgelegte Konstruktion | Beschaffungs-/Bestückungsstatus |
 |---|---:|---|---|
 | U_ESP32 | 1 | Vorhandenes ESP32-Pro-DevKit, 30 Pins (2×15), Modulkörper 28×51 mm | vorhandenes Modul; tatsächliche Versorgung über dessen USB |
-| Aufnahme U_ESP32 | 2 | einreihige Buchsenleisten **1×15, 2,54 mm**, idealerweise erhöhte Variante | 18,67-mm-Elevation der E-tec-BE1-Serie, Style 181, dokumentiert; **exakte 15-polige Artikelvariante vor Bestellung bestätigen** |
+| Aufnahme U_ESP32 | 2 | einreihige Buchsenleisten **1×15, 2,54 mm** | Steckbar; durch Verlegung von J_BH1750/J_MLX ist eine erhöhte Bauform **nicht mehr als Workaround für den ursprünglichen 2D-USB-Konflikt erforderlich**. Tatsächliche Steckhöhe und USB-C-Kabel am vorhandenen Aufbau abgleichen. |
 | U_ADS1115 | 1 | Vorhandenes ADS1115-Modul, **1×10, 2,54 mm** | vorhandenes Modul |
 | Aufnahme U_ADS1115 | 1 | Buchsenleiste **1×10, 2,54 mm**, THT | Hersteller-/Bestellnummer noch nicht festgelegt |
 
-**Wichtig:** Die erhöhte ESP32-Steckaufnahme ist eine gezielte Lösung für den eng begrenzten USB-C-Steckraum, kein Nachweis der mechanischen Steckbarkeit bei installiertem Gegenstecker. Für das **spätere** Sensor-Gehäuse die erforderliche Höhe aus dem realen Prototyp übernehmen.
+**Wichtig – korrigierter Steckraum 22.11.:** J_BH1750 und J_MLX sind im KiCad-Layout aus dem USB-C-Austrittsbereich des ESP32 auf (114,80) und (146,80) verlegt. Die frühere Idee mit zwingend erhöhten Buchsenleisten ist deshalb überholt; die reale Steckbarkeit des USB-C-Kabels bleibt gesondert am vorhandenen Aufbau zu prüfen. Das Sensor-Gehäuse wird erst nach dem physischen Prototyp konstruiert.
 
 ## Bedrahtete Widerstände
 
