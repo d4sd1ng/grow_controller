@@ -60,7 +60,7 @@ expected = {
     "J_PHASE": ["PHASE_BUTTON", "GND"],
     "J_SERVICE": ["SERVICE_BUTTON", "GND"],
     "U_ADS1115": ["3V3", "GND", "I2C_MAIN_SCL", "I2C_MAIN_SDA",
-                  "GND", "ALRT_NC", "PH_PO_UNVERIFIED",
+                  "GND", "ALRT_NC", "PH_A0_CONDITIONED_UNVERIFIED",
                   "EC_ANALOG_UNVERIFIED", "A2_NC", "A3_NC"],
     "U_ESP32": ["EN", "GPIO36_NC", "GPIO39_NC", "GPIO34_NC",
                 "GPIO35_NC", "GPIO32_NC", "RGB_R_GPIO",
@@ -73,6 +73,8 @@ expected = {
                 "GPIO3_NC", "GPIO1_NC", "I2C_MAIN_SCL",
                 "DS18_DATA"],
 }
+expected["R_PH_TOP"] = ["PH_PO_UNVERIFIED", "PH_A0_CONDITIONED_UNVERIFIED"]
+expected["R_PH_BOTTOM"] = ["PH_A0_CONDITIONED_UNVERIFIED", "GND"]
 for ref, signal in (
     ("R_DHT1", "DHT1_DATA"), ("R_DHT2", "DHT2_DATA"),
     ("R_DHT3", "DHT3_DATA"), ("R_DS18", "DS18_DATA")
@@ -140,7 +142,7 @@ for raw in footprints(source):
     parts.append((ref, box))
 
 if set(ref for ref, _ in parts) != set(expected) | mechanical_refs:
-    errors.append("Footprint reference set differs from 25 electrical items plus 4 M3 holes")
+    errors.append("Footprint reference set differs from 27 electrical items plus 4 M3 holes")
 for i, (ref1, a) in enumerate(parts):
     for ref2, b in parts[i+1:]:
         xgap = max(a[0] - b[2], b[0] - a[2], 0)
@@ -160,7 +162,7 @@ lower_connectors = [p for p in parts if p[0] in ("J_BH1750", "J_MLX")]
 
 print("# Sensor PCB — automated mechanical and electrical review")
 print(f"- Edge.Cuts: {edge[2]-edge[0]:.2f} x {edge[3]-edge[1]:.2f} mm; 2 copper layers")
-print(f"- Footprints: {len(parts)} (25 electrical + 4 mechanical); expected pin-net mappings: 25 checked; errors: {len(errors)}")
+print(f"- Footprints: {len(parts)} (27 electrical + 4 mechanical); expected pin-net mappings: 27 checked; errors: {len(errors)}")
 print(f"- Courtyard overlaps: {len(collisions)}; items beyond Edge.Cuts: {len(outside)}")
 print(f"- Mounting-hole objects in layout: {mounting_holes}")
 print("- Closest component courtyards:")
@@ -170,8 +172,8 @@ if esp:
     print(f"- ESP32 courtyard: x={esp[0]:.2f}..{esp[2]:.2f}, y={esp[1]:.2f}..{esp[3]:.2f} mm")
     print("- USB location is at ESP32 module bottom per existing module documentation; "
           "clearance to lower connector row is NOT a validated cable insertion envelope.")
-print("- Analog inputs A0/A1 are directly connected from 5-V-powered pH/EC breakouts; "
-      "ADC 3.3-V maximum-level compliance not established by a netlist check.")
+print("- pH A0 is routed via the 10k/20k divider; EC A1 remains direct. "
+      "ADC 3.3-V maximum-level compliance is not established by a netlist check.")
 print("- 3.3-V and 5-V power-source current, reverse-feed and load margins require real measurements.")
 if collisions or outside:
     errors.append(f"collisions={collisions}, outside={outside}")
