@@ -146,7 +146,7 @@
  
  (fp_rect (start -4.04 -10.5) (end 19.28 2.5) (stroke (width 0.05) (type default)) (fill none) (layer "F.CrtYd"))
 )
-(footprint "Grow_Controller_Sensor:MSTBA_4P_5p08_to_NORTH" (layer "F.Cu") (at 42 114) (attr through_hole)
+(footprint "Grow_Controller_Sensor:MSTBA_4P_5p08_to_NORTH" (layer "F.Cu") (at 114 80) (attr through_hole)
  (fp_text reference "J_BH1750" (at 7.62 -11) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))
  (fp_text value "Phoenix_1757268_MSTBA_4P" (at 7.62 3.1) (layer "F.Fab") (effects (font (size 0.8 0.8) (thickness 0.13))))
  (pad "1" thru_hole circle (at 0 0 0) (size 2.5 2.5) (drill 1.4) (layers "*.Cu" "*.Mask") (net 2 "3V3"))
@@ -157,7 +157,7 @@
  
  (fp_rect (start -4.04 -10.5) (end 19.28 2.5) (stroke (width 0.05) (type default)) (fill none) (layer "F.CrtYd"))
 )
-(footprint "Grow_Controller_Sensor:MSTBA_4P_5p08_to_NORTH" (layer "F.Cu") (at 71 114) (attr through_hole)
+(footprint "Grow_Controller_Sensor:MSTBA_4P_5p08_to_NORTH" (layer "F.Cu") (at 146 80) (attr through_hole)
  (fp_text reference "J_MLX" (at 7.62 -11) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))
  (fp_text value "Phoenix_1757268_MSTBA_4P" (at 7.62 3.1) (layer "F.Fab") (effects (font (size 0.8 0.8) (thickness 0.13))))
  (pad "1" thru_hole circle (at 0 0 0) (size 2.5 2.5) (drill 1.4) (layers "*.Cu" "*.Mask") (net 2 "3V3"))
