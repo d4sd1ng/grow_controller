@@ -158,7 +158,20 @@ for i, (ref1, a) in enumerate(parts):
 
 mounting_holes = len(re.findall(r'\(pad "[^"]*" np_thru_hole', source))
 esp = next((box for ref, box in parts if ref == "U_ESP32"), None)
-lower_connectors = [p for p in parts if p[0] in ("J_BH1750", "J_MLX")]
+# Reserve the entire width of the ESP32 body from its USB-facing edge to
+# Edge.Cuts. This is an objective 2D courtyard check, not a 3D cable fit test.
+usb_corridor = (esp[0], esp[3], esp[2], edge[3]) if esp else None
+usb_obstructions = []
+if usb_corridor:
+    for ref, box in parts:
+        if ref.startswith("J_") and (
+            min(box[2], usb_corridor[2]) > max(box[0], usb_corridor[0])
+            and min(box[3], usb_corridor[3]) > max(box[1], usb_corridor[1])
+        ):
+            usb_obstructions.append(ref)
+    if usb_obstructions:
+        errors.append(f"USB-facing ESP32 corridor obstructed by: {usb_obstructions}")
+
 
 print("# Sensor PCB — automated mechanical and electrical review")
 print(f"- Edge.Cuts: {edge[2]-edge[0]:.2f} x {edge[3]-edge[1]:.2f} mm; 2 copper layers")
@@ -170,8 +183,12 @@ for a, b, d in sorted(warning, key=lambda z:z[2]):
     print(f"  - {a} / {b}: {d:.2f} mm")
 if esp:
     print(f"- ESP32 courtyard: x={esp[0]:.2f}..{esp[2]:.2f}, y={esp[1]:.2f}..{esp[3]:.2f} mm")
-    print("- USB location is at ESP32 module bottom per existing module documentation; "
-          "clearance to lower connector row is NOT a validated cable insertion envelope.")
+    print(f"- USB-facing ESP32 courtyard corridor: "
+          f"x={usb_corridor[0]:.2f}..{usb_corridor[2]:.2f}, "
+          f"y={usb_corridor[1]:.2f}..{usb_corridor[3]:.2f} mm")
+    print(f"- External connector courtyards obstructing the USB corridor: {usb_obstructions}")
+    print("- No intersection in the 2D check does not verify the actual 3D USB cable, "
+          "connector plug bodies or cable bending radius.")
 print("- pH A0 is routed via the 10k/20k divider; EC A1 remains direct. "
       "ADC 3.3-V maximum-level compliance is not established by a netlist check.")
 print("- 3.3-V and 5-V power-source current, reverse-feed and load margins require real measurements.")
@@ -182,8 +199,8 @@ if mounting_holes != 4:
     print("HOLD: Four mechanical holes not present.")
 else:
     print("INFO: Four M3 holes are the future enclosure mounting pattern; no sensor enclosure exists yet.")
-if any("U_ESP32" in (a, b) for a, b, _ in warning):
-    print("HOLD: ESP32 USB access must be checked against lower connector plug bodies.")
+if usb_obstructions:
+    print("HOLD: USB corridor obstructed by placed connector courtyards.")
 for e in errors:
     print("FAIL:", e)
 if errors:
@@ -194,8 +211,9 @@ if "--release" in sys.argv:
     unresolved = []
     if mounting_holes != 4:
         unresolved.append("Four mounting holes missing")
-    if any("U_ESP32" in (a, b) for a, b, _ in warning):
-        unresolved.append("Unverified USB connector and plugged-header clearance")
+    # These dimensions are not stored in the KiCad footprint; release still
+    # requires physical or verified-3D evidence rather than a clear 2D corridor.
+    unresolved.append("3D USB plug/lead and Phoenix plug clearance not validated")
     if unresolved:
         for issue in unresolved:
             print("FABRICATION RELEASE BLOCKED:", issue)
