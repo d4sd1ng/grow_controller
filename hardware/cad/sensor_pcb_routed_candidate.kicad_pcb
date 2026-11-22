@@ -1749,7 +1749,7 @@
 (gr_text "DHT1   DHT2   DHT3   DS18   LEVEL   EC" (at 89 30) (layer "F.Fab") (effects (font (size 1 1) (thickness 0.15))))
 (gr_text "pH   LIGHT   MLX90640   RGB   PHASE   SERVICE" (at 89 98) (layer "F.Fab") (effects (font (size 1 1) (thickness 0.15))))
 (gr_text "PH: PO->10k->ADS A0; A0->20k->GND | EC: A1 DIRECT" (at 90 33) (layer "F.Fab") (effects (font (size 0.9 0.9) (thickness 0.15))))
-)
+
 (segment (start 52.16 114) (end 53.76 112.4) (width 0.35) (layer "B.Cu") (net 13))
 (segment (start 53.76 112.4) (end 53.76 106) (width 0.35) (layer "B.Cu") (net 13))
 (segment (start 53.76 106) (end 55.36 104.4) (width 0.35) (layer "B.Cu") (net 13))
@@ -2048,4 +2048,5 @@
 (segment (start 149.68 82.8) (end 150.48 82) (width 0.35) (layer "F.Cu") (net 1))
 (segment (start 150.48 82) (end 150.48 80.4) (width 0.35) (layer "F.Cu") (net 1))
 (segment (start 150.48 80.4) (end 151.08 80) (width 0.35) (layer "F.Cu") (net 1)
+)
 )
