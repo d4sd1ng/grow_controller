@@ -25,7 +25,8 @@ def fail(message: str) -> None:
 def check_cam(cam_dir: Path) -> list[Path]:
     if not cam_dir.is_dir():
         fail(f"CAM directory does not exist: {cam_dir}")
-    gerbers = sorted(p for p in cam_dir.iterdir() if p.suffix.lower() in {".gbr", ".ger"})
+    gerber_ext = {".gbr", ".ger", ".gtl", ".gbl", ".gto", ".gbo", ".gts", ".gbs", ".gm1"}
+    gerbers = sorted(p for p in cam_dir.iterdir() if p.suffix.lower() in gerber_ext)
     drills = sorted(p for p in cam_dir.iterdir() if p.suffix.lower() == ".drl")
     if len(gerbers) != len(REQUIRED_GERBER):
         fail(f"expected exactly {len(REQUIRED_GERBER)} Gerber films, found {len(gerbers)}")
