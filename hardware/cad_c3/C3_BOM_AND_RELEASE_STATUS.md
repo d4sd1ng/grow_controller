@@ -5,7 +5,7 @@ Stand: 25.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 ## Bereits festgelegt
 | Bauteil/Anschluss | Menge | Spezifikation | Entscheidung |
 |---|---:|---|---|
-| U_C3 | 1 | ESP32-C3 SuperMini, 2×8 Kontakte | Steckbar, USB-C 5 V als **einzige** C3-Versorgung |
+| U_C3 | 1 | ESP32-C3 SuperMini, 2×8 Kontakte | Steckbar, 5 V vom platineninternen 12→5-V-Step-down, USB-C weiterhin für Service (Strompfad-Entkopplung erforderlich) |
 | Buchsenleisten für C3 | 2 | THT 1×8, 2,54 mm, passende Steckhöhe | Pin-/Sockelgeometrie mit vorhandenem Modul abgleichen |
 | U_PCA | 1 | PCA9685, im CAD als **PCA9685PW / TSSOP28** gezeichnet | CHIP-Variante **noch nicht** als verbindliches Kaufteil bestätigt |
 | J1–J12 Leiterplatten-Grundleisten | 12 | Phoenix MSTBA 2,5/2-G-5,08, Art. **1757242** | im mechanischen CAD-Platzierungsstand |
@@ -13,6 +13,8 @@ Stand: 25.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 | J13 Leiterplatten-Grundleiste | 1 | Phoenix MSTBA 2,5/3-G-5,08, Art. **1757255** | im mechanischen CAD-Platzierungsstand |
 | J13 Gegenstecker | 1 | Phoenix MSTB 2,5/3-ST-5,08, Art. **1757022** | passend zur Grundleiste |
 | H1–H4 | 4 | M3-Platinenbohrung, Ø 3,2 mm | Positionen im *vorläufigen* Floorplan |
+| U_BUCK | 1 | DC/DC-Step-down, Eingang 12 V, Ausgang stabilisiert 5 V | **Neue verbindliche Funktion**; Modell/Footprint noch auszuwählen, nicht als vorhandenes Bauteil ausgewiesen |
+| 12-V-Leistungszweig | 1 | interne Einspeisung mit getrenntem Logik- und Lastpfad | Keine externe 5-V-Versorgung mehr erforderlich; Sicherung/Schutz vor Routing zu prüfen |
 
 **Steckverbinder gesamt:** 13 Grundleisten + 13 Gegenstecker. Anschlüsse J1–J12 sind im CAD derzeit **ohne Netz**; der Druck "reserved" ist keine Betriebserlaubnis.
 
@@ -47,9 +49,18 @@ Stand: 25.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 ## Für eine echte Fertigungsfreigabe fehlen
 1. Bestätigung der tatsächlich vorhandenen PCA9685-Chip- oder Modulvariante.
 2. Konkrete, geprüfte Niederspannungs-Treiber und Schutzbeschaltung.
-3. 5-V/3,3-V-Strombilanz ohne Rückspeisung vom USB-C-Modul.
+3. 12-V→5-V-Step-down (Modell, Pinout, mechanisches Footprint, Wärmeabfuhr und Strombilanz); USB-C und eingespeiste 5 V müssen elektrisch gegeneinander verriegelt/entkoppelt werden. Die 3,3-V-Logiklast bleibt ebenfalls zu prüfen.
 4. Steckverbinderabgänge, USB-Zugang und tatsächliche Befestigungsmaße.
 5. Schaltplan mit ERC; vollständiges Routing, KiCad-DRC und vollständige PTH/NPTH-Fertigungsdaten.
 6. Verifikation auf realer Niederspannungshardware vor Betrieb.
 
 **Es ist ausdrücklich keine Bau- oder Anschlussanleitung für Netzspannung oder konzentrierte Säure enthalten.**
+
+## Verbindliche Änderung vom 27.11.2026: 12 V als einzige Betriebseinspeisung
+- Die frühere Entscheidung „C3 nur über USB-C mit 5 V versorgen“ ist **aufgehoben**.
+- Ein **12-V-Eingang** auf der C3-Platine versorgt zwei getrennte funktionale Bereiche: den vorgesehenen 12-V-Lastzweig und einen **auf der Platine befindlichen Step-down-Wandler 12 V → geregelte 5 V**.
+- Der C3-SuperMini erhält im regulären Betrieb 5 V **ausschließlich vom Step-down-Ausgang über einen geeigneten geschützten Versorgungspfad**; USB-C bleibt zum Flashen/Service zugänglich, darf aber nicht ungeschützt parallel mit dem Step-down betrieben werden.
+- Der PCA9685 benötigt weiterhin 3,3 V Logik (nicht 5 V oder 12 V), die Stromquelle ist an der realen Modul-/Reglerversion zu überprüfen.
+- J1 ist ab jetzt **12V IN** (+12V / GND), keine externe 5-V-Einspeisung.
+- Zu prüfen: DC/DC-Eingangsbereich, tatsächliche Dauerlast bei der Einbauumgebung, Startstrom, Überstrom-/Verpolschutz, Masseführung, USB-Rückspeiseschutz und thermische Abstände. Ohne ausgewählten realen Konverter kein seriöses Montage-Footprint.
+- Diese Änderung ist im CAD-Floorplan an J1 und C3 als elektrische **Netzzuordnung** ergänzt, bleibt aber **unroutet**. Ein physischer Step-down-Footprint ist bis zur Bauteilauswahl offen.
