@@ -758,7 +758,9 @@
 (pad "2" smd rect (at 1 0) (size 1.10 1.20) (layers "F.Cu" "F.Paste" "F.Mask") (net 2 "GND"))
 )
 
-(segment (start 91 60.775) (end 95 60.775) (width 0.2) (layer "F.Cu") (net 5))
+(via (at 91 60.775) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 5))
+(segment (start 91 60.775) (end 95 60.775) (width 0.2) (layer "B.Cu") (net 5))
+(via (at 95 60.775) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 5))
 (segment (start 95 60.775) (end 95 81) (width 0.2) (layer "F.Cu") (net 5))
 (segment (start 95 73) (end 98 73) (width 0.2) (layer "F.Cu") (net 5))
 (segment (start 95 77) (end 98 77) (width 0.2) (layer "F.Cu") (net 5))
