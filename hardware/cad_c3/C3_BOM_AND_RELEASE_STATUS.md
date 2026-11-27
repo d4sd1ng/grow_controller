@@ -16,7 +16,10 @@ Stand: 27.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 | U_BUCK | 1 | **Vorgeschlagener** RECOM R-78E5.0-1.0 (8–28 V Eingang, 5 V/1 A, SIP3 2,54 mm) | Footprint im KiCad platziert; **Kandidat**, noch nicht als Einkaufsteil freigegeben; Logikstrombedarf prüfen |
 | 12-V-Leistungszweig | 1 | interne Einspeisung mit getrenntem Logik- und Lastpfad | Keine externe 5-V-Versorgung mehr erforderlich; Sicherung/Schutz vor Routing zu prüfen |
 
-**Steckverbinder gesamt:** 13 Grundleisten + 13 Gegenstecker. Im neueren Motordraft sind J1 und J7–J12 mit Netzen belegt; J2–J6 und J13 sind noch nicht elektrisch ausgelegt/verdrahtet.
+**Steckverbinder gesamt:** 13 Grundleisten + 13 Gegenstecker.
+
+**12-V-Einspeisung eindeutig festgelegt:** J1 = **zweipolige steckbare Schraubklemme**, Leiterplatten-Grundleiste Phoenix Contact MSTBA 2,5/2-G-5,08 (1757242) mit Gegenstecker MSTB 2,5/2-ST-5,08 (1757019). J1 Pin 1 = `+12V_IN`, Pin 2 = `GND`. Der Anschluss entspricht dem bisherigen Projektstand und ist im aktuellen KiCad-Entwurf geroutet. **Keine 12-V-Einspeisung über USB-C.** USB-C dient nur zum Flashen/Service; am realen SuperMini bleibt die 5-V-/USB-VBUS-Rückspeisung bei gleichzeitig versorgtem Board noch zu prüfen. Der vorhandene JP1 ist lediglich eine manuelle Trennbrücke, keine automatische Quellenumschaltung.
+ Im neueren Motordraft sind J1 und J7–J12 mit Netzen belegt; J2–J6 und J13 sind noch nicht elektrisch ausgelegt/verdrahtet.
 
 ## Nicht kaufen, bevor elektrisch geprüft
 - Motortreiber/MOSFET-Stufen samt Freilauf-/Schutzbauteilen, Sicherungen und Netzteil: **Typen und Dimensionierung nicht festgelegt**.
