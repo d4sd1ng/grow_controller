@@ -13,7 +13,7 @@ Stand: 25.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 | J13 Leiterplatten-Grundleiste | 1 | Phoenix MSTBA 2,5/3-G-5,08, Art. **1757255** | im mechanischen CAD-Platzierungsstand |
 | J13 Gegenstecker | 1 | Phoenix MSTB 2,5/3-ST-5,08, Art. **1757022** | passend zur Grundleiste |
 | H1–H4 | 4 | M3-Platinenbohrung, Ø 3,2 mm | Positionen im *vorläufigen* Floorplan |
-| U_BUCK | 1 | DC/DC-Step-down, Eingang 12 V, Ausgang stabilisiert 5 V | **Neue verbindliche Funktion**; Modell/Footprint noch auszuwählen, nicht als vorhandenes Bauteil ausgewiesen |
+| U_BUCK | 1 | **Vorgeschlagener** RECOM R-78E5.0-1.0 (8–28 V Eingang, 5 V/1 A, SIP3 2,54 mm) | Footprint im KiCad platziert; **Kandidat**, noch nicht als Einkaufsteil freigegeben; Logikstrombedarf prüfen |
 | 12-V-Leistungszweig | 1 | interne Einspeisung mit getrenntem Logik- und Lastpfad | Keine externe 5-V-Versorgung mehr erforderlich; Sicherung/Schutz vor Routing zu prüfen |
 
 **Steckverbinder gesamt:** 13 Grundleisten + 13 Gegenstecker. Anschlüsse J1–J12 sind im CAD derzeit **ohne Netz**; der Druck "reserved" ist keine Betriebserlaubnis.
@@ -63,4 +63,11 @@ Stand: 25.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 - Der PCA9685 benötigt weiterhin 3,3 V Logik (nicht 5 V oder 12 V), die Stromquelle ist an der realen Modul-/Reglerversion zu überprüfen.
 - J1 ist ab jetzt **12V IN** (+12V / GND), keine externe 5-V-Einspeisung.
 - Zu prüfen: DC/DC-Eingangsbereich, tatsächliche Dauerlast bei der Einbauumgebung, Startstrom, Überstrom-/Verpolschutz, Masseführung, USB-Rückspeiseschutz und thermische Abstände. Ohne ausgewählten realen Konverter kein seriöses Montage-Footprint.
-- Diese Änderung ist im CAD-Floorplan an J1 und C3 als elektrische **Netzzuordnung** ergänzt, bleibt aber **unroutet**. Ein physischer Step-down-Footprint ist bis zur Bauteilauswahl offen.
+- Diese Änderung ist im CAD-Floorplan an J1 und C3 als elektrische **Netzzuordnung** ergänzt, bleibt aber **unroutet**. Ein provisorischer SIP3-Step-down-Footprint ist integriert, verbindliche Bauteilwahl offen.
+
+## Nachtrag 27.11.2026 – KiCad-Kandidat eingearbeitet
+- Angelegtes Footprint `RECOM_R-78E5.0-1.0_SIP3` (Pin 1 = Vin, 2 = GND, 3 = Vout), 2,54 mm Raster, Package 11,6 × 8,5 mm (Datenblatt RECOM, Revision 2019). Herstellerseite: https://recom-power.com/en/products/switching-regulators/switching-regulators-sip/rec-p-R-78E5.0-1.0.html
+- Vorläufig bei (48, 52) mm platziert. Alle drei Pads als **ungeroutete** Versorgungsnetze benannt.
+- Physikalisches C3-Pinout korrigiert: USB-C oben, **rechts 5V/GND/3V3/GPIO4..GPIO0**, links GPIO5..GPIO21. Beide Kontakte im Footprint und im eingebetteten Board gespiegelt.
+- Die 5-V-Versorgung ist noch **nicht mit USB-VBUS entkoppelt**; deshalb keine Bestell-/Betriebsfreigabe und keine Leiterbahnverbindungen.
+- Die Quelle weist 5 V bei max. 1 A aus; daraus folgt **nicht**, dass die gesamte spätere Schaltung zuverlässig versorgt werden kann. Verbraucherlast und Umgebung erst bestimmen.
