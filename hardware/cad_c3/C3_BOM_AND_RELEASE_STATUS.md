@@ -42,9 +42,9 @@ Stand: 27.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 ## Mechanischer CAD-Stand
 - `c3_floorplan_UNROUTED_NOT_FOR_ORDER.kicad_pcb`: **160 × 116 mm ausschließlich als Aufstellungsstudie**, nicht festgelegtes Fertigungsmaß.
 - ESP32-C3-Körper 18 × 22,52 mm, 2×8 Pads; Antennen- und USB-Zonen sichtbar markiert.
-- PCA9685PW als SMT-Footprint vorgeschlagen (TSSOP28); noch keine Verbindung zu C3.
+- PCA9685PW als SMT-Footprint vorgeschlagen (TSSOP28); **im neueren C3-Logik-Entwurf mit I²C, /OE und 3,3-V-Versorgung verbunden**, jedoch nicht als reales Kaufteil freigegeben.
 - Alle 13 Phoenix-Anschlussplätze mechanisch angeordnet; vier M3-Kandidatenpositionen eingezeichnet.
-- **0 Leiterbahnsegmente.** Es gibt weder einen vollständigen Schaltplan/ERC noch einen Routing-/DRC-Freigabenachweis. **Keine Gerber-Dateien zur Bestellung ableiten**.
+- **Der ursprüngliche Floorplan hatte 0 Leiterbahnsegmente.** Die neuere Datei `c3_6motor_usb_service_disconnect_DRAFT_NOT_FOR_ORDER.kicad_pcb` enthält geroutete Versorgung, Logik und sechs generische Motorkanäle. Ihr modellierter Teilnetzausschnitt hat einen DRC-/Netzaudit-PASS; ein vollständiger Schaltplan/ERC und die Gesamtfreigabe fehlen weiterhin. **Keine Gerber-Dateien zur Bestellung ableiten**.
 
 ## Für eine echte Fertigungsfreigabe fehlen
 1. Bestätigung der tatsächlich vorhandenen PCA9685-Chip- oder Modulvariante.
@@ -63,13 +63,13 @@ Stand: 27.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 - Der PCA9685 benötigt weiterhin 3,3 V Logik (nicht 5 V oder 12 V), die Stromquelle ist an der realen Modul-/Reglerversion zu überprüfen.
 - J1 ist ab jetzt **12V IN** (+12V / GND), keine externe 5-V-Einspeisung.
 - Zu prüfen: DC/DC-Eingangsbereich, tatsächliche Dauerlast bei der Einbauumgebung, Startstrom, Überstrom-/Verpolschutz, Masseführung, USB-Rückspeiseschutz und thermische Abstände. Ohne ausgewählten realen Konverter kein seriöses Montage-Footprint.
-- Diese Änderung ist im CAD-Floorplan an J1 und C3 als elektrische **Netzzuordnung** ergänzt, bleibt aber **unroutet**. Ein provisorischer SIP3-Step-down-Footprint ist integriert, verbindliche Bauteilwahl offen.
+- Diese Änderung war zunächst im historischen Floorplan nur als **ungeroutete Netzzuordnung** ergänzt worden. Im aktuellen 6-Motor-Draft ist der Niederspannungspfad geroutet. Der provisorische SIP3-Step-down ist dennoch kein endgültig freigegebenes Kaufteil.
 
 ## Nachtrag 27.11.2026 – KiCad-Kandidat eingearbeitet
 - Angelegtes Footprint `RECOM_R-78E5.0-1.0_SIP3` (Pin 1 = Vin, 2 = GND, 3 = Vout), 2,54 mm Raster, Package 11,6 × 8,5 mm (Datenblatt RECOM, Revision 2019). Herstellerseite: https://recom-power.com/en/products/switching-regulators/switching-regulators-sip/rec-p-R-78E5.0-1.0.html
-- Vorläufig bei (48, 52) mm platziert. Alle drei Pads als **ungeroutete** Versorgungsnetze benannt.
+- Vorläufig bei (48, 52) mm platziert. Die drei Versorgungspads sind im aktuellen Entwurf mit Leiterbahnen verbunden; Funktionsnachweis und Hersteller-Footprint-Abnahme fehlen.
 - Physikalisches C3-Pinout korrigiert: USB-C oben, **rechts 5V/GND/3V3/GPIO4..GPIO0**, links GPIO5..GPIO21. Beide Kontakte im Footprint und im eingebetteten Board gespiegelt.
-- Die 5-V-Versorgung ist noch **nicht mit USB-VBUS entkoppelt**; deshalb keine Bestell-/Betriebsfreigabe und keine Leiterbahnverbindungen.
+- Die neuere Platine enthält einen **manuell zu entfernenden JP1-Servicejumper** als Unterbrechung der 5-V-Einspeisung. Bei geschlossenem JP1 bleibt die USB-VBUS-Rückspeisung unbewertet; daher keine Bestell-/Betriebsfreigabe.
 - Die Quelle weist 5 V bei max. 1 A aus; daraus folgt **nicht**, dass die gesamte spätere Schaltung zuverlässig versorgt werden kann. Verbraucherlast und Umgebung erst bestimmen.
 
 ## Pumpenausgänge – Hardware-Scope 27.11.2026
@@ -78,6 +78,13 @@ Die C3-Platine benötigt **sechs unabhängig EIN/AUS schaltbare 12-V-Ausgänge**
 Zusätzlich zur schon gezählten Anschlussleiste sind für die sechs Schaltstufen vorgesehen: **6× N-Kanal-Logic-Level-MOSFET, 6× Gate-Serienwiderstand, 6× Gate-Pulldown, 6× Motorschutzbauteil**. Das sind Bauteilpositionen, noch **keine endgültige Bestellliste**; Werte, Footprints und Stromtragfähigkeit müssen geprüft werden. Die sechs bereits vorgesehenen Phoenix-Motorklemmen dürfen in der Stückliste **nicht doppelt** gezählt werden.
 
 Siehe: `C3_MOTOR_ON_OFF_REQUIREMENTS_2026-11-27.md`. Die Firmware-Konfiguration mit gesperrten Pumpenkanälen bleibt unverändert.
+
+## Konsolidierter Stand (nach aktueller CI-Prüfung)
+
+- **Aktuelle CAD-Datei:** `c3_6motor_usb_service_disconnect_DRAFT_NOT_FOR_ORDER.kicad_pcb`, 50 Footprints und 160 × 116 mm vorläufiger Umriss.
+- Die Meldung „DRC=0“ betrifft nur die **modellierten, benannten Netze**. J2–J6 (fünf externe Steueranschlüsse) und J13 (dreipoliger Lüfteranschluss) besitzen keine Netzbelegung. Die Fertigungsfreigabeprüfung erkennt das jetzt ausdrücklich.
+- **Bestellfreigabe:** NEIN. Kein freigegebener Schaltplan mit ERC, keine geprüfte 12-V-Absicherung, keine nachgewiesene USB-Rückspeisesicherheit am konkreten Modul, keine vollständige mechanische/thermische Abnahme.
+- **Nachweise:** `C3_BESTELLFREIGABE_STATUS_2026-11-27.md`, `C3_RELEASE_EVIDENCE.json` und `release_gate_c3.py`.
 
 ## CAD-Prüfstand 27.11.2026 – generische 6 × 12-V-Motorkanäle
 
