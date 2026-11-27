@@ -138,3 +138,9 @@ Vollständige Beschreibung: `C3_USB_SERVICE_DISCONNECT_2026-11-27.md`.
 - Die Buchse ist als links ausgerichteter, zweipoliger Through-Hole-Steckverbinder am Rand positioniert; elektrische Versorgungsnetze wurden auf J1-1 und J1-2 übernommen.
 - Verlässliche Herstellerangabe: **Mittelstift 2,0 mm**, Nennstrom 5 A, 24 V DC; die vorläufig verwendeten Bohrloch-/Padmaße wurden anhand publizierter CAD-/Datenblattwerte gewählt, noch **nicht an einem realen Exemplar geprüft**.
 - Das Netzteil mit 5,5×2,1-mm-Hohlstecker ist als Kandidat weiter vorgesehen; die mechanische Paarung muss verifiziert werden. Eine Bestellung der Gesamtschaltung ist weiterhin gesperrt.
+
+### J1-Maßprüfung gegen Herstellerzeichnung (27.11.2026)
+
+Die offizielle Same-Sky-Zeichnung (Rev. 1.08, Seite 2) nennt für die beiden Anschluss-Schlitzpositionen 7,5 mm und 13,8 mm ab gemeinsamem Bezug: **6,3 mm Abstand**. Der ältere KiCad-Kandidat enthielt 6,0 mm – ein KiCad-DRC erkennt eine solche Bauteilmaßabweichung nicht. Dieser Fehler wurde **ausschließlich für J1** korrigiert: mechanischer Bibliotheks-Footprint, integriertes PCB-Footprint und zugehörige Leiterbahn wurden auf 6,3 mm abgeglichen; `audit_c3_dc_jack_netlist.py` prüft die Übereinstimmung automatisiert.
+
+**Ungeklärt:** Eindeutige Zuordnung von Buchsenkontakt zu Plus/Masse anhand realem Bauteil und vollständige Maße/Einbaufreiheit; deshalb keine Freigabe. Quelle: https://www.sameskydevices.com/product/resource/pj-037ah.pdf .
