@@ -76,7 +76,7 @@ def expect(pads: dict[str, dict[str, str]], ref: str, mapping: dict[str, str]) -
 def main() -> None:
     data = BOARD.read_text(encoding="utf-8")
     pads = extract_footprints(data)
-    expected = '(footprint "Grow_Controller_C3:SameSky_PJ-037AH_THT_2P"'
+    expected = '(footprint "Grow_Controller_C3:SameSky_PJ-037AH_THT_LeftFacing"'
     if expected not in data:
         raise AssertionError("J1 must be the PJ-037AH DC barrel jack, not the old Phoenix terminal")
     if '(footprint "Grow_Controller_C3:MSTBA_2P_5p08_NORTH" (layer "F.Cu") (at 16 20)' in data:
