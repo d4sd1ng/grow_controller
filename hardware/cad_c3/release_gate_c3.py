@@ -20,7 +20,7 @@ REQUIRED_CONNECTORS = {"J2": 2, "J3": 2, "J4": 2, "J5": 2, "J6": 2, "J13": 3}
 
 def footprint_block(board: str, ref: str) -> str:
     # Parse balanced KiCad s-expressions instead of matching across footprints.
-    pattern = re.compile(r'\\(footprint\\s+"[^"]+"')
+    pattern = re.compile(r'\(footprint\s+"[^"]+"')
     for found in pattern.finditer(board):
         start = found.start()
         level = 0
@@ -31,7 +31,7 @@ def footprint_block(board: str, ref: str) -> str:
             if quote:
                 if escape:
                     escape = False
-                elif ch == "\\\\":
+                elif ch == "\\":
                     escape = True
                 elif ch == '"':
                     quote = False
@@ -43,7 +43,7 @@ def footprint_block(board: str, ref: str) -> str:
                 level -= 1
                 if level == 0:
                     block = board[start:i+1]
-                    match = re.search(r'\\(fp_text\\s+reference\\s+"([^"]+)"', block)
+                    match = re.search(r'\(fp_text\s+reference\s+"([^"]+)"', block)
                     if match and match.group(1) == ref:
                         return block
                     break
@@ -63,8 +63,8 @@ def main() -> int:
         if not part:
             failures.append(f"{ref}: Steckplatz fehlt")
             continue
-        pad_lines = [line for line in part.splitlines() if re.search(r'\\(pad\\s+"\\d+"', line)]
-        assigned = [line for line in pad_lines if re.search(r'\\(net\\s+\\d+\\s+"[^"]+"\\)', line)]
+        pad_lines = [line for line in part.splitlines() if re.search(r'\(pad\s+"\d+"', line)]
+        assigned = [line for line in pad_lines if re.search(r'\(net\s+\d+\s+"[^"]+"\)', line)]
         if len(pad_lines) != pins or len(assigned) != pins:
             failures.append(f"{ref}: {len(assigned)}/{pins} Anschluss-Pads besitzen Netze")
 
