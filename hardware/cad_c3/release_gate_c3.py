@@ -58,6 +58,13 @@ def main() -> int:
     else:
         board = BOARD.read_text(encoding="utf-8")
 
+    # The selected J1 is a DC barrel jack, not the old Phoenix screw terminal.
+    j1 = footprint_block(board, "J1") if board else ""
+    if not j1:
+        failures.append("J1: DC-Eingangssteckplatz fehlt")
+    elif "PJ-037AH" not in j1 and "PJ_037AH" not in j1:
+        failures.append("J1: altes Phoenix-Footprint statt Same Sky PJ-037AH")
+
     for ref, pins in REQUIRED_CONNECTORS.items():
         part = footprint_block(board, ref) if board else ""
         if not part:
