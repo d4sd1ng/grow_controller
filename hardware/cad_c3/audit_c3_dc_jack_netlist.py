@@ -11,7 +11,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-BOARD = Path(__file__).with_name("c3_6motor_DC_J1_PJ037AH_CANDIDATE_NOT_FOR_ORDER.kicad_pcb")
+BOARD = Path(__file__).with_name("c3_12v_control_signals_5x_WIP_NOT_FOR_ORDER.kicad_pcb")
 
 
 def extract_footprints(data: str) -> dict[str, dict[str, str]]:
@@ -125,12 +125,18 @@ def main() -> None:
         expect(pads, f"DM{number}", {"1": "+12V_IN", "2": switched})
         expect(pads, f"J{number+6}", {"1": "+12V_IN", "2": switched})
 
+    # Five logic-only connector pairs, not five new 12V MOSFET stages.
+    for number, gpio_pad in enumerate(("8", "7", "5", "4", "9"), start=1):
+        name = f"CTRL{number}_GPIO"
+        expect(pads, "U_C3", {gpio_pad: name})
+        expect(pads, f"J{number + 1}", {"1": "GND", "2": name})
+
     if any("230V" in net or "AC_MAINS" in net for row in pads.values() for net in row.values()):
         raise AssertionError("Mains voltage net not permitted on this PCB")
     if len(pads) != 50:
         raise AssertionError(f"Unexpected footprint count {len(pads)} != 50")
 
-    print("PASS: PJ-037AH J1 / C3 service-separated 5V supply, PCA logic, and six generic 12V motor output net assignments.")
+    print("PASS: PJ-037AH J1 / 5 GPIO pairs / C3 service-separated 5V supply, PCA logic, and six generic 12V motor output net assignments.")
     print("CHECKED: 50 footprints, 6 motor channels, 3 pull-ups, 1 logic capacitor and a split 5V service path.")
     print("WARNING: A passing net audit plus DRC is NOT a manufacturing or electrical safety certification.")
 
