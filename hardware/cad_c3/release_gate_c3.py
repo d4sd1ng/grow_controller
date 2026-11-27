@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-BOARD = ROOT / "c3_6motor_usb_service_disconnect_DRAFT_NOT_FOR_ORDER.kicad_pcb"
+BOARD = ROOT / "c3_6motor_DC_J1_PJ037AH_CANDIDATE_NOT_FOR_ORDER.kicad_pcb"
 EVIDENCE = ROOT / "C3_RELEASE_EVIDENCE.json"
 REQUIRED_CONNECTORS = {"J2": 2, "J3": 2, "J4": 2, "J5": 2, "J6": 2, "J13": 3}
 
@@ -64,6 +64,11 @@ def main() -> int:
         failures.append("J1: DC-Eingangssteckplatz fehlt")
     elif "PJ-037AH" not in j1 and "PJ_037AH" not in j1:
         failures.append("J1: altes Phoenix-Footprint statt Same Sky PJ-037AH")
+
+    if board and '(footprint "Grow_Controller_C3:SameSky_PJ-037AH_THT_2P"' not in board:
+        failures.append("J1 DC-Hohlbuchse PJ-037AH nicht im Board ersetzt")
+    if board and '(footprint "Grow_Controller_C3:MSTBA_2P_5p08_NORTH" (layer "F.Cu") (at 16 20)' in board:
+        failures.append("J1 enthaelt weiterhin das alte Phoenix-Footprint")
 
     for ref, pins in REQUIRED_CONNECTORS.items():
         part = footprint_block(board, ref) if board else ""
