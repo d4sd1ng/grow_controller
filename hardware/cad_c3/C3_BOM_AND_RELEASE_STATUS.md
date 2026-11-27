@@ -1,6 +1,6 @@
 # C3-Trägerplatine – Bauteile und Freigabestand
-Stand: 25.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/C3.ino`.
-**Dies ist der CAD-Aufstellungsentwurf, NICHT die bestellfähige Platine.** Keine Leiterbahnen, Schutzstufen oder elektrisch freigegebenen Lastanschlüsse vorhanden.
+Stand: 27.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/C3.ino` und neuere KiCad-Drafts.
+**Noch keine bestellfähige Platine.** Im aktuellen KiCad-Draft sind die Kleinspannungsversorgung und sechs generische Motorstufen mit Leiterbahnen vorhanden; die fünf SSR-Steuersignale und der Lüfteranschluss bleiben elektrisch unverbunden.
 
 ## Bereits festgelegt
 | Bauteil/Anschluss | Menge | Spezifikation | Entscheidung |
@@ -16,7 +16,7 @@ Stand: 25.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 | U_BUCK | 1 | **Vorgeschlagener** RECOM R-78E5.0-1.0 (8–28 V Eingang, 5 V/1 A, SIP3 2,54 mm) | Footprint im KiCad platziert; **Kandidat**, noch nicht als Einkaufsteil freigegeben; Logikstrombedarf prüfen |
 | 12-V-Leistungszweig | 1 | interne Einspeisung mit getrenntem Logik- und Lastpfad | Keine externe 5-V-Versorgung mehr erforderlich; Sicherung/Schutz vor Routing zu prüfen |
 
-**Steckverbinder gesamt:** 13 Grundleisten + 13 Gegenstecker. Anschlüsse J1–J12 sind im CAD derzeit **ohne Netz**; der Druck "reserved" ist keine Betriebserlaubnis.
+**Steckverbinder gesamt:** 13 Grundleisten + 13 Gegenstecker. Im neueren Motordraft sind J1 und J7–J12 mit Netzen belegt; J2–J6 und J13 sind noch nicht elektrisch ausgelegt/verdrahtet.
 
 ## Nicht kaufen, bevor elektrisch geprüft
 - Motortreiber/MOSFET-Stufen samt Freilauf-/Schutzbauteilen, Sicherungen und Netzteil: **Typen und Dimensionierung nicht festgelegt**.
@@ -100,3 +100,16 @@ Die **sechs J7–J12-Motorklemmen sind bereits in der vorherigen Stecker-Stückl
 **USB-Sicherheitsblocker:** Die D1-Schottkydiode allein verhindert Rückstrom zum Step-down, aber nicht zwingend Rückspeisung zur USB-VBUS-Leitung des SuperMini, falls USB-C und externe 12-V-Einspeisung gleichzeitig angeschlossen sind. Vor einer Bestellfreigabe ist eine verifizierte Quellenentkopplung erforderlich.
 
 Weitere Blocker: vollständiger Schaltplan/ERC, reale Motorströme/Absicherung, fünf SSR-Steuereingänge, Lüfterausgang, Originalteil-Footprints, Gehäusemaße und geeignete Schutzmaßnahmen für gefährliche Medien. **Keine Bestellgerber freigeben.**
+
+## Manueller 5-V-Service-Trennpunkt – Entwurf vom 27.11.2026
+
+| Position | Menge | Kandidat | Status |
+|---|---:|---|---|
+| JP1 | 1 | 2-polige Stiftleiste 2,54 mm + abziehbare Kurzschlussbrücke | Im neueren KiCad-Draft vorhanden; mechanisches Footprint und Platzierung nicht auf realem Modul bestätigt |
+
+- Neuer PCB-Entwurf: `c3_6motor_usb_service_disconnect_DRAFT_NOT_FOR_ORDER.kicad_pcb`.
+- Interne manuell trennbare Versorgung: `D1/+5V_DIODE → JP1 → C3/+5V_PROTECTED`.
+- **Keine automatische USB-Schutzschaltung:** Bei gestecktem JP1 und gleichzeitig angeschlossenem USB-C und 12 V ist eine Rückspeisung weiterhin möglich. Das konkrete SuperMini-Modul ist auf Rückspeisepfade zu untersuchen; für USB-Service muss der externe Versorgungspfad physisch getrennt und die Lastversorgung spannungslos sein.
+- Neue manuelle Trennung ersetzt keine fachliche Prüfung der Eingangsschutz- und Lastversorgungs-Schaltung.
+
+Vollständige Beschreibung: `C3_USB_SERVICE_DISCONNECT_2026-11-27.md`.
