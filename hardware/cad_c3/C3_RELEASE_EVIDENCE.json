@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "NOT_RELEASED",
   "draft_board": "c3_6motor_usb_service_disconnect_DRAFT_NOT_FOR_ORDER.kicad_pcb",
   "checks": {
@@ -38,6 +38,28 @@
     "manufacturing_drc_full_netlist": {
       "passed": false,
       "evidence": null
+    },
+    "fabrication_outputs_verified": {
+      "passed": false,
+      "evidence": null
     }
+  },
+  "pcb_order_ready": false,
+  "system_operation_ready": false,
+  "release_classes": {
+    "pcb_order": [
+      "complete_schematic_erc",
+      "verified_connector_interfaces",
+      "verified_12v_protection",
+      "verified_usb_power_isolation",
+      "verified_component_footprints",
+      "verified_enclosure_dimensions",
+      "manufacturing_drc_full_netlist",
+      "fabrication_outputs_verified"
+    ],
+    "system_operation": [
+      "verified_board_loads",
+      "independent_safety_review"
+    ]
   }
 }
