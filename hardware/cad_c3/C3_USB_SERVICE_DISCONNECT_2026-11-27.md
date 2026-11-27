@@ -22,3 +22,10 @@ Datei: `c3_6motor_usb_service_disconnect_DRAFT_NOT_FOR_ORDER.kicad_pcb`
 - Kein netzspannungsführender Anschluss oder Netzlast-Plan ist Bestandteil dieses CAD-Bereichs.
 
 **Freigabe: DRAFT, NICHT BESTELLFERTIG.**
+
+## CAD- und Netzprüfung nach Korrektur
+- JP1 wurde wegen gemeldeter Mindestabstandsverletzung gegenüber einer 3,3-V-Leiterbahn auf Position (87, 49) mm verschoben; die Warnbeschriftung wurde ebenfalls an einen freien Ort gesetzt.
+- Die sechs Motor-Ausgänge sind als MOTOR-1 bis MOTOR-6 und der Eingang als 12V-IN auf dem Silkscreen markiert.
+- **Letzter KiCad-9-Durchlauf: PASS – 0 DRC-Verstöße, 0 unverbundene Pads, 0 Footprint-Fehler**, SVG-Export bestanden.
+- Der Test `audit_c3_service_netlist.py` besteht weiterhin. CI: https://github.com/d4sd1ng/homepage/actions/runs/45938913172.
+- Der Test bestätigt ausschließlich die bisher modellierten Netze und die Leiterplatten-Fertigungsregeln, keine Funktionalitäts- oder Betriebssicherheit.
