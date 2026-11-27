@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "status": "NOT_RELEASED",
-  "draft_board": "c3_6motor_DC_J1_PJ037AH_CANDIDATE_NOT_FOR_ORDER.kicad_pcb",
+  "draft_board": "c3_12v_5signals_1fan_WIP_NOT_FOR_ORDER.kicad_pcb",
   "checks": {
     "complete_schematic_erc": {
       "passed": false,
