@@ -71,3 +71,10 @@ Stand: 25.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 - Physikalisches C3-Pinout korrigiert: USB-C oben, **rechts 5V/GND/3V3/GPIO4..GPIO0**, links GPIO5..GPIO21. Beide Kontakte im Footprint und im eingebetteten Board gespiegelt.
 - Die 5-V-Versorgung ist noch **nicht mit USB-VBUS entkoppelt**; deshalb keine Bestell-/Betriebsfreigabe und keine Leiterbahnverbindungen.
 - Die Quelle weist 5 V bei max. 1 A aus; daraus folgt **nicht**, dass die gesamte spätere Schaltung zuverlässig versorgt werden kann. Verbraucherlast und Umgebung erst bestimmen.
+
+## Pumpenausgänge – Hardware-Scope 27.11.2026
+Die C3-Platine benötigt **sechs unabhängig EIN/AUS schaltbare 12-V-Ausgänge**. Auf dieser Platine wird keine Regel- oder Dosierlogik umgesetzt. Die sechs Kanäle sind reine elektrische Niederspannungs-Schaltausgänge.
+
+Zusätzlich zur schon gezählten Anschlussleiste sind für die sechs Schaltstufen vorgesehen: **6× N-Kanal-Logic-Level-MOSFET, 6× Gate-Serienwiderstand, 6× Gate-Pulldown, 6× Motorschutzbauteil**. Das sind Bauteilpositionen, noch **keine endgültige Bestellliste**; Werte, Footprints und Stromtragfähigkeit müssen geprüft werden. Die sechs bereits vorgesehenen Phoenix-Motorklemmen dürfen in der Stückliste **nicht doppelt** gezählt werden.
+
+Siehe: `C3_MOTOR_ON_OFF_REQUIREMENTS_2026-11-27.md`. Die Firmware-Konfiguration mit gesperrten Pumpenkanälen bleibt unverändert.
