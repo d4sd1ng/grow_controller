@@ -78,3 +78,25 @@ Die C3-Platine benötigt **sechs unabhängig EIN/AUS schaltbare 12-V-Ausgänge**
 Zusätzlich zur schon gezählten Anschlussleiste sind für die sechs Schaltstufen vorgesehen: **6× N-Kanal-Logic-Level-MOSFET, 6× Gate-Serienwiderstand, 6× Gate-Pulldown, 6× Motorschutzbauteil**. Das sind Bauteilpositionen, noch **keine endgültige Bestellliste**; Werte, Footprints und Stromtragfähigkeit müssen geprüft werden. Die sechs bereits vorgesehenen Phoenix-Motorklemmen dürfen in der Stückliste **nicht doppelt** gezählt werden.
 
 Siehe: `C3_MOTOR_ON_OFF_REQUIREMENTS_2026-11-27.md`. Die Firmware-Konfiguration mit gesperrten Pumpenkanälen bleibt unverändert.
+
+## CAD-Prüfstand 27.11.2026 – generische 6 × 12-V-Motorkanäle
+
+Der separate Entwurf `c3_6motor_logic_supported_DRAFT_NOT_FOR_ORDER.kicad_pcb` enthält diese *vorgesehenen* Bestückungspositionen, **keine freigegebene Einkaufsliste**:
+
+| Bauteilposition | Menge | Kandidat / Nennwert | Stellung |
+|---|---:|---|---|
+| QM1–QM6 | 6 | AO3400A, SOT-23 | Signalgetriebener N-MOSFET, noch nicht unter realer Last freigegeben |
+| RG1–RG6 | 6 | 100 Ohm, SMD 0805 | Gate-Serienwiderstand |
+| RPD1–RPD6 | 6 | 100 kOhm, SMD 0805 | Gate-Pulldown |
+| DM1–DM6 | 6 | SS34, SMA | Freilaufdiode, tatsächliche Motordaten prüfen |
+| R_SDA, R_SCL | 2 | 4,7 kOhm, SMD 0805 | I²C-Pull-ups an 3,3 V |
+| R_OE | 1 | 10 kOhm, SMD 0805 | /OE-Pull-up (Ausgangssperre bei Reset) |
+| C_PCA | 1 | 100 nF, SMD 0805 | Logikstützkondensator |
+
+Die **sechs J7–J12-Motorklemmen sind bereits in der vorherigen Stecker-Stückliste erfasst**. Ihre Menge nicht nochmals addieren.
+
+**Letzter maschineller CAD-Nachweis:** KiCad Strict DRC + Pad-Netz-Audit bestanden, <https://github.com/d4sd1ng/homepage/actions/runs/45937203717>. Weder elektrische Belastung noch endgültige Fertigung wurde damit abgenommen.
+
+**USB-Sicherheitsblocker:** Die D1-Schottkydiode allein verhindert Rückstrom zum Step-down, aber nicht zwingend Rückspeisung zur USB-VBUS-Leitung des SuperMini, falls USB-C und externe 12-V-Einspeisung gleichzeitig angeschlossen sind. Vor einer Bestellfreigabe ist eine verifizierte Quellenentkopplung erforderlich.
+
+Weitere Blocker: vollständiger Schaltplan/ERC, reale Motorströme/Absicherung, fünf SSR-Steuereingänge, Lüfterausgang, Originalteil-Footprints, Gehäusemaße und geeignete Schutzmaßnahmen für gefährliche Medien. **Keine Bestellgerber freigeben.**
