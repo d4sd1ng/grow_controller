@@ -1,0 +1,8 @@
+(footprint "MSTBA_3P_5p08_SOUTH" (layer "F.Cu") (attr through_hole)
+(fp_text reference "REF**" (at 5.08 14) (layer "F.SilkS") (effects (font (size 0.8 0.8) (thickness 0.15))))
+(fp_text value "PHOENIX_1757255" (at 5.08 3.1) (layer "F.Fab") (effects (font (size 0.65 0.65) (thickness 0.1))))
+(pad "1" thru_hole circle (at 0.00 0) (size 2.5 2.5) (drill 1.4) (layers "*.Cu" "*.Mask"))
+(pad "2" thru_hole circle (at 5.08 0) (size 2.5 2.5) (drill 1.4) (layers "*.Cu" "*.Mask"))
+(pad "3" thru_hole circle (at 10.16 0) (size 2.5 2.5) (drill 1.4) (layers "*.Cu" "*.Mask"))
+(fp_rect (start -4.04 -2.5) (end 14.2 10.5) (stroke (width 0.05) (type default)) (fill none) (layer "F.CrtYd"))
+)

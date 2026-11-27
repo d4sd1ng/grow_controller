@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "status": "NOT_RELEASED",
+  "draft_board": "c3_12v_5signals_1fan_WIP_NOT_FOR_ORDER.kicad_pcb",
+  "checks": {
+    "complete_schematic_erc": {
+      "passed": false,
+      "evidence": null
+    },
+    "verified_connector_interfaces": {
+      "passed": false,
+      "evidence": null
+    },
+    "verified_12v_protection": {
+      "passed": false,
+      "evidence": null
+    },
+    "verified_usb_power_isolation": {
+      "passed": false,
+      "evidence": null
+    },
+    "verified_component_footprints": {
+      "passed": false,
+      "evidence": null
+    },
+    "verified_enclosure_dimensions": {
+      "passed": false,
+      "evidence": null
+    },
+    "verified_board_loads": {
+      "passed": false,
+      "evidence": null
+    },
+    "independent_safety_review": {
+      "passed": false,
+      "evidence": null
+    },
+    "manufacturing_drc_full_netlist": {
+      "passed": false,
+      "evidence": null
+    },
+    "fabrication_outputs_verified": {
+      "passed": false,
+      "evidence": null
+    }
+  },
+  "pcb_order_ready": false,
+  "system_operation_ready": false,
+  "release_classes": {
+    "pcb_order": [
+      "complete_schematic_erc",
+      "verified_connector_interfaces",
+      "verified_12v_protection",
+      "verified_usb_power_isolation",
+      "verified_component_footprints",
+      "verified_enclosure_dimensions",
+      "manufacturing_drc_full_netlist",
+      "fabrication_outputs_verified"
+    ],
+    "system_operation": [
+      "verified_board_loads",
+      "independent_safety_review"
+    ]
+  }
+}

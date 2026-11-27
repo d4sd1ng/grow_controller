@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name "Grow_Controller_C3")(type "KiCad")(uri "${KIPRJMOD}/Grow_Controller_C3.pretty")(options "")(descr "C3 carrier footprints; provisional"))
+)
