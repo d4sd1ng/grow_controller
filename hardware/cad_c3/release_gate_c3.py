@@ -83,15 +83,15 @@ def main() -> int:
     # The three-pin fan connector uses two power pins. Pin 3 is
     # intentionally reserved for an unconnected tach/sense wire.
     fan = footprint_block(board, "J13") if board else ""
-    fan_pads = [ln for ln in fan.splitlines() if re.search(r'\\(pad\\s+"\\d+"', ln)]
+    fan_pads = [ln for ln in fan.splitlines() if re.search(r'\(pad\s+"\d+"', ln)]
     if len(fan_pads) != 3:
         failures.append("J13: fan connector must contain exactly three pads")
     else:
         mapping = {}
         for ln in fan_pads:
-            number = re.search(r'\\(pad\\s+"(\\d+)"', ln)
+            number = re.search(r'\(pad\s+"(\d+)"', ln)
             if number:
-                signal = re.search(r'\\(net\\s+\\d+\\s+"([^"]+)"\\)', ln)
+                signal = re.search(r'\(net\s+\d+\s+"([^"]+)"\)', ln)
                 mapping[number.group(1)] = signal.group(1) if signal else None
         if mapping != {"1": "FAN_SW", "2": "+12V_IN", "3": None}:
             failures.append(f"J13: expected FAN_SW, +12V, reserved NC; got {mapping}")
