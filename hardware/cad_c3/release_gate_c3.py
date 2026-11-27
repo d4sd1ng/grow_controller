@@ -65,7 +65,7 @@ def main() -> int:
     elif "PJ-037AH" not in j1 and "PJ_037AH" not in j1:
         failures.append("J1: altes Phoenix-Footprint statt Same Sky PJ-037AH")
 
-    if board and '(footprint "Grow_Controller_C3:SameSky_PJ-037AH_THT_2P"' not in board:
+    if board and '(footprint "Grow_Controller_C3:SameSky_PJ-037AH_THT_LeftFacing"' not in board:
         failures.append("J1 DC-Hohlbuchse PJ-037AH nicht im Board ersetzt")
     if board and '(footprint "Grow_Controller_C3:MSTBA_2P_5p08_NORTH" (layer "F.Cu") (at 16 20)' in board:
         failures.append("J1 enthaelt weiterhin das alte Phoenix-Footprint")
