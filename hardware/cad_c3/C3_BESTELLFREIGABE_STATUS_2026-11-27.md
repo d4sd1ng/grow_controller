@@ -33,3 +33,15 @@
 - CI: <https://github.com/d4sd1ng/homepage/actions/runs/45969053802>. (Workflow prüft absichtlich, dass die Freigabe des unfertigen Boards blockiert wird.)
 
 **Keine Gerber-/Drill-/BOM-Daten aus dem Entwurf als freigegebene Bestellung ausgeben.** Ein grün durchlaufender DRC und eine fertige Platinenkontur allein reichen dafür nicht aus.
+
+## Getrennte Freigaben für PCB-Bestellung und Betrieb
+
+Die bisherige Prüfung hat unzutreffend die komplette **Anlagensicherheit** als Voraussetzung für die Bestellung einer **unbestückten Leiterplatte** behandelt. Dies wurde in `release_gate_c3.py` korrigiert.
+
+**PCB-Bestellung – nur technisch fertigungsrelevante Kriterien:** Alle Anschlussnetze vollständig festgelegt, Gesamtschaltplan/ERC, 12-V-Eingangs- und USB-Stromführung im Board ausgelegt, Footprints realteilgeprüft, Einbaumaße bestätigt, Gesamt-DRC bestanden, Gerber-/Bohrdaten geprüft. Aktuell **6 unvollständige Steckplätze und 8 fehlende Nachweise; keine Bestellfreigabe**.
+
+**Betrieb der später bestückten Gesamtanlage – separat:** Realer Strom-/Thermiktest und Sicherheitsprüfung der vorgesehenen Anwendung. Diese zwei Prüfungen sind **nicht mehr Voraussetzung für eine unbestückte PCB-Bestellung**, bleiben aber vor dem bestimmungsgemäßen Betrieb relevant.
+
+Die neuen Ergebnisfelder sind `pcb_order_ready` und `system_operation_ready`, `order_ready` bleibt ein Alias für die PCB-Bestellfreigabe zur Rückwärtskompatibilität. Es werden **keine** Freigaben automatisch auf `true` gesetzt.
+
+**Bestellstatus weiterhin: NEIN**, weil relevante elektrische Teile im PCB-Design fehlen. Im aktuellen Entwurf gibt es noch keine vollständigen elektrisch überprüften SSR-Steuerschnittstellen und keinen vollständigen Lüfteranschluss. Es wäre falsch, diese per Softwarecheck als fertig zu behandeln.
