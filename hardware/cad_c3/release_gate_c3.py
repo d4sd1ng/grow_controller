@@ -134,17 +134,24 @@ def main() -> int:
         if not (isinstance(entry, dict) and entry.get("passed") is True and entry.get("evidence")):
             operation_blockers.append(f"{explanation}: kein belegter Prüfnachweis")
 
+    # A bare prototype PCB requires valid Gerber/drill data, not final
+    # acceptance of all assembled-device requirements.
+    from check_12v_prototype_fabrication import run as check_prototype
+    prototype_status = check_prototype()
+    prototype_order_ready = prototype_status["bare_pcb_prototype_order_ready"]
     pcb_ready = not pcb_blockers
     operation_ready = pcb_ready and not operation_blockers
     result = {
         "board": BOARD.name,
+        "bare_pcb_prototype_order_ready": prototype_order_ready,
+        "prototype_checks": prototype_status["checks"],
         "order_ready": pcb_ready,
         "pcb_order_ready": pcb_ready,
         "system_operation_ready": operation_ready,
         "pcb_blocking_issues": pcb_blockers,
         "operation_blocking_issues": operation_blockers,
         "blocking_issues": pcb_blockers,
-        "note": "KiCad DRC alone is not a PCB order approval. Bare-PCB ordering and system operation are separate release gates.",
+        "note": "Bare PCB prototype Gerber/Drill ordering is separate from assembled-product and production release.",
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if pcb_ready else 1
