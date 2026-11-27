@@ -13,9 +13,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-BOARD = ROOT / "c3_6motor_DC_J1_PJ037AH_CANDIDATE_NOT_FOR_ORDER.kicad_pcb"
+BOARD = ROOT / "c3_12v_5signals_1fan_WIP_NOT_FOR_ORDER.kicad_pcb"
 EVIDENCE = ROOT / "C3_RELEASE_EVIDENCE.json"
-REQUIRED_CONNECTORS = {"J2": 2, "J3": 2, "J4": 2, "J5": 2, "J6": 2, "J13": 3}
+REQUIRED_CONNECTORS = {"J2": 2, "J3": 2, "J4": 2, "J5": 2, "J6": 2}
 
 
 def footprint_block(board: str, ref: str) -> str:
@@ -79,6 +79,24 @@ def main() -> int:
         assigned = [line for line in pad_lines if re.search(r'\(net\s+\d+\s+"[^"]+"\)', line)]
         if len(pad_lines) != pins or len(assigned) != pins:
             failures.append(f"{ref}: {len(assigned)}/{pins} Anschluss-Pads besitzen Netze")
+
+    # The three-pin fan connector uses two power pins. Pin 3 is
+    # intentionally reserved for an unconnected tach/sense wire.
+    fan = footprint_block(board, "J13") if board else ""
+    fan_pads = [ln for ln in fan.splitlines() if re.search(r'\\(pad\\s+"\\d+"', ln)]
+    if len(fan_pads) != 3:
+        failures.append("J13: fan connector must contain exactly three pads")
+    else:
+        mapping = {}
+        for ln in fan_pads:
+            number = re.search(r'\\(pad\\s+"(\\d+)"', ln)
+            if number:
+                signal = re.search(r'\\(net\\s+\\d+\\s+"([^"]+)"\\)', ln)
+                mapping[number.group(1)] = signal.group(1) if signal else None
+        if mapping != {"1": "FAN_SW", "2": "+12V_IN", "3": None}:
+            failures.append(f"J13: expected FAN_SW, +12V, reserved NC; got {mapping}")
+        if "FAN J13: 1 SW-GND / 2 +12V / 3 TACH-NC" not in board:
+            failures.append("J13: reserved tach pin must be documented on PCB")
 
     if not EVIDENCE.is_file():
         failures.append("Freigabenachweise fehlen")
