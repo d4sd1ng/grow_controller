@@ -81,6 +81,17 @@ def main() -> None:
         raise AssertionError("J1 must be the PJ-037AH DC barrel jack, not the old Phoenix terminal")
     if '(footprint "Grow_Controller_C3:MSTBA_2P_5p08_NORTH" (layer "F.Cu") (at 16 20)' in data:
         raise AssertionError("Old Phoenix J1 footprint still present")
+    # Manufacturer's recommended PCB mounting pattern locates contacts at
+    # 13.8 mm and 7.5 mm from the same datum: 6.3 mm between terminal slots.
+    # Check the board as well as the library; DRC by itself cannot certify
+    # that the fabricated connector physically fits the intended component.
+    lib = Path(__file__).parent / "Grow_Controller_C3.pretty" / "SameSky_PJ-037AH_THT_LeftFacing.kicad_mod"
+    for label, text in (("board", data), ("library", lib.read_text(encoding="utf-8"))):
+        if '(pad "2" thru_hole oval (at -6.3 0)' not in text:
+            raise AssertionError(f"J1: wrong mechanical pad pitch in {label} (expected 6.3 mm)")
+    if '(segment (start 8 20) (end 8 28)' not in data:
+        raise AssertionError("J1: board ground trace does not meet the corrected second pad")
+
     expect(pads, "J1", {"1": "+12V_IN", "2": "GND"})
     expect(pads, "U_C3", {
         "1": "+5V_PROTECTED", "2": "GND", "3": "3V3_LOGIC",
