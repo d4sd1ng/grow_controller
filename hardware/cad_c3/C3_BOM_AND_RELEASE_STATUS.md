@@ -8,17 +8,19 @@ Stand: 27.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 | U_C3 | 1 | ESP32-C3 SuperMini, 2×8 Kontakte | Steckbar, 5 V vom platineninternen 12→5-V-Step-down, USB-C weiterhin für Service (Strompfad-Entkopplung erforderlich) |
 | Buchsenleisten für C3 | 2 | THT 1×8, 2,54 mm, passende Steckhöhe | Pin-/Sockelgeometrie mit vorhandenem Modul abgleichen |
 | U_PCA | 1 | PCA9685, im CAD als **PCA9685PW / TSSOP28** gezeichnet | CHIP-Variante **noch nicht** als verbindliches Kaufteil bestätigt |
-| J1–J12 Leiterplatten-Grundleisten | 12 | Phoenix MSTBA 2,5/2-G-5,08, Art. **1757242** | im mechanischen CAD-Platzierungsstand |
-| J1–J12 Gegenstecker | 12 | Phoenix MSTB 2,5/2-ST-5,08, Art. **1757019** | passend zur Grundleiste |
+| J1 DC-Hohlbuchse | 1 | Same Sky PJ-037AH, 5,5 × 2,1 mm, rechtwinklig THT, 5 A / 24 V DC | **Neue gewünschte Anschlussbauform**, im PCB-Footprint noch **nicht umgesetzt**; Stromauslegung weiterhin offen |
+| J2–J12 Leiterplatten-Grundleisten | 11 | Phoenix MSTBA 2,5/2-G-5,08, Art. **1757242** | im mechanischen CAD-Platzierungsstand |
+| J2–J12 Gegenstecker | 11 | Phoenix MSTB 2,5/2-ST-5,08, Art. **1757019** | passend zur Grundleiste |
+| 12-V-Netzteil für J1 | 1 | Mean Well GST60A12-P1J, 12 V / 5 A, 60 W, DC-Hohlstecker 5,5 × 2,1 mm, innen Plus | Passendes Steckersystem als **Kandidat übernommen**; Gesamtstrom, Anlaufströme und Schutzdimensionierung nicht nachgewiesen |
 | J13 Leiterplatten-Grundleiste | 1 | Phoenix MSTBA 2,5/3-G-5,08, Art. **1757255** | im mechanischen CAD-Platzierungsstand |
 | J13 Gegenstecker | 1 | Phoenix MSTB 2,5/3-ST-5,08, Art. **1757022** | passend zur Grundleiste |
 | H1–H4 | 4 | M3-Platinenbohrung, Ø 3,2 mm | Positionen im *vorläufigen* Floorplan |
 | U_BUCK | 1 | **Vorgeschlagener** RECOM R-78E5.0-1.0 (8–28 V Eingang, 5 V/1 A, SIP3 2,54 mm) | Footprint im KiCad platziert; **Kandidat**, noch nicht als Einkaufsteil freigegeben; Logikstrombedarf prüfen |
 | 12-V-Leistungszweig | 1 | interne Einspeisung mit getrenntem Logik- und Lastpfad | Keine externe 5-V-Versorgung mehr erforderlich; Sicherung/Schutz vor Routing zu prüfen |
 
-**Steckverbinder gesamt:** 13 Grundleisten + 13 Gegenstecker.
+**Steckverbinder nach gewünschter Revision:** J1 = 1 DC-Hohlbuchse mit Netzteil-Hohlstecker; J2–J12 = 11 Phoenix-Zweipol-Grundleisten + 11 Gegenstecker; J13 = 1 Phoenix-Dreipol-Grundleiste + 1 Gegenstecker. **Der aktuelle KiCad-Draft enthält noch das alte Phoenix-J1-Footprint** und ist hierfür nicht fertigungsgerecht angepasst.
 
-**12-V-Einspeisung eindeutig festgelegt:** J1 = **zweipolige steckbare Schraubklemme**, Leiterplatten-Grundleiste Phoenix Contact MSTBA 2,5/2-G-5,08 (1757242) mit Gegenstecker MSTB 2,5/2-ST-5,08 (1757019). J1 Pin 1 = `+12V_IN`, Pin 2 = `GND`. Der Anschluss entspricht dem bisherigen Projektstand und ist im aktuellen KiCad-Entwurf geroutet. **Keine 12-V-Einspeisung über USB-C.** USB-C dient nur zum Flashen/Service; am realen SuperMini bleibt die 5-V-/USB-VBUS-Rückspeisung bei gleichzeitig versorgtem Board noch zu prüfen. Der vorhandene JP1 ist lediglich eine manuelle Trennbrücke, keine automatische Quellenumschaltung.
+**Geänderte J1-Vorgabe:** J1 soll als **DC-Hohlbuchse Same Sky PJ-037AH** (5,5 × 2,1 mm) statt Phoenix-Schraubklemme ausgeführt werden; dazu **Mean Well GST60A12-P1J** (12 V / 5 A, innen Plus). Dies ist eine **Konstruktionsänderung**, noch keine Änderung des vorhandenen CAD-Footprints oder eine Strom-/Bestellfreigabe. Der bisherige KiCad-Entwurf enthält noch J1 als Phoenix-Zweipol, Pad 1 `+12V_IN`, Pad 2 `GND`. **Keine 12-V-Einspeisung über USB-C.** USB-C dient nur zum Flashen/Service; am realen SuperMini bleibt die 5-V-/USB-VBUS-Rückspeisung bei gleichzeitig versorgtem Board noch zu prüfen. Der vorhandene JP1 ist lediglich eine manuelle Trennbrücke, keine automatische Quellenumschaltung.
  Im neueren Motordraft sind J1 und J7–J12 mit Netzen belegt; J2–J6 und J13 sind noch nicht elektrisch ausgelegt/verdrahtet.
 
 ## Nicht kaufen, bevor elektrisch geprüft
@@ -123,3 +125,9 @@ Weitere Blocker: vollständiger Schaltplan/ERC, reale Motorströme/Absicherung, 
 - Neue manuelle Trennung ersetzt keine fachliche Prüfung der Eingangsschutz- und Lastversorgungs-Schaltung.
 
 Vollständige Beschreibung: `C3_USB_SERVICE_DISCONNECT_2026-11-27.md`.
+
+## Neue J1-Teilevorgabe (27.11.2026)
+
+- **Gewünschtes Steckersystem:** DC-Hohlstecker und Buchse 5,5 × 2,1 mm. Buchse Same Sky `PJ-037AH` (rechtwinklig THT, Hersteller-Nennstrom 5 A), passendes externes Netzteil `Mean Well GST60A12-P1J` (12 V, 5 A, 60 W, Hohlstecker 5,5 × 2,1 mm, Plus innen).
+- **Datenquellen:** https://www.sameskydevices.com/product/resource/pj-037ah.pdf ; https://www.digikey.de/en/products/detail/same-sky-formerly-cui-devices/PJ-037AH/1644547 ; https://www.tme.eu/de/details/gst60a12-p1j/desktop-netzteile/mean-well/ .
+- **Noch offen:** Das bisherige Phoenix-J1-Footprint muss durch ein mit dem PJ-037AH-Datenblatt abgeglichenes Footprint ersetzt werden; erst danach können mechanische Lage und vollständiger PCB-DRC erneut beurteilt werden. Ebenso muss die Gesamtlast mit Anlaufströmen gegenüber 5 A geprüft werden. Diese Festlegung stellt keine Bestellung, Netzanschluss-Anleitung oder Fertigungsfreigabe dar.
