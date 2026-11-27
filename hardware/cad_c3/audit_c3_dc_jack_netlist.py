@@ -11,7 +11,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-BOARD = Path(__file__).with_name("c3_12v_control_signals_5x_WIP_NOT_FOR_ORDER.kicad_pcb")
+BOARD = Path(__file__).with_name("c3_12v_5signals_1fan_WIP_NOT_FOR_ORDER.kicad_pcb")
 
 
 def extract_footprints(data: str) -> dict[str, dict[str, str]]:
@@ -131,13 +131,22 @@ def main() -> None:
         expect(pads, "U_C3", {gpio_pad: name})
         expect(pads, f"J{number + 1}", {"1": "GND", "2": name})
 
+
+    # Shared 12V fan on/off stage, third pin reserved for optional tachometry.
+    expect(pads, "U_PCA", {"12": "FAN_CTRL"})
+    expect(pads, "RGFAN", {"1": "FAN_CTRL", "2": "FAN_GATE"})
+    expect(pads, "RPDFAN", {"1": "GND", "2": "FAN_GATE"})
+    expect(pads, "QFAN", {"1": "FAN_GATE", "2": "GND", "3": "FAN_SW"})
+    expect(pads, "DFAN", {"1": "+12V_IN", "2": "FAN_SW"})
+    expect(pads, "J13", {"1": "FAN_SW", "2": "+12V_IN", "3": "<UNASSIGNED>"})
+
     if any("230V" in net or "AC_MAINS" in net for row in pads.values() for net in row.values()):
         raise AssertionError("Mains voltage net not permitted on this PCB")
-    if len(pads) != 50:
-        raise AssertionError(f"Unexpected footprint count {len(pads)} != 50")
+    if len(pads) != 54:
+        raise AssertionError(f"Unexpected footprint count {len(pads)} != 54")
 
     print("PASS: PJ-037AH J1 / 5 GPIO pairs / C3 service-separated 5V supply, PCA logic, and six generic 12V motor output net assignments.")
-    print("CHECKED: 50 footprints, 6 motor channels, 3 pull-ups, 1 logic capacitor and a split 5V service path.")
+    print("CHECKED: 54 footprints, 6 motor channels, 3 pull-ups, 1 logic capacitor and a split 5V service path.")
     print("WARNING: A passing net audit plus DRC is NOT a manufacturing or electrical safety certification.")
 
 
