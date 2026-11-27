@@ -8,7 +8,7 @@ Stand: 27.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 | U_C3 | 1 | ESP32-C3 SuperMini, 2×8 Kontakte | Steckbar, 5 V vom platineninternen 12→5-V-Step-down, USB-C weiterhin für Service (Strompfad-Entkopplung erforderlich) |
 | Buchsenleisten für C3 | 2 | THT 1×8, 2,54 mm, passende Steckhöhe | Pin-/Sockelgeometrie mit vorhandenem Modul abgleichen |
 | U_PCA | 1 | PCA9685, im CAD als **PCA9685PW / TSSOP28** gezeichnet | CHIP-Variante **noch nicht** als verbindliches Kaufteil bestätigt |
-| J1 DC-Hohlbuchse | 1 | Same Sky PJ-037AH, 5,5 × 2,1 mm, rechtwinklig THT, 5 A / 24 V DC | **Neue gewünschte Anschlussbauform**, im PCB-Footprint noch **nicht umgesetzt**; Stromauslegung weiterhin offen |
+| J1 DC-Hohlbuchse | 1 | Same Sky PJ-037AH, 5,5 × 2,1 mm, rechtwinklig THT, 5 A / 24 V DC | **Neue gewünschte Anschlussbauform**, in separatem PCB-Kandidaten als linke Randbuchse umgesetzt, Hersteller-/Bohrmaßabgleich noch offen; Stromauslegung weiterhin offen |
 | J2–J12 Leiterplatten-Grundleisten | 11 | Phoenix MSTBA 2,5/2-G-5,08, Art. **1757242** | im mechanischen CAD-Platzierungsstand |
 | J2–J12 Gegenstecker | 11 | Phoenix MSTB 2,5/2-ST-5,08, Art. **1757019** | passend zur Grundleiste |
 | 12-V-Netzteil für J1 | 1 | Mean Well GST60A12-P1J, 12 V / 5 A, 60 W, DC-Hohlstecker 5,5 × 2,1 mm, innen Plus | Passendes Steckersystem als **Kandidat übernommen**; Gesamtstrom, Anlaufströme und Schutzdimensionierung nicht nachgewiesen |
@@ -18,9 +18,9 @@ Stand: 27.11.2026 · Quelle: `hardware/pcb_c3_super_mini_plan.md`, `firmware/C3/
 | U_BUCK | 1 | **Vorgeschlagener** RECOM R-78E5.0-1.0 (8–28 V Eingang, 5 V/1 A, SIP3 2,54 mm) | Footprint im KiCad platziert; **Kandidat**, noch nicht als Einkaufsteil freigegeben; Logikstrombedarf prüfen |
 | 12-V-Leistungszweig | 1 | interne Einspeisung mit getrenntem Logik- und Lastpfad | Keine externe 5-V-Versorgung mehr erforderlich; Sicherung/Schutz vor Routing zu prüfen |
 
-**Steckverbinder nach gewünschter Revision:** J1 = 1 DC-Hohlbuchse mit Netzteil-Hohlstecker; J2–J12 = 11 Phoenix-Zweipol-Grundleisten + 11 Gegenstecker; J13 = 1 Phoenix-Dreipol-Grundleiste + 1 Gegenstecker. **Der aktuelle KiCad-Draft enthält noch das alte Phoenix-J1-Footprint** und ist hierfür nicht fertigungsgerecht angepasst.
+**Steckverbinder nach gewünschter Revision:** J1 = 1 DC-Hohlbuchse mit Netzteil-Hohlstecker; J2–J12 = 11 Phoenix-Zweipol-Grundleisten + 11 Gegenstecker; J13 = 1 Phoenix-Dreipol-Grundleiste + 1 Gegenstecker. **Der ältere KiCad-Draft enthält das alte Phoenix-J1-Footprint.** Eine neue CAD-Datei ersetzt J1 durch eine PJ-037AH-Kandidatenaufnahme am linken Platinenrand; die Fertigungsfreigabe bleibt offen.
 
-**Geänderte J1-Vorgabe:** J1 soll als **DC-Hohlbuchse Same Sky PJ-037AH** (5,5 × 2,1 mm) statt Phoenix-Schraubklemme ausgeführt werden; dazu **Mean Well GST60A12-P1J** (12 V / 5 A, innen Plus). Dies ist eine **Konstruktionsänderung**, noch keine Änderung des vorhandenen CAD-Footprints oder eine Strom-/Bestellfreigabe. Der bisherige KiCad-Entwurf enthält noch J1 als Phoenix-Zweipol, Pad 1 `+12V_IN`, Pad 2 `GND`. **Keine 12-V-Einspeisung über USB-C.** USB-C dient nur zum Flashen/Service; am realen SuperMini bleibt die 5-V-/USB-VBUS-Rückspeisung bei gleichzeitig versorgtem Board noch zu prüfen. Der vorhandene JP1 ist lediglich eine manuelle Trennbrücke, keine automatische Quellenumschaltung.
+**Geänderte J1-Vorgabe:** J1 wurde in einer **separaten KiCad-Kandidatenversion** durch die Same Sky PJ-037AH ersetzt. Laut Hersteller hat die Buchse einen **2,0-mm-Mittelstift** und eine 5,5-mm-Mating-Ø-Angabe; Händler führen sie teilweise unter 5,5 × 2,1 mm. Das vorgeschlagene Mean Well GST60A12-P1J (12 V / 5 A, Plus innen) ist **mechanisch noch nicht als Paar getestet**. Es ist keine Strom-/Bestellfreigabe. Der bisherige KiCad-Entwurf enthält noch J1 als Phoenix-Zweipol, Pad 1 `+12V_IN`, Pad 2 `GND`. **Keine 12-V-Einspeisung über USB-C.** USB-C dient nur zum Flashen/Service; am realen SuperMini bleibt die 5-V-/USB-VBUS-Rückspeisung bei gleichzeitig versorgtem Board noch zu prüfen. Der vorhandene JP1 ist lediglich eine manuelle Trennbrücke, keine automatische Quellenumschaltung.
  Im neueren Motordraft sind J1 und J7–J12 mit Netzen belegt; J2–J6 und J13 sind noch nicht elektrisch ausgelegt/verdrahtet.
 
 ## Nicht kaufen, bevor elektrisch geprüft
@@ -130,4 +130,11 @@ Vollständige Beschreibung: `C3_USB_SERVICE_DISCONNECT_2026-11-27.md`.
 
 - **Gewünschtes Steckersystem:** DC-Hohlstecker und Buchse 5,5 × 2,1 mm. Buchse Same Sky `PJ-037AH` (rechtwinklig THT, Hersteller-Nennstrom 5 A), passendes externes Netzteil `Mean Well GST60A12-P1J` (12 V, 5 A, 60 W, Hohlstecker 5,5 × 2,1 mm, Plus innen).
 - **Datenquellen:** https://www.sameskydevices.com/product/resource/pj-037ah.pdf ; https://www.digikey.de/en/products/detail/same-sky-formerly-cui-devices/PJ-037AH/1644547 ; https://www.tme.eu/de/details/gst60a12-p1j/desktop-netzteile/mean-well/ .
-- **Noch offen:** Das bisherige Phoenix-J1-Footprint muss durch ein mit dem PJ-037AH-Datenblatt abgeglichenes Footprint ersetzt werden; erst danach können mechanische Lage und vollständiger PCB-DRC erneut beurteilt werden. Ebenso muss die Gesamtlast mit Anlaufströmen gegenüber 5 A geprüft werden. Diese Festlegung stellt keine Bestellung, Netzanschluss-Anleitung oder Fertigungsfreigabe dar.
+- **J1 wurde im CAD-Kandidaten ersetzt:** `c3_6motor_DC_J1_PJ037AH_CANDIDATE_NOT_FOR_ORDER.kicad_pcb`. Neues Footprint `SameSky_PJ-037AH_THT_LeftFacing` mit zwei Langlochpads am linken Platinenrand, J1 Pin1 `+12V_IN`, Pin2 `GND`. **Noch offen:** KiCad-DRC der letzten Variante, reale Maßkontrolle am Bauteil, Steckproben mit Netzteil, Eingangsabsicherung und vollständiger Schaltplan/ERC. Ebenso muss die Gesamtlast mit Anlaufströmen gegenüber 5 A geprüft werden. Diese Festlegung stellt keine Bestellung, Netzanschluss-Anleitung oder Fertigungsfreigabe dar.
+
+### DC-J1-Revision: abgeglichener CAD-Kandidat
+
+- Der *neue* Layoutstand liegt in `c3_6motor_DC_J1_PJ037AH_CANDIDATE_NOT_FOR_ORDER.kicad_pcb`; der *alte* Draft mit Phoenix-J1 bleibt zum Vergleich erhalten.
+- Die Buchse ist als links ausgerichteter, zweipoliger Through-Hole-Steckverbinder am Rand positioniert; elektrische Versorgungsnetze wurden auf J1-1 und J1-2 übernommen.
+- Verlässliche Herstellerangabe: **Mittelstift 2,0 mm**, Nennstrom 5 A, 24 V DC; die vorläufig verwendeten Bohrloch-/Padmaße wurden anhand publizierter CAD-/Datenblattwerte gewählt, noch **nicht an einem realen Exemplar geprüft**.
+- Das Netzteil mit 5,5×2,1-mm-Hohlstecker ist als Kandidat weiter vorgesehen; die mechanische Paarung muss verifiziert werden. Eine Bestellung der Gesamtschaltung ist weiterhin gesperrt.
