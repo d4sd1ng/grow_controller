@@ -52,3 +52,4 @@ if balance != 0 or minimum != 0:
 if duplicate or unknown or mismatch or balance or minimum or duplicate_refs or missing or len(outline) != 1 or len(footprints) != 31 or wrong_library:
     sys.exit(1)
 print("Static integrity check passed. This is NOT a fabrication release.")
+print("Run KiCad DRC and footprint/mechanical review before production.")
