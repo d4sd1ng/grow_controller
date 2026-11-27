@@ -74,30 +74,50 @@ def main() -> int:
     else:
         checks = json.loads(EVIDENCE.read_text(encoding="utf-8")).get("checks", {})
 
-    required = {
+    # The bare PCB can be ordered without certifying a complete operated system.
+    # Its electrical interfaces and manufacturing package must nevertheless be
+    # fully designed and checked. Operation of hazardous peripherals is a
+    # separate, strictly later acceptance decision.
+    pcb_requirements = {
         "complete_schematic_erc": "Vollständiger Schaltplan und ERC",
-        "verified_connector_interfaces": "Verifizierte Steuerschnittstellen und Anschlussbelegung",
-        "verified_12v_protection": "12-V-Eingangsschutz und Absicherung",
-        "verified_usb_power_isolation": "USB-/5-V-Stromquellentrennung am echten Modul",
-        "verified_component_footprints": "Bauteil- und Stecker-Footprints mit Originalteilen",
-        "verified_enclosure_dimensions": "Gehäuse und Montageabstände",
-        "verified_board_loads": "Strom- und Thermikprüfung an ungefährlicher Testlast",
-        "independent_safety_review": "Unabhängige Sicherheitsprüfung der Gesamtanwendung",
-        "manufacturing_drc_full_netlist": "KiCad-DRC des vollständigen elektrischen Netzes",
+        "verified_connector_interfaces": "Elektrische Auslegung aller Stecker und Signalports",
+        "verified_12v_protection": "12-V-Eingangsschutz und Absicherung im PCB-Design",
+        "verified_usb_power_isolation": "USB-/5-V-Quellentrennung im PCB-Design",
+        "verified_component_footprints": "Verifizierte reale Bauteile und Footprints",
+        "verified_enclosure_dimensions": "Gehäuse- und Montagefreigabe",
+        "manufacturing_drc_full_netlist": "KiCad-DRC des vollständigen PCB-Netzes",
+        "fabrication_outputs_verified": "Geprüfte Gerber-, Bohr- und Stapeldaten",
     }
-    for key, explanation in required.items():
+    operation_requirements = {
+        "verified_board_loads": "Belastungs- und Thermiktest am realen Board",
+        "independent_safety_review": "Sicherheitsfreigabe für die vorgesehene Gesamtanlage",
+    }
+
+    pcb_blockers = list(failures)
+    operation_blockers = []
+    for key, explanation in pcb_requirements.items():
         entry = checks.get(key, {})
         if not (isinstance(entry, dict) and entry.get("passed") is True and entry.get("evidence")):
-            failures.append(f"{explanation}: kein belegter Prüfnachweis")
+            pcb_blockers.append(f"{explanation}: kein belegter Prüfnachweis")
+    for key, explanation in operation_requirements.items():
+        entry = checks.get(key, {})
+        if not (isinstance(entry, dict) and entry.get("passed") is True and entry.get("evidence")):
+            operation_blockers.append(f"{explanation}: kein belegter Prüfnachweis")
 
+    pcb_ready = not pcb_blockers
+    operation_ready = pcb_ready and not operation_blockers
     result = {
         "board": BOARD.name,
-        "order_ready": not failures,
-        "blocking_issues": failures,
-        "note": "DRC=0 is not a full hardware approval; never order the draft as final.",
+        "order_ready": pcb_ready,
+        "pcb_order_ready": pcb_ready,
+        "system_operation_ready": operation_ready,
+        "pcb_blocking_issues": pcb_blockers,
+        "operation_blocking_issues": operation_blockers,
+        "blocking_issues": pcb_blockers,
+        "note": "KiCad DRC alone is not a PCB order approval. Bare-PCB ordering and system operation are separate release gates.",
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if not failures else 1
+    return 0 if pcb_ready else 1
 
 
 if __name__ == "__main__":
