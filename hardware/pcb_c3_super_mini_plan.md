@@ -379,3 +379,16 @@ Aus der vom Nutzer gelieferten bemaßten Produktabbildung:
 - Diese Maße beziehen sich **nur auf den C3**, nicht auf den 30-Pin-Sensor-ESP32.
 
 Stand: vom Bild abgelesene Geometriedaten, tatsächliches Modul und USB-C-/Antennenfreiraum vor Bestellfreigabe prüfen.
+
+
+## 27.11.2026 – verbindliche Änderung: 12 V rein, 5 V auf Platine erzeugen
+
+Die frühere Aussage **„C3-Versorgung ausschließlich über USB-C“ ist überholt**. Neue Nutzervorgabe:
+
+- **Eine 12-V-Einspeisung auf der C3-Trägerplatine**; J1 als +12V und GND.
+- **Step-down-Wandler 12 V → stabilisierte 5 V auf derselben Platine**, 5 V für das steckbare ESP32-C3-SuperMini-Modul; USB-C bleibt als Programmierschnittstelle zugänglich.
+- Pumpen-/Lastspannung und 5-V-Logikversorgung bleiben elektrisch als **getrennte Verteilzweige** derselben 12-V-Quelle geführt. Die 12-V-Lasten gehen nicht durch den 5-V-Wandler.
+- Keine ungeschützte Parallelschaltung zwischen USB-VBUS und den vom Wandler eingespeisten 5 V. Eine überprüfte Service-/Versorgungsentkopplung muss zum fertigen Design gehören.
+- PCA9685 bleibt an 3,3-V-Logik. Schutz, tatsächliche Wandler-Abmessungen, Strombilanz, Wärmeabfuhr und das konkrete Regler-Bauteil sind noch nicht verifiziert.
+
+Der aktualisierte KiCad-Entwurf im Draft-PR #18 enthält die neu benannten **ungerouteten** Versorgungsnetze (+12V_IN, +5V_BUCK, GND). Die tatsächliche Step-down-Bestückung ist noch nicht footprintgeprüft; keine Freigabe zur Fertigung.
